@@ -8,28 +8,27 @@ import SwiftUI
 import AuthenticationServices
 
 struct LoginView: View {
-    @EnvironmentObject var authVM: AuthViewModel
+    @Environment(\.modelContext) var modelContext
+    @EnvironmentObject var signInManager: AppleSignInManager
 
     var body: some View {
-        VStack(spacing: 20) {
-            Text("Welcome to Your App")
-                .font(.largeTitle)
-                .bold()
-
-            SignInWithAppleButton(
-                onRequest: { request in
-                    let prepared = authVM.signInWithAppleRequest()
-                    request.requestedScopes = prepared.requestedScopes
-                    request.nonce = prepared.nonce
-                },
-                onCompletion: { result in
-                    authVM.handleAuthResult(result)
+        VStack {
+            SignInWithAppleButton(.signIn) { request in
+                request.requestedScopes = [.fullName, .email]
+            } onCompletion: { result in
+                if case .failure(let error) = result {
+                    print("Sign-in failed: \(error.localizedDescription)")
                 }
-            )
-            .signInWithAppleButtonStyle(.black)
+            }
             .frame(height: 50)
-            .padding(.horizontal)
+            .onTapGesture {
+                signInManager.modelContext = modelContext
+                signInManager.signInWithApple()
+            }
         }
+        .padding()
     }
 }
+
+
 

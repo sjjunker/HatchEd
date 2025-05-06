@@ -6,5 +6,10 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>We use your iCloud account to securely sign you in and sync your data across devices.
+We use your iCloud account to securely sign you in and sync your data across devices.
+We use your iCloud account to securely sign you in and sync your data across devices.
+</string>
 </dict>
 </plist>

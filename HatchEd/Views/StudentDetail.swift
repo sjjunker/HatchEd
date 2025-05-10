@@ -1,15 +1,18 @@
 //
-//  ChildDashboard.swift
+//  StudentDetail.swift
 //  HatchEd
 //
-//  Created by Sandi Junker on 5/6/25.
+//  Created by Sandi Junker on 5/10/25.
 //
 import SwiftUI
+import SwiftData
 
-struct ChildDashboard: View {
+struct StudentDetail: View {
+    var student: Student
+    
     var body: some View {
         VStack {
-            Text("Welcome, Child!")
+            Text("Welcome, \(student.name ?? "Student")!")
                 .font(.largeTitle)
             // Other child-related content
         }
@@ -18,4 +21,3 @@ struct ChildDashboard: View {
         }
     }
 }
-

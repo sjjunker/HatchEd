@@ -19,14 +19,12 @@ struct LoginView: View {
                 if case .failure(let error) = result {
                     print("Sign-in failed: \(error.localizedDescription)")
                 }
-            }
-            .frame(height: 50)
-            .onTapGesture {
-                signInManager.modelContext = modelContext
+                // Handle the sign-in result inside the AppleSignInManager
                 signInManager.signInWithApple()
             }
+            .frame(height: 50)
+            .padding()
         }
-        .padding()
     }
 }
 

@@ -8,8 +8,10 @@ import SwiftData
 import Foundation
 
 @Model
-class Student {
-    @Attribute var name: String
+class Student: Identifiable {
+    @Attribute var id: UUID?
+    @Attribute var name: String?
+    @Attribute var courses: [Course]?
     @Relationship var parent: Parent?
 
     init(name: String) {

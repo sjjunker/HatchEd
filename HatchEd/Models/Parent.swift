@@ -9,9 +9,9 @@ import SwiftData
 
 @Model
 class Parent {
-    @Attribute var name: String
-    @Attribute var email: String
-    @Attribute var appleID: String
+    @Attribute var name: String?
+    @Attribute var email: String?
+    @Attribute var appleID: String?
     @Relationship(deleteRule: .cascade, inverse: \Student.parent) var students: [Student]?
 
     init(name: String, email: String, appleID: String, students: [Student]?) {

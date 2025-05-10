@@ -2,14 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key></key>
+	<string></string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
 	</array>
-	<key>NSUserTrackingUsageDescription</key>
-	<string>We use your iCloud account to securely sign you in and sync your data across devices.
-We use your iCloud account to securely sign you in and sync your data across devices.
-We use your iCloud account to securely sign you in and sync your data across devices.
-</string>
 </dict>
 </plist>

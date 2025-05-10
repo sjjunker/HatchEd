@@ -28,7 +28,7 @@ struct HatchEdApp: App {
         let modelConfiguration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: false,
-            cloudKitDatabase: .private(.init()) // using private CloudKit DB
+            cloudKitDatabase: .private(.init("iCloud.HatchEd")) // using private CloudKit DB
         )
 
         do {
@@ -41,25 +41,17 @@ struct HatchEdApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if (signInManager.currentParent != nil) {
+                if let currentParent = signInManager.currentParent {
                     ParentDashboard()
+                        .environmentObject(signInManager)
+                        .modelContainer(sharedModelContainer)
                 } else {
                     LoginView()
+                        .environmentObject(signInManager)
+                        .modelContainer(sharedModelContainer)
                 }
             }
-            .environmentObject(signInManager)
-            .modelContainer(sharedModelContainer)
         }
     }
 }
 
-
-
-
-
-//  TODO:
-//  Once my Apple Developer enrollment completes, I need to:
-
-//  Set the correct Team in Xcode.
-//  Enable iCloud/CloudKit in Signing & Capabilities.
-//  Test Apple Sign-In on a real device.

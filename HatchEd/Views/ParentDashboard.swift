@@ -7,21 +7,31 @@
 import SwiftUI
 
 struct ParentDashboard: View {
-    //  Get write access to SwiftData models using
-    //  the environment's model context
-    @Environment(\.modelContext) private var modelContext
-    //  Fetch data from SwiftData using @Query
-    //  @Query var students: [Student]
+    @Environment(\.modelContext) var modelContext
+    @EnvironmentObject var signInManager: AppleSignInManager
     
     var body: some View {
-        VStack {
-            Text("Welcome, Parent!")
-                .font(.largeTitle)
-            // Other parent-related content
-        }
-        .onAppear {
-            // Load data specific to the parent user
+        if let parent = signInManager.currentParent {
+            VStack {
+                Text("Welcome, \(parent.name ?? "Parent")!")
+                    .font(.largeTitle)
+                
+                List(parent.students ?? []) {student in
+                    NavigationLink(destination: StudentDetail(student: student)) {
+                        HStack {
+                            Text(student.name ?? "Student")
+                        }
+                    }
+                }
+                .navigationTitle(Text("Students"))
+            }
+        } else {
+            Text("Please sign in.")
         }
     }
+}
+
+#Preview {
+    ParentDashboard()
 }
 

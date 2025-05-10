@@ -16,14 +16,17 @@ import SwiftUI
 import SwiftData
 
 class AppleSignInManager: NSObject, ObservableObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
-    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        <#code#>
-    }
     
     @Published var currentParent: Parent?
-
-    // Inject model context after app initializes
     var modelContext: ModelContext?
+    
+    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        // Attempt to return the first window in the current scene
+            return UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap { $0.windows }
+                .first { $0.isKeyWindow } ?? UIWindow()
+    }
 
     func signInWithApple() {
         let provider = ASAuthorizationAppleIDProvider()
@@ -46,7 +49,7 @@ class AppleSignInManager: NSObject, ObservableObject, ASAuthorizationControllerD
             return
         }
 
-        // Check if this parent already exists (optional)
+        // Check if this parent already exists
         let fetchDescriptor = FetchDescriptor<Parent>(
             predicate: #Predicate { $0.email == email }
         )

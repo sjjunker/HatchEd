@@ -15,18 +15,43 @@ class Assignment: Identifiable {
     @Attribute var pointsPossible: Int?
     @Attribute var pointsEarned: Int?
     @Attribute var grade: Double?
+    @Relationship var lesson: Lesson?
+    
+    //Quiz Variables
+    @Relationship(deleteRule: .cascade, inverse: \Question.assignment)
+    var questions: [Question] = []
+    
+    //Reading Variables
+    @Attribute var startPage: Int?
+    @Attribute var endPage: Int?
+    @Attribute var resource: String?
 
-    init(name: String, dueDate: Date, pointsPossible: Int) {
+    //For Quiz Assignments
+    init(name: String, dueDate: Date, pointsPossible: Int, pointsEarned: Int?, grade: Double?, questions: [Question]?) {
         self.id = UUID()
         self.name = name
         self.dueDate = dueDate
         self.pointsPossible = pointsPossible
+        self.pointsEarned = pointsEarned
+        self.grade = grade
     }
     
-    func calculateGrade() -> Double {
-        guard let pointsPossible = pointsPossible, let pointsEarned = pointsEarned else {
-            return 0.0
+    //For Reading Assignments
+    init(name: String, dueDate: Date, pointsPossible: Int, pointsEarned: Int?, grade: Double?, startPage: Int?, endPage: Int?, resource: String?) {
+        self.id = UUID()
+        self.name = name
+        self.dueDate = dueDate
+        self.pointsPossible = pointsPossible
+        self.pointsEarned = pointsEarned
+        self.grade = grade
+        self.startPage = startPage
+        self.endPage = endPage
+        self.resource = resource
+    }
+    
+    func calculateGrade() {
+        if (pointsEarned != nil && pointsPossible! > 0) {
+            self.grade = Double(pointsEarned!) / Double(pointsPossible!) * 100
         }
-        return Double(pointsEarned) / Double(pointsPossible) * 100
     }
 }

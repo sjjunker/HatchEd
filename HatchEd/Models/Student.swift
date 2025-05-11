@@ -11,10 +11,11 @@ import Foundation
 class Student: Identifiable {
     @Attribute var id: UUID?
     @Attribute var name: String?
-    @Attribute var courses: [Course]?
+    @Relationship(deleteRule: .cascade, inverse: \Course.student) var courses: [Course] = []
     @Relationship var parent: Parent?
 
     init(name: String) {
+        self.id = UUID()
         self.name = name
     }
 }

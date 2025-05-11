@@ -65,7 +65,7 @@ class AppleSignInManager: NSObject, ObservableObject, ASAuthorizationControllerD
         }
 
         // Create a new parent record
-        let newParent = Parent(name: fullName, email: email, appleID: appleID, students: [])
+        let newParent = Parent(name: fullName, email: email, appleID: appleID)
         context.insert(newParent)
 
         do {

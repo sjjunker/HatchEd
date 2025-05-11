@@ -22,8 +22,12 @@ struct HatchEdApp: App {
     // MARK: - ModelContainer setup for Parent and Child
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
+            Assignment.self,
+            Course.self,
+            Lesson.self,
             Parent.self,
-            Student.self
+            Question.self,
+            Student.self,
         ])
         let modelConfiguration = ModelConfiguration(
             schema: schema,

@@ -12,12 +12,11 @@ class Parent {
     @Attribute var name: String?
     @Attribute var email: String?
     @Attribute var appleID: String?
-    @Relationship(deleteRule: .cascade, inverse: \Student.parent) var students: [Student]?
+    @Relationship(deleteRule: .cascade, inverse: \Student.parent) var students: [Student] = []
 
-    init(name: String, email: String, appleID: String, students: [Student]?) {
+    init(name: String, email: String, appleID: String) {
         self.name = name
         self.email = email
         self.appleID = appleID
-        self.students = []
     }
 }

@@ -12,12 +12,14 @@ class Course: Identifiable {
     @Attribute var id: UUID?
     @Attribute var name: String?
     @Attribute var resource: String?
-    @Attribute var lessons: [Lesson]?
+    @Relationship var student: Student?
 
-    init(name: String, resource: String, lessons: [Lesson]?) {
+    @Relationship(deleteRule: .cascade, inverse: \Lesson.course)
+    var lessons: [Lesson] = []
+
+    init(name: String, resource: String) {
         self.id = UUID()
         self.name = name
         self.resource = resource
-        self.lessons = lessons
     }
 }

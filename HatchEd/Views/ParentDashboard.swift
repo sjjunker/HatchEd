@@ -16,7 +16,7 @@ struct ParentDashboard: View {
                 Text("Welcome, \(parent.name ?? "Parent")!")
                     .font(.largeTitle)
                 
-                List(parent.students ?? []) {student in
+                List(parent.students) {student in
                     NavigationLink(destination: StudentDetail(student: student)) {
                         HStack {
                             Text(student.name ?? "Student")
@@ -29,9 +29,5 @@ struct ParentDashboard: View {
             Text("Please sign in.")
         }
     }
-}
-
-#Preview {
-    ParentDashboard()
 }
 

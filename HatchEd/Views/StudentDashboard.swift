@@ -4,7 +4,7 @@
 //
 //  Created by Sandi Junker on 5/6/25.
 //
-import SwiftUI
+/*import SwiftUI
 
 struct StudentDashboard: View {
     var body: some View {
@@ -17,5 +17,5 @@ struct StudentDashboard: View {
             // Load data specific to the child user
         }
     }
-}
+}*/
 

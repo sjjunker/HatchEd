@@ -4,7 +4,7 @@
 //
 //  Created by Sandi Junker on 5/10/25.
 //
-import SwiftUI
+/*import SwiftUI
 import SwiftData
 
 struct StudentDetail: View {
@@ -20,4 +20,4 @@ struct StudentDetail: View {
             // Load data specific to the child user
         }
     }
-}
+}*/

@@ -8,16 +8,17 @@ import SwiftData
 import Foundation
 
 @Model
-class UserProfile {
+class User {
     var id: String       // Apple user identifier (from AppleIDCredential)
     var name: String?
-    var role: UserRole
-    var familyID: UUID   // Links parents and children
+    var email: String?
+    var role: String?
+    var students: [Student]?
+    var familyID: String?  // Links parents and children
     
-    init(id: String, name: String?, role: UserRole, familyID: UUID) {
+    init(id: String, name: String?, email: String?) {
         self.id = id
         self.name = name
-        self.role = role
-        self.familyID = familyID
+        self.email = email
     }
 }

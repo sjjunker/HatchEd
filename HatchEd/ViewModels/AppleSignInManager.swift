@@ -6,22 +6,47 @@
 //
 import AuthenticationServices
 import SwiftUI
+import SwiftData
 
 @MainActor
-final class AppleSignInManager: NSObject, ObservableObject {
-    @Published var currentUserID: String? = nil
+class AppleSignInManager: NSObject, ObservableObject {
+    @Published var currentUser: User?
+    private var modelContext: ModelContext
 
-    func handleAuthorization(result: Result<ASAuthorization, Error>) {
+    init(modelContext: ModelContext) {
+        self.modelContext = modelContext
+    }
+
+    func handleSignIn(result: Result<ASAuthorization, Error>) {
         switch result {
-        case .success(let authorization):
-            if let credential = authorization.credential as? ASAuthorizationAppleIDCredential {
-                let userID = credential.user
-                self.currentUserID = userID
-                print("✅ Signed in with Apple ID:", userID)
+        case .success(let authResults):
+            guard let credential = authResults.credential as? ASAuthorizationAppleIDCredential else { return }
+            let userId = credential.user
+            let name = credential.fullName?.givenName
+            let email = credential.email
+
+            // Check if user exists
+            let fetchDescriptor = FetchDescriptor<User>(predicate: #Predicate { $0.id == userId })
+            if let existingUser = try? modelContext.fetch(fetchDescriptor).first {
+                // Existing user
+                currentUser = existingUser
+            } else {
+                // New user → prompt for role
+                currentUser = User(id: userId, name: name, email: email)
+                modelContext.insert(currentUser!)
+                try? modelContext.save()
             }
+
         case .failure(let error):
-            print("❌ Apple Sign-In failed:", error.localizedDescription)
+            print("Apple Sign-In failed: \(error.localizedDescription)")
         }
     }
+
+    func saveRole(_ role: String) {
+        guard let user = currentUser else { return }
+        user.role = role
+        try? modelContext.save()
+    }
 }
+
 

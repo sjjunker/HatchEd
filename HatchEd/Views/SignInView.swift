@@ -23,8 +23,8 @@ struct SignInView: View {
             SignInWithAppleButton(.signIn) { request in
                 request.requestedScopes = [.fullName, .email]
             } onCompletion: { result in
-                signInManager.handleAuthorization(result: result)
-                if signInManager.currentUserID != nil {
+                signInManager.handleSignIn(result: result)
+                if signInManager.currentUser != nil {
                     isSignedIn = true
                 }
             }
@@ -35,7 +35,7 @@ struct SignInView: View {
         .padding()
         .fullScreenCover(isPresented: $isSignedIn) {
             // 👇 Navigate to RoleSelectionView
-            if let userID = signInManager.currentUserID {
+            if let userID = signInManager.currentUser?.id {
                 RoleSelectionView(userID: userID)
             }
         }

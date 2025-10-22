@@ -4,19 +4,19 @@
 //
 //  Created by Sandi Junker on 5/6/25.
 //
-/*import SwiftUI
+import SwiftUI
 
 struct ParentDashboard: View {
     @Environment(\.modelContext) var modelContext
     @EnvironmentObject var signInManager: AppleSignInManager
     
     var body: some View {
-        if let parent = signInManager.currentParent {
             VStack {
-                Text("Welcome, \(parent.name ?? "Parent")!")
+                Text("Welcome, \(signInManager.currentUser?.name ?? "Parent")!")
                     .font(.largeTitle)
                 
-                List(parent.students) {student in
+                
+                List(signInManager.currentUser?.students ?? []) {student in
                     NavigationLink(destination: StudentDetail(student: student)) {
                         HStack {
                             Text(student.name ?? "Student")
@@ -25,9 +25,6 @@ struct ParentDashboard: View {
                 }
                 .navigationTitle(Text("Students"))
             }
-        } else {
-            Text("Please sign in.")
-        }
     }
-}*/
+}
 

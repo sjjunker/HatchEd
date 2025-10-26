@@ -5,12 +5,14 @@
 //  Created by Sandi Junker using ChatGPT on 5/6/25.
 //
 import SwiftUI
+import SwiftData
 import AuthenticationServices
 
 struct SignInView: View {
+    @Environment(\.modelContext) var modelContext
     @EnvironmentObject var signInManager: AppleSignInManager
     @State private var isSignedIn = false
-
+    
     var body: some View {
         VStack(spacing: 24) {
             Text("Welcome to HatchEd")

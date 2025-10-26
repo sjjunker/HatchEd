@@ -14,34 +14,28 @@
 import SwiftUI
 import SwiftData
 
-import SwiftUI
-import SwiftData
-
 @main
 struct HatchEdApp: App {
-    // 1️⃣ Create your SwiftData model container
-    var sharedModelContainer: ModelContainer = {
+    // Create a shared model container once for the whole app
+    static let sharedModelContainer: ModelContainer = {
         let schema = Schema([User.self])
-        let config = ModelConfiguration(schema: schema)
-        return try! ModelContainer(for: schema, configurations: [config])
+        return try! ModelContainer(for: schema)
     }()
 
-    // 2️⃣ Initialize your AppleSignInManager with that same context
-    @StateObject private var signInManager: AppleSignInManager
-
-    init() {
-        let context = sharedModelContainer.mainContext
-        _signInManager = StateObject(wrappedValue: AppleSignInManager(modelContext: context))
-    }
+    // Pass its model context to your sign-in manager
+    @StateObject private var signInManager = AppleSignInManager(
+        modelContext: ModelContext(sharedModelContainer)
+    )
 
     var body: some Scene {
         WindowGroup {
             SignInView()
-                .environmentObject(signInManager)       // 👈 gives your SignInView access to the manager
-                .modelContainer(sharedModelContainer)   // 👈 makes SwiftData available app-wide
+                .environmentObject(signInManager)
+                .modelContainer(Self.sharedModelContainer) // makes it available to SwiftUI views
         }
     }
 }
+
 
 
 

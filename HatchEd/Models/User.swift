@@ -9,11 +9,11 @@ import Foundation
 
 @Model
 class User {
-    var id: String       // Apple user identifier (from AppleIDCredential)
+    @Attribute(.unique) var id: String       // Apple user identifier (from AppleIDCredential)
     var name: String?
     var email: String?
     var role: String?
-    var students: [Student]?
+    //var students: [Student]?
     var familyID: String?  // Links parents and children
     
     init(id: String, name: String?, email: String?) {

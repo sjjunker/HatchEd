@@ -9,7 +9,6 @@ import SwiftUI
 struct RoleSelectionView: View {
     let userID: String
     @EnvironmentObject var signInManager: AppleSignInManager
-    @State private var goToHome = false
 
     var body: some View {
         VStack(spacing: 20) {
@@ -21,27 +20,15 @@ struct RoleSelectionView: View {
 
             Button("I'm a Parent") {
                 signInManager.saveRole("parent")
-                goToHome = true
             }
             .buttonStyle(.borderedProminent)
 
             Button("I'm a Student") {
                 signInManager.saveRole("student")
-                goToHome = true
             }
             .buttonStyle(.bordered)
         }
         .padding()
-        .fullScreenCover(isPresented: $goToHome) {
-                    // Navigate to correct home
-                    if let role = signInManager.currentUser?.role {
-                        if role == "parent" {
-                            ParentDashboard()
-                        } else {
-                            StudentDashboard()
-                        }
-                    }
-                }
     }
 }
 

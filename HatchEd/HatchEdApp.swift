@@ -18,7 +18,7 @@ import SwiftData
 struct HatchEdApp: App {
     // Create a shared model container once for the whole app
     static let sharedModelContainer: ModelContainer = {
-        let schema = Schema([User.self])
+        let schema = Schema([User.self, Subject.self, Assignment.self, Course.self, Question.self])
         return try! ModelContainer(for: schema)
     }()
 
@@ -29,7 +29,7 @@ struct HatchEdApp: App {
 
     var body: some Scene {
         WindowGroup {
-            SignInView()
+            ContentView()
                 .environmentObject(signInManager)
                 .modelContainer(Self.sharedModelContainer) // makes it available to SwiftUI views
         }

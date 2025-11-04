@@ -14,16 +14,17 @@ class User {
     var name: String?
     var email: String?
     var role: String?
-    var familyID: String?  // Links parents and children
+    @Relationship var family: Family?  // Links parents and children
     
     //For students only
-    var subjects: [Subject]?
+    /*var subjects: [Subject]?
     var courses: [Course]?
-    var assignments: [Assignment]?
+    var assignments: [Assignment]?*/
     
-    init(id: String, name: String?, email: String?) {
+    init(id: String, name: String?, email: String?, family: Family? = nil) {
         self.id = id
         self.name = name
         self.email = email
+        self.family = family
     }
 }

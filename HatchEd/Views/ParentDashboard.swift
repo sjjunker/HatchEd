@@ -13,6 +13,7 @@ enum NavigationDestination: String, Identifiable {
     case reportCard = "Report Cards"
     case portfolio = "Portfolio"
     case resources = "Resources"
+    case settings = "Settings"
     case dashboard = "Dashboard"
     
     var id: String { rawValue }
@@ -24,6 +25,7 @@ enum NavigationDestination: String, Identifiable {
         case .reportCard: return "doc.text"
         case .portfolio: return "folder"
         case .resources: return "book"
+        case .settings: return "gearshape"
         case .dashboard: return "house"
         }
     }
@@ -36,6 +38,7 @@ enum NavigationDestination: String, Identifiable {
         case .reportCard: ReportCard()
         case .portfolio: Portfolio()
         case .resources: Resources()
+        case .settings: Settings()
         case .dashboard: EmptyView() // Handled by setting selectedDestination to nil
         }
     }
@@ -167,14 +170,14 @@ struct ParentDashboard: View {
             }
             
             // Students
-            /*List(signInManager.currentUser?.students ?? []) { student in
+            List(signInManager.currentUser?.family?.members ?? []) { student in
                 NavigationLink(destination: StudentDetail(student: student)) {
                     HStack {
                         Text(student.name ?? "Student")
                     }
                 }
             }
-            .navigationTitle(Text("Students"))*/
+            .navigationTitle(Text("Students"))
         }
         .sheet(isPresented: $showingNameEditor) {
             NavigationView {

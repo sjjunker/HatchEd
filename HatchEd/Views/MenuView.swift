@@ -10,21 +10,13 @@ struct MenuView: View {
     @Binding var selectedDestination: NavigationDestination?
     @Binding var showMenu: Bool
     @EnvironmentObject private var signInManager: AppleSignInManager
-    
-    let menuItems: [NavigationDestination] = [
-        .dashboard,
-        .planner,
-        .studentList,
-        .reportCard,
-        .portfolio,
-        .resources
-    ]
+    @EnvironmentObject private var menuManager: MenuManager
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Menu Items
             List {
-                ForEach(menuItems) { item in
+                ForEach(menuManager.menuItems) { item in
                     Button(action: {
                         // Set to nil for dashboard to show main content
                         selectedDestination = (item == .dashboard) ? nil : item
@@ -67,6 +59,16 @@ struct MenuView: View {
                 }
             }
             .listStyle(PlainListStyle())
+            .onAppear {
+                if let user = signInManager.currentUser {
+                    menuManager.setMenuItems(user: user)
+                }
+            }
+            .onChange(of: signInManager.currentUser) { _, newUser in
+                if let user = newUser {
+                    menuManager.setMenuItems(user: user)
+                }
+            }
         }
         .background(Color(UIColor.systemBackground))
         .frame(maxWidth: .infinity, alignment: .leading)

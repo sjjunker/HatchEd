@@ -5,6 +5,7 @@
 //  Created by Sandi Junker on 5/6/25.
 //
 import SwiftUI
+import SwiftData
 
 struct StudentDashboard: View {
     @Environment(\.modelContext) var modelContext
@@ -13,66 +14,68 @@ struct StudentDashboard: View {
     @State private var selectedDestination: NavigationDestination? = nil
     
     var body: some View {
-        NavigationView {
-            ZStack {
-                if let destination = selectedDestination {
-                    destination.view
-                        .navigationTitle(destination.rawValue)
-                } else {
-                    studentDashboardContent
-                        .navigationTitle("Dashboard")
-                }
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            showMenu.toggle()
-                        }
-                    }) {
-                        Image(systemName: showMenu ? "xmark" : "line.3.horizontal")
-                            .font(.title2)
-                            .foregroundColor(.primary)
-                            .animation(.easeInOut(duration: 0.3), value: showMenu)
+        ZStack {
+            NavigationView {
+                ZStack {
+                    if let destination = selectedDestination, destination != .dashboard {
+                        destination.view
+                            .navigationTitle(destination.rawValue)
+                    } else {
+                        // Dashboard Content
+                        studentDashboardContent
+                            .navigationTitle("Dashboard")
                     }
                 }
-            }
-            .overlay(
-                Group {
-                    if showMenu {
-                        Color.black.opacity(0.3)
-                            .ignoresSafeArea()
-                            .onTapGesture {
-                                withAnimation {
-                                    showMenu = false
-                                }
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                showMenu.toggle()
                             }
-                        
-                        HStack {
-                            MenuView(
-                                selectedDestination: $selectedDestination,
-                                showMenu: $showMenu
-                            )
-                            .frame(width: 280)
-                            .transition(.move(edge: .leading))
-                            
-                            Spacer()
+                        }) {
+                            Image(systemName: "line.3.horizontal")
+                                .font(.title2)
+                                .foregroundColor(.primary)
+                                .opacity(showMenu ? 0 : 1)
+                                .animation(.easeInOut(duration: 0.3), value: showMenu)
                         }
                     }
                 }
-            )
+            }
+            
+            // Hamburger Menu Overlay - outside NavigationView
+            if showMenu {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation {
+                            showMenu = false
+                        }
+                    }
+                
+                HStack {
+                    MenuView(
+                        selectedDestination: $selectedDestination,
+                        showMenu: $showMenu
+                    )
+                    .frame(width: 280)
+                    .transition(.move(edge: .leading))
+                    
+                    Spacer()
+                }
+            }
         }
         .onAppear {
-            // Load data specific to the child user
+            signInManager.updateUserFromDatabase()
         }
     }
     
     private var studentDashboardContent: some View {
         VStack {
-            Text("Welcome, \(signInManager.currentUser?.name ?? "Child")!")
+            Text("Welcome, \(signInManager.currentUser?.name?.capitalized ?? "Student")!")
                 .font(.largeTitle)
-            // Other child-related content
+            // Other student-related content
         }
     }
 }

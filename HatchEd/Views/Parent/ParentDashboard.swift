@@ -3,6 +3,7 @@
 //  HatchEd
 //
 //  Created by Sandi Junker on 5/6/25.
+//  Updated with assistance from Cursor (ChatGPT) on 11/7/25.
 //
 import SwiftUI
 
@@ -49,6 +50,7 @@ struct ParentDashboard: View {
     @State private var editedName = ""
     @State private var showMenu = false
     @State private var selectedDestination: NavigationDestination? = nil
+    @State private var selectedNotification: Notification?
     
     var body: some View {
         ZStack {
@@ -105,9 +107,22 @@ struct ParentDashboard: View {
         }
         .onAppear {
             signInManager.updateUserFromDatabase()
+            Task {
+                await signInManager.fetchNotifications()
+            }
             if signInManager.currentUser?.name == nil {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     showingNameEditor = true
+                }
+            }
+        }
+        .sheet(item: $selectedNotification) { notification in
+            NotificationDetailView(notification: notification) { toDelete in
+                Task {
+                    await signInManager.deleteNotification(toDelete)
+                    await MainActor.run {
+                        selectedNotification = nil
+                    }
                 }
             }
         }
@@ -133,32 +148,10 @@ struct ParentDashboard: View {
                 }
             }
             
-            // Notifications
-            HStack {
-                VStack {
-                    Spacer()
-                    
-                    HStack {
-                        Spacer()
-                        Image(systemName: "exclamationmark.circle")
-                        Spacer()
-                        Text("Missing")
-                        Spacer()
-                        Button("X") {}
-                        Spacer()
-                    }
-                    
-                    Spacer()
-                    
-                    Text("No new notifications")
-                    
-                    Spacer()
-                    
-                    Button("Complete") {}
-                    
-                    Spacer()
-                }
-            }
+            NotificationsView(
+                notifications: signInManager.notifications,
+                onSelect: { selectedNotification = $0 }
+            )
             
             // Students
             if signInManager.students.isEmpty {

@@ -1,3 +1,5 @@
+// Updated with assistance from Cursor (ChatGPT) on 11/7/25.
+
 import { ObjectId } from 'mongodb'
 import { getCollection } from '../lib/mongo.js'
 

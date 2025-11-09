@@ -1,5 +1,7 @@
 import Foundation
 
+// Updated with assistance from Cursor (ChatGPT) on 11/7/25.
+
 final class OfflineCache {
     static let shared = OfflineCache()
     

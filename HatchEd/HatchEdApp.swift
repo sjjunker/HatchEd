@@ -3,14 +3,9 @@
 //  HatchEd
 //
 //  Created by Sandi Junker on 5/6/25.
-//  Added Apple Auth using ChatGPT
+//  Updated with assistance from Cursor (ChatGPT) on 11/7/25.
+//
 
-//
-//  HatchEdApp.swift
-//  HatchEd
-//
-//  Created by Sandi Junker on 5/6/25.
-//
 import SwiftUI
 
 @main

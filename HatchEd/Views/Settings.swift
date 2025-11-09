@@ -3,6 +3,7 @@
 //  HatchEd
 //
 //  Created by Sandi Junker on 11/3/25.
+//  Updated with assistance from Cursor (ChatGPT) on 11/7/25.
 //
 
 import SwiftUI

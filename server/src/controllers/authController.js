@@ -1,3 +1,5 @@
+// Updated with assistance from Cursor (ChatGPT) on 11/7/25.
+
 import { verifyAppleIdentityToken } from '../services/appleAuth.js'
 import { upsertUserByAppleId } from '../models/userModel.js'
 import { signToken } from '../utils/jwt.js'

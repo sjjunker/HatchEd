@@ -1,3 +1,5 @@
+// Updated with assistance from Cursor (ChatGPT) on 11/7/25.
+
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
@@ -10,6 +12,7 @@ import { connectToDatabase } from './lib/mongo.js'
 import authRoutes from './routes/auth.js'
 import userRoutes from './routes/users.js'
 import familyRoutes from './routes/families.js'
+import notificationRoutes from './routes/notifications.js'
 import { errorHandler } from './middleware/errorHandler.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -30,6 +33,7 @@ app.get('/health', (_req, res) => {
 app.use('/api/auth', authRoutes)
 app.use('/api/users', userRoutes)
 app.use('/api/families', familyRoutes)
+app.use('/api/notifications', notificationRoutes)
 
 app.use(errorHandler)
 

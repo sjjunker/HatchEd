@@ -1,3 +1,5 @@
+// Updated with assistance from Cursor (ChatGPT) on 11/7/25.
+
 export function serializeUser (user) {
   if (!user) return null
   return {
@@ -21,6 +23,19 @@ export function serializeFamily (family) {
     members: family.members?.map(member => member.toString()) ?? [],
     createdAt: family.createdAt,
     updatedAt: family.updatedAt
+  }
+}
+
+export function serializeNotification (notification) {
+  if (!notification) return null
+  return {
+    id: notification._id?.toString?.() ?? notification._id,
+    title: notification.title ?? null,
+    body: notification.body ?? null,
+    createdAt: notification.createdAt,
+    deletedAt: notification.deletedAt ?? null,
+    userId: notification.userId?.toString?.() ?? notification.userId,
+    read: notification.read ?? false
   }
 }
 

@@ -1,3 +1,5 @@
+// Updated with assistance from Cursor (ChatGPT) on 11/7/25.
+
 import { verifyToken } from '../utils/jwt.js'
 
 export function requireAuth (req, _res, next) {

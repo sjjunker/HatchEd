@@ -3,6 +3,7 @@
 //  HatchEd
 //
 //  Created by Sandi Junker on 5/6/25.
+//  Updated with assistance from Cursor (ChatGPT) on 11/7/25.
 //
 import SwiftUI
 
@@ -12,6 +13,7 @@ struct StudentDashboard: View {
     @State private var selectedDestination: NavigationDestination? = nil
     @State private var showingNameEditor = false
     @State private var editedName = ""
+    @State private var selectedNotification: Notification?
     
     var body: some View {
         ZStack {
@@ -68,9 +70,22 @@ struct StudentDashboard: View {
         }
         .onAppear {
             signInManager.updateUserFromDatabase()
+            Task {
+                await signInManager.fetchNotifications()
+            }
             if signInManager.currentUser?.name == nil {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     showingNameEditor = true
+                }
+            }
+        }
+        .sheet(item: $selectedNotification) { notification in
+            NotificationDetailView(notification: notification) { toDelete in
+                Task {
+                    await signInManager.deleteNotification(toDelete)
+                    await MainActor.run {
+                        selectedNotification = nil
+                    }
                 }
             }
         }
@@ -108,16 +123,21 @@ struct StudentDashboard: View {
             Text("Welcome, \(signInManager.currentUser?.name?.capitalized ?? "Student")!")
                 .font(.largeTitle)
             
-             if signInManager.currentUser?.name == nil {
-                 Button(action: {
-                     editedName = ""
-                     showingNameEditor = true
-                 }) {
-                     Label("Add your name", systemImage: "pencil.circle.fill")
-                         .foregroundColor(.blue)
-                 }
-                 .padding(.top, 8)
-             }
+            if signInManager.currentUser?.name == nil {
+                Button(action: {
+                    editedName = ""
+                    showingNameEditor = true
+                }) {
+                    Label("Add your name", systemImage: "pencil.circle.fill")
+                        .foregroundColor(.blue)
+                }
+                .padding(.top, 8)
+            }
+
+            NotificationsView(
+                notifications: signInManager.notifications,
+                onSelect: { selectedNotification = $0 }
+            )
             // Other student-related content
             if signInManager.isOffline {
                 Text("Offline mode")

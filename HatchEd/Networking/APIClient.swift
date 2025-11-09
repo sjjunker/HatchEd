@@ -1,5 +1,7 @@
 import Foundation
 
+// Updated with assistance from Cursor (ChatGPT) on 11/7/25.
+
 final class APIClient {
     static let shared = APIClient()
     
@@ -55,6 +57,7 @@ struct Endpoint {
         case get = "GET"
         case post = "POST"
         case patch = "PATCH"
+        case delete = "DELETE"
     }
     
     var path: String
@@ -72,8 +75,8 @@ struct Endpoint {
         }
         var request = URLRequest(url: url)
         request.httpMethod = method.rawValue
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder.api.encode(body)
         }
         return request

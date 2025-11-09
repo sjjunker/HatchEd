@@ -3,6 +3,7 @@
 //  HatchEd
 //
 //  Created by Sandi Junker on 10/22/25.
+//  Updated with assistance from Cursor (ChatGPT) on 11/7/25.
 //
 
 import AuthenticationServices
@@ -19,6 +20,7 @@ class AppleSignInManager: NSObject, ObservableObject {
     @Published var currentUser: User?
     @Published var currentFamily: Family?
     @Published var students: [User] = []
+    @Published var notifications: [Notification] = []
     @Published var signInState: SignInState = .notSignedIn
     @Published var isOffline: Bool = false
 
@@ -93,6 +95,7 @@ class AppleSignInManager: NSObject, ObservableObject {
         currentUser = nil
         currentFamily = nil
         students = []
+        notifications = []
         clearStoredUserID()
         api.setAuthToken(nil)
         cache.wipeAll()
@@ -116,6 +119,7 @@ class AppleSignInManager: NSObject, ObservableObject {
             let response: UserResponse = try await api.request(Endpoint(path: "api/users/me"))
             applyUser(response.user)
             await fetchFamilyIfNeeded()
+            await fetchNotifications()
             isOffline = false
         } catch {
             if let cachedUser: User = cache.load(User.self, from: "user.json") {
@@ -126,6 +130,9 @@ class AppleSignInManager: NSObject, ObservableObject {
             }
             if let cachedStudents: [User] = cache.load([User].self, from: "students.json") {
                 students = cachedStudents
+            }
+            if let cachedNotifications: [Notification] = cache.load([Notification].self, from: "notifications.json") {
+                notifications = cachedNotifications
             }
             isOffline = true
             updateSignInState()
@@ -160,6 +167,9 @@ class AppleSignInManager: NSObject, ObservableObject {
         }
         if let students: [User] = cache.load([User].self, from: "students.json") {
             self.students = students
+        }
+        if let cachedNotifications: [Notification] = cache.load([Notification].self, from: "notifications.json") {
+            self.notifications = cachedNotifications
         }
         updateSignInState()
     }
@@ -206,6 +216,7 @@ class AppleSignInManager: NSObject, ObservableObject {
             applyUser(response.user)
             cache.save(response.token, as: "token.json")
             await fetchFamilyIfNeeded()
+            await fetchNotifications()
         } catch {
             print("Apple Sign-In exchange failed: \(error.localizedDescription)")
             signInState = .notSignedIn
@@ -316,6 +327,28 @@ class AppleSignInManager: NSObject, ObservableObject {
             throw FamilyJoinError.saveFailed(error)
         }
     }
+
+    func fetchNotifications() async {
+        guard api.getAuthToken() != nil else { return }
+        do {
+            let response: NotificationsResponse = try await api.request(Endpoint(path: "api/notifications"))
+            notifications = response.notifications
+            cache.save(response.notifications, as: "notifications.json")
+        } catch {
+            print("Failed to fetch notifications: \(error)")
+        }
+    }
+
+    func deleteNotification(_ notification: Notification) async {
+        guard api.getAuthToken() != nil else { return }
+        do {
+            _ = try await api.request(Endpoint(path: "api/notifications/\(notification.id)", method: .delete), responseType: EmptyResponse.self)
+            notifications.removeAll { $0.id == notification.id }
+            cache.save(notifications, as: "notifications.json")
+        } catch {
+            print("Failed to delete notification: \(error)")
+        }
+    }
 }
 
 struct AuthRequest: Encodable {
@@ -353,5 +386,9 @@ struct FamilyDetailResponse: Decodable {
 
 struct CreateFamilyRequest: Encodable {
     let name: String
+}
+
+struct NotificationsResponse: Decodable {
+    let notifications: [Notification]
 }
 

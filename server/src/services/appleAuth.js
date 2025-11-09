@@ -1,3 +1,5 @@
+// Updated with assistance from Cursor (ChatGPT) on 11/7/25.
+
 import axios from 'axios'
 import jwt from 'jsonwebtoken'
 import jwkToPem from 'jwk-to-pem'

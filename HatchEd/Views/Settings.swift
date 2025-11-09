@@ -6,17 +6,15 @@
 //
 
 import SwiftUI
-import SwiftData
 
 struct Settings: View {
-    @Environment(\.modelContext) var modelContext
     @EnvironmentObject private var signInManager: AppleSignInManager
-    @Query var families: [Family]
-    
     @State private var showingCreateFamily = false
     @State private var showingJoinFamily = false
     @State private var newFamilyName = ""
     @State private var joinCode = ""
+    @State private var errorMessage: String?
+    @State private var isSubmitting = false
     
     private var currentUser: User? {
         signInManager.currentUser
@@ -27,7 +25,7 @@ struct Settings: View {
     }
     
     private var currentFamily: Family? {
-        currentUser?.family
+        signInManager.currentFamily
     }
     
     var body: some View {
@@ -53,55 +51,54 @@ struct Settings: View {
     // MARK: - Family Section
     
     private var familySection: some View {
-        Section(header: Text("Family")) {
+        Section(header: Text("Family"), footer: footerMessage) {
             if let family = currentFamily {
-                // Display existing family info
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Family Name")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text(family.name)
-                        .font(.body)
-                    
-                    Divider()
-                    
-                    Text("Join Code")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text(family.joinCode)
-                        .font(.system(.body, design: .monospaced))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.gray.opacity(0.1))
-                        .cornerRadius(8)
-                    
-                    Divider()
-                    
-                    Text("Members: \(family.members.count)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                .padding(.vertical, 4)
-            } else {
-                // No family - show options to create or join
-                Button(action: {
-                    showingCreateFamily = true
-                }) {
-                    HStack {
-                        Image(systemName: "plus.circle.fill")
-                        Text("Create New Family")
+                VStack(alignment: .leading, spacing: 12) {
+                    familyDetailRow(title: "Family Name", value: family.name)
+                    if let joinCode = family.joinCode {
+                        familyDetailRow(title: "Join Code", value: joinCode, monospaced: true)
                     }
+                    familyDetailRow(title: "Linked Students", value: "\(signInManager.students.count)")
+                }
+            } else {
+                Button {
+                    showingCreateFamily = true
+                } label: {
+                    Label("Create New Family", systemImage: "plus.circle.fill")
                 }
                 
-                Button(action: {
+                Button {
                     showingJoinFamily = true
-                }) {
-                    HStack {
-                        Image(systemName: "person.2.badge.plus")
-                        Text("Join Existing Family")
-                    }
+                } label: {
+                    Label("Join Existing Family", systemImage: "person.2.badge.plus")
                 }
             }
+        }
+    }
+    
+    private var footerMessage: some View {
+        Group {
+            if let errorMessage {
+                Text(errorMessage)
+                    .foregroundColor(.red)
+            } else if signInManager.isOffline {
+                Text("Offline mode – changes will sync when you're back online.")
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+    
+    private func familyDetailRow(title: String, value: String, monospaced: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Text(value)
+                .font(monospaced ? .system(.body, design: .monospaced) : .body)
+                .padding(.horizontal, monospaced ? 12 : 0)
+                .padding(.vertical, monospaced ? 6 : 0)
+                .background(monospaced ? Color.gray.opacity(0.1) : Color.clear)
+                .cornerRadius(8)
         }
     }
     
@@ -112,10 +109,6 @@ struct Settings: View {
             Form {
                 Section(header: Text("Create New Family")) {
                     TextField("Family Name", text: $newFamilyName)
-                }
-                
-                Section(footer: Text("A unique join code will be generated for your family.")) {
-                    EmptyView()
                 }
             }
             .navigationTitle("Create Family")
@@ -129,15 +122,13 @@ struct Settings: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create") {
-                        createFamily()
+                        Task { await performCreateFamily() }
                     }
-                    .disabled(newFamilyName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(newFamilyName.trimmingCharacters(in: .whitespaces).isEmpty || isSubmitting)
                 }
             }
         }
     }
-    
-    // MARK: - Join Family Sheet
     
     private var joinFamilySheet: some View {
         NavigationView {
@@ -145,10 +136,7 @@ struct Settings: View {
                 Section(header: Text("Join Family")) {
                     TextField("Enter Join Code", text: $joinCode)
                         .textInputAutocapitalization(.characters)
-                }
-                
-                Section(footer: Text("Enter the 6-character join code provided by the family creator.")) {
-                    EmptyView()
+                        .autocorrectionDisabled()
                 }
             }
             .navigationTitle("Join Family")
@@ -162,9 +150,9 @@ struct Settings: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Join") {
-                        joinFamily()
+                        Task { await performJoinFamily() }
                     }
-                    .disabled(joinCode.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(joinCode.trimmingCharacters(in: .whitespaces).count < 6 || isSubmitting)
                 }
             }
         }
@@ -172,64 +160,47 @@ struct Settings: View {
     
     // MARK: - Actions
     
-    private func createFamily() {
-        guard let user = currentUser,
-              isParent,
-              !newFamilyName.trimmingCharacters(in: .whitespaces).isEmpty else {
-            return
-        }
-        
-        let family = Family(name: newFamilyName.trimmingCharacters(in: .whitespaces))
-        user.family = family
-        family.members.append(user)
-        
-        modelContext.insert(family)
-        
+    private func performCreateFamily() async {
+        guard isParent else { return }
+        isSubmitting = true
+        defer { isSubmitting = false }
         do {
-            try modelContext.save()
-            signInManager.updateUserFromDatabase()
-            showingCreateFamily = false
-            newFamilyName = ""
+            try await signInManager.createFamily(named: newFamilyName.trimmingCharacters(in: .whitespacesAndNewlines))
+            await MainActor.run {
+                showingCreateFamily = false
+                newFamilyName = ""
+                errorMessage = nil
+            }
+        } catch let error as AppleSignInManager.FamilyJoinError {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+            }
         } catch {
-            print("Failed to create family: \(error.localizedDescription)")
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+            }
         }
     }
     
-    private func joinFamily() {
-        guard let user = currentUser,
-              isParent,
-              !joinCode.trimmingCharacters(in: .whitespaces).isEmpty else {
-            return
-        }
-        
-        let code = joinCode.trimmingCharacters(in: .whitespaces).uppercased()
-        
-        // Find family by join code
-        let fetchDescriptor = FetchDescriptor<Family>(
-            predicate: #Predicate { family in
-                family.joinCode == code
-            }
-        )
-        
-        if let family = try? modelContext.fetch(fetchDescriptor).first {
-            // Join the family
-            user.family = family
-            if !family.members.contains(where: { $0.id == user.id }) {
-                family.members.append(user)
-            }
-            
-            do {
-                try modelContext.save()
-                signInManager.updateUserFromDatabase()
+    private func performJoinFamily() async {
+        guard isParent else { return }
+        isSubmitting = true
+        defer { isSubmitting = false }
+        do {
+            try await signInManager.joinFamily(with: joinCode)
+            await MainActor.run {
                 showingJoinFamily = false
                 joinCode = ""
-            } catch {
-                print("Failed to join family: \(error.localizedDescription)")
+                errorMessage = nil
             }
-        } else {
-            // Family not found - show error
-            print("Family with join code \(code) not found")
-            // You could add an alert here to show the error to the user
+        } catch let error as AppleSignInManager.FamilyJoinError {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }

@@ -4,9 +4,9 @@
 //
 //  Created by Sandi Junker on 10/22/25.
 //
+
 import AuthenticationServices
 import SwiftUI
-import SwiftData
 
 enum SignInState {
     case notSignedIn
@@ -17,65 +17,58 @@ enum SignInState {
 @MainActor
 class AppleSignInManager: NSObject, ObservableObject {
     @Published var currentUser: User?
+    @Published var currentFamily: Family?
+    @Published var students: [User] = []
     @Published var signInState: SignInState = .notSignedIn
-    private var modelContext: ModelContext
-    private let appleIDProvider = ASAuthorizationAppleIDProvider()
+    @Published var isOffline: Bool = false
 
-    init(modelContext: ModelContext) {
-        self.modelContext = modelContext
+    private let appleIDProvider = ASAuthorizationAppleIDProvider()
+    private let api = APIClient.shared
+    private let cache = OfflineCache.shared
+
+    override init() {
         super.init()
+        loadCachedData()
         checkExistingSignIn()
     }
-    
-    // MARK: - Public Properties
-    
-    /// Determines if user is signed in
-    var isSignedIn: Bool {
-        return currentUser != nil
-    }
-    
-    /// Returns the user's role if available
-    var userRole: String? {
-        return currentUser?.role
-    }
-    
-    /// Determines if user needs to select a role
-    var needsRoleSelection: Bool {
-        return currentUser != nil && (currentUser?.role == nil || currentUser?.role?.isEmpty == true)
-    }
-    
-    /// Returns the appropriate dashboard view based on user role
+
+    var isSignedIn: Bool { currentUser != nil }
+    var userRole: String? { currentUser?.role }
+    var needsRoleSelection: Bool { currentUser != nil && (currentUser?.role?.isEmpty ?? true) }
+    var studentRequiresFamily: Bool { currentUser?.role == "student" && currentUser?.familyId == nil }
+
     @ViewBuilder
     var dashboardView: some View {
         if let role = userRole {
-            if role == "parent" {
+            switch role {
+            case "parent":
                 ParentDashboard()
-            } else if role == "student" {
-                StudentDashboard()
-            } else {
+            case "student":
+                if studentRequiresFamily {
+                    StudentJoinFamilyView()
+                } else {
+                    StudentDashboard()
+                }
+            default:
                 SignInView()
             }
         } else {
             SignInView()
         }
     }
-    
-    // MARK: - Sign In State Management
-    
+
     func checkExistingSignIn() {
         guard let storedUserID = getStoredUserID(), !storedUserID.isEmpty else {
             updateSignInState()
             return
         }
-        
-        appleIDProvider.getCredentialState(forUserID: storedUserID) { [weak self] credentialState, error in
-            DispatchQueue.main.async {
+
+        appleIDProvider.getCredentialState(forUserID: storedUserID) { [weak self] credentialState, _ in
+            Task { @MainActor in
                 switch credentialState {
                 case .authorized:
-                    // User is signed in, load from database
-                    self?.loadUserFromDatabase(userID: storedUserID)
+                    await self?.refreshFromServer()
                 case .revoked, .notFound:
-                    // User is not signed in or revoked
                     self?.signOut()
                 default:
                     break
@@ -83,128 +76,282 @@ class AppleSignInManager: NSObject, ObservableObject {
             }
         }
     }
-    
-    /// Updates the sign-in state based on current user
+
     private func updateSignInState() {
-        if let user = currentUser {
-            if let role = user.role, !role.isEmpty {
-                signInState = .signedIn
-            } else {
-                signInState = .needsRoleSelection
-            }
-        } else {
+        guard let user = currentUser else {
             signInState = .notSignedIn
+            return
         }
-    }
-    
-    /// Signs out the current user
-    func signOut() {
-        currentUser = nil
-        clearStoredUserID()
-        updateSignInState()
-    }
-    
-    private func getStoredUserID() -> String? {
-        return UserDefaults.standard.string(forKey: "currentUserID")
-    }
-    
-    private func storeUserID(_ userID: String) {
-        UserDefaults.standard.set(userID, forKey: "currentUserID")
-    }
-    
-    private func clearStoredUserID() {
-        UserDefaults.standard.removeObject(forKey: "currentUserID")
-    }
-    
-    func loadUserFromDatabase(userID: String) {
-        let fetchDescriptor = FetchDescriptor<User>(predicate: #Predicate { $0.id == userID })
-        if let user = try? modelContext.fetch(fetchDescriptor).first {
-            currentUser = user
-            updateSignInState()
+        if let role = user.role, !role.isEmpty {
+            signInState = .signedIn
         } else {
-            signOut()
+            signInState = .needsRoleSelection
         }
     }
 
-    // MARK: - Sign In Handling
-    
+    func signOut() {
+        currentUser = nil
+        currentFamily = nil
+        students = []
+        clearStoredUserID()
+        api.setAuthToken(nil)
+        cache.wipeAll()
+        updateSignInState()
+    }
+
+    private func getStoredUserID() -> String? {
+        UserDefaults.standard.string(forKey: "currentUserID")
+    }
+
+    private func storeUserID(_ userID: String) {
+        UserDefaults.standard.set(userID, forKey: "currentUserID")
+    }
+
+    private func clearStoredUserID() {
+        UserDefaults.standard.removeObject(forKey: "currentUserID")
+    }
+
+    private func refreshFromServer() async {
+        do {
+            let response: UserResponse = try await api.request(Endpoint(path: "api/users/me"))
+            applyUser(response.user)
+            await fetchFamilyIfNeeded()
+            isOffline = false
+        } catch {
+            if let cachedUser: User = cache.load(User.self, from: "user.json") {
+                applyUser(cachedUser)
+            }
+            if let cachedFamily: Family = cache.load(Family.self, from: "family.json") {
+                currentFamily = cachedFamily
+            }
+            if let cachedStudents: [User] = cache.load([User].self, from: "students.json") {
+                students = cachedStudents
+            }
+            isOffline = true
+            updateSignInState()
+        }
+    }
+
+    private func fetchFamilyIfNeeded() async {
+        guard let familyId = currentUser?.familyId else {
+            currentFamily = nil
+            students = []
+            cache.remove("family.json")
+            cache.remove("students.json")
+            return
+        }
+        do {
+            let response: FamilyDetailResponse = try await api.request(Endpoint(path: "api/families/\(familyId)"))
+            currentFamily = response.family
+            students = response.students
+            cache.save(response.family, as: "family.json")
+            cache.save(response.students, as: "students.json")
+        } catch {
+            print("Failed to fetch family: \(error)")
+        }
+    }
+
+    private func loadCachedData() {
+        if let user: User = cache.load(User.self, from: "user.json") {
+            currentUser = user
+        }
+        if let family: Family = cache.load(Family.self, from: "family.json") {
+            currentFamily = family
+        }
+        if let students: [User] = cache.load([User].self, from: "students.json") {
+            self.students = students
+        }
+        updateSignInState()
+    }
+
+    private func applyUser(_ user: User) {
+        currentUser = user
+        cache.save(user, as: "user.json")
+        updateSignInState()
+    }
+
     func handleSignIn(result: Result<ASAuthorization, Error>) {
         switch result {
         case .success(let authResults):
-            processSignIn(authResults: authResults)
+            Task { await processSignIn(authResults: authResults) }
         case .failure(let error):
             print("Apple Sign-In failed: \(error.localizedDescription)")
             signInState = .notSignedIn
         }
     }
-    
-    /// Processes a successful sign-in authorization
-    private func processSignIn(authResults: ASAuthorization) {
+
+    private func processSignIn(authResults: ASAuthorization) async {
         guard let credential = authResults.credential as? ASAuthorizationAppleIDCredential else {
             signInState = .notSignedIn
             return
         }
-        
+
         let userId = credential.user
         let name = credential.fullName?.givenName
         let email = credential.email
 
-        // Check if user exists in database
-        let fetchDescriptor = FetchDescriptor<User>(predicate: #Predicate { $0.id == userId })
-        if let existingUser = try? modelContext.fetch(fetchDescriptor).first {
-            // Existing user - update name/email if missing and available
-            updateUserInfo(user: existingUser, name: name, email: email)
-            currentUser = existingUser
-        } else {
-            // New user - create and save
-            currentUser = User(id: userId, name: name, email: email)
-            modelContext.insert(currentUser!)
-            try? modelContext.save()
+        guard let identityTokenData = credential.identityToken,
+              let identityToken = String(data: identityTokenData, encoding: .utf8) else {
+            signInState = .notSignedIn
+            return
         }
-        
-        // Store user ID for future app launches
-        storeUserID(userId)
-        
-        // Update sign-in state based on whether user has a role
-        updateSignInState()
-    }
-    
-    /// Updates user info if missing
-    private func updateUserInfo(user: User, name: String?, email: String?) {
-        if user.name == nil, let name = name {
-            user.name = name
+
+        do {
+            let body = AuthRequest(identityToken: identityToken, fullName: name, email: email)
+            let response: AuthResponse = try await api.request(
+                Endpoint(path: "api/auth/apple", method: .post, body: body)
+            )
+            api.setAuthToken(response.token)
+            storeUserID(userId)
+            applyUser(response.user)
+            cache.save(response.token, as: "token.json")
+            await fetchFamilyIfNeeded()
+        } catch {
+            print("Apple Sign-In exchange failed: \(error.localizedDescription)")
+            signInState = .notSignedIn
         }
-        if user.email == nil, let email = email {
-            user.email = email
-        }
-        try? modelContext.save()
     }
 
-    // MARK: - Role Management
-    
     func saveRole(_ role: String) {
-        guard let user = currentUser else { return }
-        user.role = role
-        try? modelContext.save()
-        updateSignInState()
+        Task {
+            do {
+                let request = UpdateUserRequest(role: role, name: nil)
+                let response: UserResponse = try await api.request(
+                    Endpoint(path: "api/users/me", method: .patch, body: request)
+                )
+                applyUser(response.user)
+            } catch {
+                print("Failed to update role: \(error)")
+            }
+        }
     }
-    
-    // MARK: - User Data Management
-    
+
     func updateUserName(_ name: String) {
-        guard let user = currentUser else { return }
-        user.name = name
-        try? modelContext.save()
+        Task {
+            do {
+                let request = UpdateUserRequest(role: nil, name: name)
+                let response: UserResponse = try await api.request(
+                    Endpoint(path: "api/users/me", method: .patch, body: request)
+                )
+                applyUser(response.user)
+            } catch {
+                print("Failed to update name: \(error)")
+            }
+        }
     }
-    
+
     func updateUserFromDatabase() {
-        guard let userId = currentUser?.id else { return }
-        let fetchDescriptor = FetchDescriptor<User>(predicate: #Predicate { $0.id == userId })
-        if let user = try? modelContext.fetch(fetchDescriptor).first {
-            currentUser = user
-            updateSignInState()
+        Task { await refreshFromServer() }
+    }
+
+    enum FamilyJoinError: LocalizedError {
+        case noCurrentUser
+        case invalidCode
+        case invalidName
+        case familyNotFound
+        case saveFailed(Error)
+
+        var errorDescription: String? {
+            switch self {
+            case .noCurrentUser:
+                return "Unable to determine the current user. Please sign in again."
+            case .invalidCode:
+                return "Enter the join code provided by your parent or guardian."
+            case .invalidName:
+                return "Please enter a family name."
+            case .familyNotFound:
+                return "We couldn't find a family with that join code. Double-check and try again."
+            case .saveFailed(let error):
+                return "We couldn't add you to the family. Please try again. (\(error.localizedDescription))"
+            }
+        }
+    }
+
+    func joinFamily(with joinCode: String) async throws {
+        guard currentUser != nil else {
+            throw FamilyJoinError.noCurrentUser
+        }
+
+        let trimmedCode = joinCode
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+
+        guard !trimmedCode.isEmpty else {
+            throw FamilyJoinError.invalidCode
+        }
+
+        do {
+            let request = JoinFamilyRequest(joinCode: trimmedCode)
+            let response: FamilyResponse = try await api.request(
+                Endpoint(path: "api/users/me/family/join", method: .post, body: request)
+            )
+            currentFamily = response.family
+            cache.save(response.family, as: "family.json")
+            await refreshFromServer()
+        } catch let error as APIError {
+            switch error {
+            case .server(_, _, let status) where status == 404:
+                throw FamilyJoinError.familyNotFound
+            default:
+                throw FamilyJoinError.saveFailed(error)
+            }
+        } catch {
+            throw FamilyJoinError.saveFailed(error)
+        }
+    }
+
+    func createFamily(named name: String) async throws {
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw FamilyJoinError.invalidName
+        }
+        do {
+            let request = CreateFamilyRequest(name: name)
+            let response: FamilyResponse = try await api.request(
+                Endpoint(path: "api/users/me/family", method: .post, body: request)
+            )
+            currentFamily = response.family
+            cache.save(response.family, as: "family.json")
+            await refreshFromServer()
+        } catch {
+            throw FamilyJoinError.saveFailed(error)
         }
     }
 }
 
+struct AuthRequest: Encodable {
+    let identityToken: String
+    let fullName: String?
+    let email: String?
+}
+
+struct AuthResponse: Decodable {
+    let token: String
+    let user: User
+}
+
+struct UserResponse: Decodable {
+    let user: User
+}
+
+struct UpdateUserRequest: Encodable {
+    let role: String?
+    let name: String?
+}
+
+struct FamilyResponse: Decodable {
+    let family: Family
+}
+
+struct JoinFamilyRequest: Encodable {
+    let joinCode: String
+}
+
+struct FamilyDetailResponse: Decodable {
+    let family: Family
+    let students: [User]
+}
+
+struct CreateFamilyRequest: Encodable {
+    let name: String
+}
 

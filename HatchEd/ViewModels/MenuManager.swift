@@ -32,9 +32,13 @@ class MenuManager: ObservableObject {
     ]
     
     func setMenuItems(user: User) {
-        if user.role == "parent" {
+        guard let role = user.role else {
+            menuItems = []
+            return
+        }
+        if role == "parent" {
             self.menuItems = parentMenuItems
-        } else if user.role == "student" {
+        } else if role == "student" {
             self.menuItems = studentMenuItems
         } else {
             self.menuItems = []

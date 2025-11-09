@@ -6,18 +6,16 @@
 //
 
 import Foundation
-import SwiftData
 
-@Model
-class Question: Identifiable {
-    @Attribute(.unique) var id: UUID
-    var text: String?
+struct Question: Identifiable, Codable, Equatable {
+    let id: UUID
+    var text: String
     var correctAnswer: String?
-    var choices: [String]?
+    var choices: [String]
     var isCorrect: Bool?
-    
-    init(id: UUID, text: String? = nil, correctAnswer: String? = nil, choices: [String]? = nil, isCorrect: Bool? = nil) {
-        self.id = UUID()
+
+    init(id: UUID = UUID(), text: String, correctAnswer: String? = nil, choices: [String] = [], isCorrect: Bool? = nil) {
+        self.id = id
         self.text = text
         self.correctAnswer = correctAnswer
         self.choices = choices

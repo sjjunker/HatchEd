@@ -176,7 +176,6 @@ private struct TasksForDay: View {
         let normalizedHeight = CGFloat(duration / totalInterval)
         let columnStart = CGFloat(column) * columnWidth
         let barWidth: CGFloat = columnWidth - 16
-        let viewHeight = rowHeight * CGFloat(hours.count)
         let y = normalizedOffset * (rowHeight * CGFloat(hours.count))
         let height = normalizedHeight * (rowHeight * CGFloat(hours.count))
         return CGRect(x: columnStart + 8, y: y, width: barWidth, height: height)

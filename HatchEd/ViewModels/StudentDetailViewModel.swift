@@ -1,0 +1,253 @@
+//
+//  StudentDetailViewModel.swift
+//  HatchEd
+//
+//  Created by Cursor (ChatGPT) on 11/7/25.
+//  Updated with assistance from Cursor (ChatGPT) on 11/7/25.
+//
+
+import Foundation
+
+@MainActor
+final class StudentDetailViewModel: ObservableObject {
+    struct AttendanceSummary {
+        let classesAttended: Int
+        let classesMissed: Int
+        let streakDays: Int
+
+        var totalClasses: Int { classesAttended + classesMissed }
+
+        var average: Double {
+            guard totalClasses > 0 else { return 0 }
+            return Double(classesAttended) / Double(totalClasses)
+        }
+    }
+
+    struct SubjectSection: Identifiable {
+        let id: UUID
+        let subject: Subject
+        let courses: [Course]
+
+        init(subject: Subject, courses: [Course]) {
+            self.id = subject.id
+            self.subject = subject
+            self.courses = courses
+        }
+    }
+
+    @Published private(set) var student: User
+    @Published private(set) var attendance: AttendanceSummary
+    @Published private(set) var attendanceRecords: [AttendanceRecordDTO]
+    @Published private(set) var courses: [Course]
+    @Published private(set) var assignments: [Assignment]
+    @Published private(set) var isLoadingAttendance = false
+    @Published private(set) var attendanceError: String?
+
+    struct StateSnapshot {
+        let updateToken = UUID()
+        let studentName: String
+        let attendanceAverage: Double
+        let attendancePercentageString: String
+        let classesAttendedText: String
+        let classesMissedText: String
+        let attendanceStreakText: String
+        let attendanceStatus: AttendanceStatus
+        let attendanceRecords: [AttendanceRecordDTO]
+        let subjectSections: [SubjectSectionSnapshot]
+        let recentAssignments: [Assignment]
+
+        enum AttendanceStatus {
+            case loading
+            case loaded
+            case error(String)
+        }
+
+        struct SubjectSectionSnapshot: Identifiable {
+            let id: UUID
+            let name: String
+            let courses: [Course]
+        }
+    }
+
+    private let api: APIClient
+
+    init(student: User, courses: [Course] = [], assignments: [Assignment] = [], attendance: AttendanceSummary? = nil, attendanceRecords: [AttendanceRecordDTO] = [], api: APIClient = .shared) {
+        self.student = student
+        self.api = api
+        self.courses = courses
+        self.assignments = assignments
+        self.attendanceRecords = attendanceRecords
+        if let attendance {
+            self.attendance = attendance
+        } else if !attendanceRecords.isEmpty {
+            self.attendance = AttendanceSummary.from(records: attendanceRecords)
+        } else {
+            self.attendance = AttendanceSummary(classesAttended: 0, classesMissed: 0, streakDays: 0)
+        }
+    }
+
+    func loadAttendance(limit: Int? = 90) async {
+        guard !isLoadingAttendance else { return }
+        isLoadingAttendance = true
+        attendanceError = nil
+        do {
+            let records = try await api.fetchAttendance(studentUserId: student.id, limit: limit)
+            attendanceRecords = records
+            attendance = AttendanceSummary.from(records: records)
+        } catch {
+            attendanceError = error.localizedDescription
+        }
+        isLoadingAttendance = false
+    }
+
+    func makeSnapshot() -> StateSnapshot {
+        let attendanceStatus: StateSnapshot.AttendanceStatus
+        if isLoadingAttendance {
+            attendanceStatus = .loading
+        } else if let attendanceError {
+            attendanceStatus = .error(attendanceError)
+        } else {
+            attendanceStatus = .loaded
+        }
+
+        return StateSnapshot(
+            studentName: student.name ?? "Student",
+            attendanceAverage: attendanceAverage,
+            attendancePercentageString: attendancePercentageString,
+            classesAttendedText: classesAttendedText,
+            classesMissedText: classesMissedText,
+            attendanceStreakText: attendanceStreakText,
+            attendanceStatus: attendanceStatus,
+            attendanceRecords: attendanceRecords,
+            subjectSections: subjectSections.map { section in
+                StateSnapshot.SubjectSectionSnapshot(id: section.id, name: section.subject.name, courses: section.courses)
+            },
+            recentAssignments: recentAssignments
+        )
+    }
+
+    var attendanceAverage: Double {
+        attendance.average
+    }
+
+    var attendancePercentageString: String {
+        NumberFormatter.percentFormatter.string(from: NSNumber(value: attendanceAverage)) ?? "0%"
+    }
+
+    var classesAttendedText: String {
+        "\(attendance.classesAttended)"
+    }
+
+    var classesMissedText: String {
+        "\(attendance.classesMissed)"
+    }
+
+    var attendanceStreakText: String {
+        attendance.streakDays > 0 ? "\(attendance.streakDays) day\(attendance.streakDays == 1 ? "" : "s")" : "No streak"
+    }
+
+    var subjectSections: [SubjectSection] {
+        let grouped = Dictionary(grouping: courses) { course -> Subject in
+            if let subject = course.subject {
+                return subject
+            } else {
+                return Subject(name: "General Studies")
+            }
+        }
+
+        return grouped
+            .map { SubjectSection(subject: $0.key, courses: $0.value.sorted { $0.name < $1.name }) }
+            .sorted { $0.subject.name < $1.subject.name }
+    }
+
+    var recentAssignments: [Assignment] {
+        assignments
+            .sorted { ($0.dueDate ?? Date.distantPast) > ($1.dueDate ?? Date.distantPast) }
+            .prefix(5)
+            .map { $0 }
+    }
+}
+
+private extension StudentDetailViewModel.AttendanceSummary {
+    static func from(records: [AttendanceRecordDTO]) -> StudentDetailViewModel.AttendanceSummary {
+        guard !records.isEmpty else {
+            return StudentDetailViewModel.AttendanceSummary(classesAttended: 0, classesMissed: 0, streakDays: 0)
+        }
+
+        let attended = records.filter { $0.isPresent }.count
+        let missed = records.filter { !$0.isPresent }.count
+
+        let sortedRecords = records.sorted { $0.date > $1.date }
+        var streak = 0
+        for record in sortedRecords {
+            if record.isPresent {
+                streak += 1
+            } else {
+                break
+            }
+        }
+
+        return StudentDetailViewModel.AttendanceSummary(classesAttended: attended, classesMissed: missed, streakDays: streak)
+    }
+}
+
+extension StudentDetailViewModel {
+    static func previewModel() -> StudentDetailViewModel {
+        let sample = SampleData.make()
+        return StudentDetailViewModel(
+            student: sample.student,
+            courses: sample.courses,
+            assignments: sample.assignments,
+            attendanceRecords: sample.attendanceRecords
+        )
+    }
+}
+
+private enum SampleData {
+    static func make() -> (student: User, courses: [Course], assignments: [Assignment], attendanceRecords: [AttendanceRecordDTO]) {
+        let student = User(id: "preview-student", appleId: nil, name: "Alex Student", email: "alex@example.com", role: "student", familyId: "preview-family", createdAt: Date(), updatedAt: Date())
+        let math = Subject(name: "Mathematics")
+        let science = Subject(name: "Science")
+
+        let algebraAssignments = [
+            Assignment(title: "Quadratic Functions", dueDate: Date().addingTimeInterval(-86_400), grade: 92, subject: math, questions: []),
+            Assignment(title: "Polynomials Worksheet", dueDate: Date().addingTimeInterval(-259_200), grade: 95, subject: math, questions: [])
+        ]
+
+        let biologyAssignments = [
+            Assignment(title: "Cell Structure Lab", dueDate: Date().addingTimeInterval(-172_800), grade: 88, subject: science, questions: []),
+            Assignment(title: "Photosynthesis Quiz", dueDate: Date().addingTimeInterval(-604_800), grade: 94, subject: science, questions: [])
+        ]
+
+        let courses = [
+            Course(name: "Algebra II", assignments: algebraAssignments, grade: 93.5, subject: math),
+            Course(name: "Biology", assignments: biologyAssignments, grade: 90.0, subject: science)
+        ]
+
+        let assignments = (algebraAssignments + biologyAssignments).sorted { ($0.dueDate ?? .distantPast) > ($1.dueDate ?? .distantPast) }
+
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime]
+        let today = Date()
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today) ?? today
+        let twoDaysAgo = Calendar.current.date(byAdding: .day, value: -2, to: today) ?? today
+
+        let attendanceRecords: [AttendanceRecordDTO] = [
+            AttendanceRecordDTO(id: UUID().uuidString, familyId: "preview-family", studentUserId: student.id, recordedByUserId: "parent", date: today, status: "present", isPresent: true, createdAt: today, updatedAt: today),
+            AttendanceRecordDTO(id: UUID().uuidString, familyId: "preview-family", studentUserId: student.id, recordedByUserId: "parent", date: yesterday, status: "present", isPresent: true, createdAt: yesterday, updatedAt: yesterday),
+            AttendanceRecordDTO(id: UUID().uuidString, familyId: "preview-family", studentUserId: student.id, recordedByUserId: "parent", date: twoDaysAgo, status: "absent", isPresent: false, createdAt: twoDaysAgo, updatedAt: twoDaysAgo)
+        ]
+
+        return (student, courses, assignments, attendanceRecords)
+    }
+}
+
+private extension NumberFormatter {
+    static let percentFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .percent
+        formatter.maximumFractionDigits = 1
+        formatter.minimumFractionDigits = 0
+        return formatter
+    }()
+}

@@ -349,6 +349,11 @@ class AppleSignInManager: NSObject, ObservableObject {
             print("Failed to delete notification: \(error)")
         }
     }
+    
+    func submitAttendance(date: Date, attendanceStatus: [String: Bool]) async throws -> AttendanceSubmissionResponse {
+        let records = attendanceStatus.map { AttendanceSubmissionRecord(studentUserId: $0.key, isPresent: $0.value) }
+        return try await api.submitAttendance(date: date, records: records)
+    }
 }
 
 struct AuthRequest: Encodable {

@@ -2,6 +2,36 @@ import Foundation
 
 // Updated with assistance from Cursor (ChatGPT) on 11/7/25.
 
+struct AttendanceSubmissionRecord: Encodable {
+    let studentUserId: String
+    let isPresent: Bool
+}
+
+struct AttendanceSubmissionRequest: Encodable {
+    let date: Date
+    let records: [AttendanceSubmissionRecord]
+}
+
+struct AttendanceRecordDTO: Decodable {
+    let id: String
+    let familyId: String
+    let studentUserId: String
+    let recordedByUserId: String
+    let date: Date
+    let status: String
+    let isPresent: Bool
+    let createdAt: Date?
+    let updatedAt: Date?
+}
+
+struct AttendanceSubmissionResponse: Decodable {
+    let attendance: [AttendanceRecordDTO]
+}
+
+struct AttendanceListResponse: Decodable {
+    let attendance: [AttendanceRecordDTO]
+}
+
 final class APIClient {
     static let shared = APIClient()
     
@@ -49,6 +79,34 @@ final class APIClient {
         default:
             throw try APIError(from: data, statusCode: httpResponse.statusCode)
         }
+    }
+    
+    func submitAttendance(date: Date, records: [AttendanceSubmissionRecord]) async throws -> AttendanceSubmissionResponse {
+        let body = AttendanceSubmissionRequest(date: date, records: records)
+        return try await request(
+            Endpoint(path: "api/attendance", method: .post, body: body),
+            responseType: AttendanceSubmissionResponse.self
+        )
+    }
+    
+    func fetchAttendance(studentUserId: String, limit: Int? = nil, startDate: Date? = nil, endDate: Date? = nil) async throws -> [AttendanceRecordDTO] {
+        var queryItems: [URLQueryItem] = []
+        if let limit {
+            queryItems.append(URLQueryItem(name: "limit", value: String(limit)))
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        if let startDate {
+            queryItems.append(URLQueryItem(name: "startDate", value: formatter.string(from: startDate)))
+        }
+        if let endDate {
+            queryItems.append(URLQueryItem(name: "endDate", value: formatter.string(from: endDate)))
+        }
+        let response: AttendanceListResponse = try await request(
+            Endpoint(path: "api/attendance/students/\(studentUserId)", queryItems: queryItems),
+            responseType: AttendanceListResponse.self
+        )
+        return response.attendance
     }
 }
 

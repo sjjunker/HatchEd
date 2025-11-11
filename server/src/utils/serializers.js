@@ -39,3 +39,18 @@ export function serializeNotification (notification) {
   }
 }
 
+export function serializeAttendanceRecord (record) {
+  if (!record) return null
+  return {
+    id: record._id?.toString?.() ?? record._id,
+    familyId: record.familyId?.toString?.() ?? record.familyId,
+    studentUserId: record.studentUserId?.toString?.() ?? record.studentUserId,
+    recordedByUserId: record.recordedByUserId?.toString?.() ?? record.recordedByUserId,
+    date: record.date,
+    status: record.status ?? (record.isPresent ? 'present' : 'absent'),
+    isPresent: Boolean(record.isPresent),
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt
+  }
+}
+

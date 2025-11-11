@@ -24,6 +24,7 @@
 		96417E152EBE55F4002DFB97 /* .env in Resources */ = {isa = PBXBuildFile; fileRef = 96417E042EBE55F4002DFB97 /* .env */; };
 		96417E162EBE55F4002DFB97 /* authController.js in Resources */ = {isa = PBXBuildFile; fileRef = 96417DED2EBE55F4002DFB97 /* authController.js */; };
 		96417E172EBE55F4002DFB97 /* families.js in Resources */ = {isa = PBXBuildFile; fileRef = 96417DFA2EBE55F4002DFB97 /* families.js */; };
+		9647C7102EC38148008B79B8 /* .gitignore in Resources */ = {isa = PBXBuildFile; fileRef = 9647C70F2EC38139008B79B8 /* .gitignore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -61,6 +62,7 @@
 		96417E022EBE55F4002DFB97 /* index.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = index.js; sourceTree = "<group>"; };
 		96417E042EBE55F4002DFB97 /* .env */ = {isa = PBXFileReference; lastKnownFileType = text; path = .env; sourceTree = "<group>"; };
 		96417E052EBE55F4002DFB97 /* package.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = package.json; sourceTree = "<group>"; };
+		9647C70F2EC38139008B79B8 /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
 		966A570A2DCA2F5A00879ACA /* HatchEd.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HatchEd.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		966A571B2DCA2F5C00879ACA /* HatchEdTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HatchEdTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		966A57252DCA2F5C00879ACA /* HatchEdUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HatchEdUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -218,6 +220,7 @@
 				966A571E2DCA2F5C00879ACA /* HatchEdTests */,
 				966A57282DCA2F5C00879ACA /* HatchEdUITests */,
 				966A570B2DCA2F5A00879ACA /* Products */,
+				9647C70F2EC38139008B79B8 /* .gitignore */,
 			);
 			sourceTree = "<group>";
 		};
@@ -362,6 +365,7 @@
 				96417E0F2EBE55F4002DFB97 /* auth.js in Resources */,
 				96417E102EBE55F4002DFB97 /* index.js in Resources */,
 				96417E112EBE55F4002DFB97 /* serializers.js in Resources */,
+				9647C7102EC38148008B79B8 /* .gitignore in Resources */,
 				96417E122EBE55F4002DFB97 /* package.json in Resources */,
 				96417E132EBE55F4002DFB97 /* requireAuth.js in Resources */,
 				96417E142EBE55F4002DFB97 /* appleAuth.js in Resources */,

@@ -11,13 +11,21 @@ struct SignInView: View {
     @EnvironmentObject var signInManager: AppleSignInManager
     
     var body: some View {
-        VStack(spacing: 24) {
-            Text("Welcome to HatchEd")
-                .font(.largeTitle.bold())
-                .padding(.top, 40)
-            
-            Text("Sign in with Apple to continue")
-                .foregroundStyle(.secondary)
+        VStack(spacing: 32) {
+            VStack(spacing: 12) {
+                Image(systemName: "book.closed.fill")
+                    .font(.system(size: 64))
+                    .foregroundColor(.hatchEdAccent)
+                
+                Text("Welcome to HatchEd")
+                    .font(.largeTitle.bold())
+                    .foregroundColor(.hatchEdText)
+                
+                Text("Sign in with Apple to continue")
+                    .font(.subheadline)
+                    .foregroundColor(.hatchEdSecondaryText)
+            }
+            .padding(.top, 60)
 
             SignInWithAppleButton(.signIn) { request in
                 request.requestedScopes = [.fullName, .email]
@@ -26,9 +34,11 @@ struct SignInView: View {
             }
             .signInWithAppleButtonStyle(.black)
             .frame(height: 50)
-            .cornerRadius(8)
+            .cornerRadius(12)
         }
         .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.hatchEdBackground)
     }
 }
 

@@ -54,3 +54,46 @@ export function serializeAttendanceRecord (record) {
   }
 }
 
+export function serializeSubject (subject) {
+  if (!subject) return null
+  return {
+    id: subject._id?.toString?.() ?? subject._id,
+    name: subject.name,
+    createdAt: subject.createdAt,
+    updatedAt: subject.updatedAt
+  }
+}
+
+export function serializeCourse (course, student, subject) {
+  if (!course) return null
+  return {
+    id: course._id?.toString?.() ?? course._id,
+    name: course.name,
+    grade: course.grade ?? null,
+    subject: subject ? serializeSubject(subject) : null,
+    student: student ? {
+      id: student._id?.toString?.() ?? student._id,
+      name: student.name ?? null,
+      email: student.email ?? null
+    } : null,
+    assignments: course.assignments ?? [],
+    createdAt: course.createdAt,
+    updatedAt: course.updatedAt
+  }
+}
+
+export function serializeAssignment (assignment, subject) {
+  if (!assignment) return null
+  return {
+    id: assignment._id?.toString?.() ?? assignment._id,
+    title: assignment.title,
+    dueDate: assignment.dueDate ?? null,
+    instructions: assignment.instructions ?? null,
+    grade: assignment.grade ?? null,
+    subject: subject ? serializeSubject(subject) : null,
+    questions: assignment.questions ?? [],
+    createdAt: assignment.createdAt,
+    updatedAt: assignment.updatedAt
+  }
+}
+

@@ -27,19 +27,28 @@ struct PlannerTaskRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(task.title)
                     .font(.headline)
+                    .foregroundColor(.hatchEdText)
 
                 HStack(spacing: 8) {
+                    Image(systemName: "clock")
+                        .font(.caption2)
+                        .foregroundColor(.hatchEdAccent)
                     Text(formatter.string(from: task.startDate))
                     Text("•")
                     Text(durationString)
                 }
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundColor(.hatchEdSecondaryText)
             }
 
             Spacer()
         }
-        .padding(.vertical, 6)
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.hatchEdCardBackground)
+                .shadow(color: task.color.opacity(0.2), radius: 4, x: 0, y: 2)
+        )
     }
 
     private var durationString: String {

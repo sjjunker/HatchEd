@@ -18,6 +18,7 @@ struct HatchEdApp: App {
             ContentView()
                 .environmentObject(signInManager)
                 .environmentObject(menuManager)
+                .background(Color.hatchEdBackground)
         }
     }
 }

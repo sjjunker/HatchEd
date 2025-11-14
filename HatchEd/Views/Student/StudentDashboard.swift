@@ -119,32 +119,66 @@ struct StudentDashboard: View {
     }
     
     private var studentDashboardContent: some View {
-        VStack {
-            Text("Welcome, \(signInManager.currentUser?.name?.capitalized ?? "Student")!")
-                .font(.largeTitle)
+        ScrollView {
+            VStack(spacing: 24) {
+                welcomeSection
+                NotificationsView(
+                    notifications: signInManager.notifications,
+                    onSelect: { selectedNotification = $0 }
+                )
+                // Other student-related content
+                if signInManager.isOffline {
+                    HStack {
+                        Image(systemName: "wifi.slash")
+                            .foregroundColor(.hatchEdWarning)
+                        Text("Offline mode")
+                            .font(.caption)
+                            .foregroundColor(.hatchEdSecondaryText)
+                    }
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.hatchEdCardBackground)
+                    )
+                }
+            }
+            .padding(.horizontal)
+            .padding(.bottom, 24)
+        }
+    }
+    
+    private var welcomeSection: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Welcome, \(signInManager.currentUser?.name?.capitalized ?? "Student")!")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                    .foregroundColor(.hatchEdText)
+                Text("Track your progress and assignments")
+                    .font(.subheadline)
+                    .foregroundColor(.hatchEdSecondaryText)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
             
             if signInManager.currentUser?.name == nil {
                 Button(action: {
                     editedName = ""
                     showingNameEditor = true
                 }) {
-                    Label("Add your name", systemImage: "pencil.circle.fill")
-                        .foregroundColor(.blue)
+                    Image(systemName: "pencil.circle.fill")
+                        .foregroundColor(.hatchEdWhite)
+                        .font(.title2)
+                        .padding(8)
+                        .background(Color.hatchEdAccent)
+                        .clipShape(Circle())
                 }
-                .padding(.top, 8)
-            }
-
-            NotificationsView(
-                notifications: signInManager.notifications,
-                onSelect: { selectedNotification = $0 }
-            )
-            // Other student-related content
-            if signInManager.isOffline {
-                Text("Offline mode")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             }
         }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.hatchEdAccentBackground)
+        )
     }
 }
 

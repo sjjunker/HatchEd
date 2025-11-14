@@ -28,11 +28,11 @@ struct MenuView: View {
                         HStack(spacing: 15) {
                             Image(systemName: item.icon)
                                 .font(.title3)
-                                .foregroundColor(.blue)
+                                .foregroundColor(.hatchEdAccent)
                                 .frame(width: 30)
                             
                             Text(item.rawValue)
-                                .foregroundColor(.primary)
+                                .foregroundColor(.hatchEdText)
                             
                             Spacer()
                         }
@@ -48,11 +48,11 @@ struct MenuView: View {
                     HStack(spacing: 15) {
                         Image(systemName: "arrow.right.square")
                             .font(.title3)
-                            .foregroundColor(.red)
+                            .foregroundColor(.hatchEdCoralAccent)
                             .frame(width: 30)
                         
                         Text("Sign Out")
-                            .foregroundColor(.red)
+                            .foregroundColor(.hatchEdCoralAccent)
                         
                         Spacer()
                     }
@@ -75,7 +75,7 @@ struct MenuView: View {
                 }
             }
         }
-        .background(Color(UIColor.systemBackground))
+        .background(Color.hatchEdBackground)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

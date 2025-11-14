@@ -14,6 +14,7 @@ import userRoutes from './routes/users.js'
 import familyRoutes from './routes/families.js'
 import notificationRoutes from './routes/notifications.js'
 import attendanceRoutes from './routes/attendance.js'
+import curriculumRoutes from './routes/curriculum.js'
 import { errorHandler } from './middleware/errorHandler.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -36,6 +37,7 @@ app.use('/api/users', userRoutes)
 app.use('/api/families', familyRoutes)
 app.use('/api/notifications', notificationRoutes)
 app.use('/api/attendance', attendanceRoutes)
+app.use('/api/curriculum', curriculumRoutes)
 
 app.use(errorHandler)
 

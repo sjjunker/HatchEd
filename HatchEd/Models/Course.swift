@@ -8,17 +8,23 @@
 import Foundation
 
 struct Course: Identifiable, Codable, Equatable {
-    let id: UUID
+    let id: String
     var name: String
     var assignments: [Assignment]
     var grade: Double?
     var subject: Subject?
+    var student: User
+    var createdAt: Date?
+    var updatedAt: Date?
 
-    init(id: UUID = UUID(), name: String, assignments: [Assignment] = [], grade: Double? = nil, subject: Subject? = nil) {
+    init(id: String = UUID().uuidString, name: String, assignments: [Assignment] = [], grade: Double? = nil, subject: Subject? = nil, student: User, createdAt: Date? = nil, updatedAt: Date? = nil) {
         self.id = id
         self.name = name
         self.assignments = assignments
         self.grade = grade
         self.subject = subject
+        self.student = student
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
     }
 }

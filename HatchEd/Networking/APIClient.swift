@@ -108,6 +108,174 @@ final class APIClient {
         )
         return response.attendance
     }
+    
+    // Curriculum API methods
+    struct SubjectsResponse: Decodable {
+        let subjects: [Subject]
+    }
+    
+    struct CoursesResponse: Decodable {
+        let courses: [Course]
+    }
+    
+    struct AssignmentsResponse: Decodable {
+        let assignments: [Assignment]
+    }
+    
+    struct SubjectResponse: Decodable {
+        let subject: Subject
+    }
+    
+    struct CourseResponse: Decodable {
+        let course: Course
+    }
+    
+    struct AssignmentResponse: Decodable {
+        let assignment: Assignment
+    }
+    
+    struct SuccessResponse: Decodable {
+        let success: Bool
+    }
+    
+    struct CreateSubjectRequest: Encodable {
+        let name: String
+    }
+    
+    struct UpdateSubjectRequest: Encodable {
+        let name: String
+    }
+    
+    struct CreateCourseRequest: Encodable {
+        let name: String
+        let subjectId: String?
+        let studentUserId: String
+        let grade: Double?
+    }
+    
+    struct UpdateCourseRequest: Encodable {
+        let name: String?
+        let subjectId: String?
+        let grade: Double?
+    }
+    
+    struct CreateAssignmentRequest: Encodable {
+        let title: String
+        let dueDate: Date?
+        let instructions: String?
+        let subjectId: String?
+        let grade: Double?
+    }
+    
+    struct UpdateAssignmentRequest: Encodable {
+        let title: String?
+        let dueDate: Date?
+        let instructions: String?
+        let subjectId: String?
+        let grade: Double?
+    }
+    
+    // Subjects
+    func createSubject(name: String) async throws -> Subject {
+        let body = CreateSubjectRequest(name: name)
+        let response: SubjectResponse = try await request(
+            Endpoint(path: "api/curriculum/subjects", method: .post, body: body),
+            responseType: SubjectResponse.self
+        )
+        return response.subject
+    }
+    
+    func fetchSubjects() async throws -> [Subject] {
+        let response: SubjectsResponse = try await request(
+            Endpoint(path: "api/curriculum/subjects"),
+            responseType: SubjectsResponse.self
+        )
+        return response.subjects
+    }
+    
+    func updateSubject(id: String, name: String) async throws -> Subject {
+        let body = UpdateSubjectRequest(name: name)
+        let response: SubjectResponse = try await request(
+            Endpoint(path: "api/curriculum/subjects/\(id)", method: .patch, body: body),
+            responseType: SubjectResponse.self
+        )
+        return response.subject
+    }
+    
+    func deleteSubject(id: String) async throws {
+        _ = try await request(
+            Endpoint(path: "api/curriculum/subjects/\(id)", method: .delete),
+            responseType: SuccessResponse.self
+        )
+    }
+    
+    // Courses
+    func createCourse(name: String, subjectId: String?, studentUserId: String, grade: Double?) async throws -> Course {
+        let body = CreateCourseRequest(name: name, subjectId: subjectId, studentUserId: studentUserId, grade: grade)
+        let response: CourseResponse = try await request(
+            Endpoint(path: "api/curriculum/courses", method: .post, body: body),
+            responseType: CourseResponse.self
+        )
+        return response.course
+    }
+    
+    func fetchCourses() async throws -> [Course] {
+        let response: CoursesResponse = try await request(
+            Endpoint(path: "api/curriculum/courses"),
+            responseType: CoursesResponse.self
+        )
+        return response.courses
+    }
+    
+    func updateCourse(id: String, name: String?, subjectId: String?, grade: Double?) async throws -> Course {
+        let body = UpdateCourseRequest(name: name, subjectId: subjectId, grade: grade)
+        let response: CourseResponse = try await request(
+            Endpoint(path: "api/curriculum/courses/\(id)", method: .patch, body: body),
+            responseType: CourseResponse.self
+        )
+        return response.course
+    }
+    
+    func deleteCourse(id: String) async throws {
+        _ = try await request(
+            Endpoint(path: "api/curriculum/courses/\(id)", method: .delete),
+            responseType: SuccessResponse.self
+        )
+    }
+    
+    // Assignments
+    func createAssignment(title: String, dueDate: Date?, instructions: String?, subjectId: String?, grade: Double?) async throws -> Assignment {
+        let body = CreateAssignmentRequest(title: title, dueDate: dueDate, instructions: instructions, subjectId: subjectId, grade: grade)
+        let response: AssignmentResponse = try await request(
+            Endpoint(path: "api/curriculum/assignments", method: .post, body: body),
+            responseType: AssignmentResponse.self
+        )
+        return response.assignment
+    }
+    
+    func fetchAssignments() async throws -> [Assignment] {
+        let response: AssignmentsResponse = try await request(
+            Endpoint(path: "api/curriculum/assignments"),
+            responseType: AssignmentsResponse.self
+        )
+        return response.assignments
+    }
+    
+    func updateAssignment(id: String, title: String?, dueDate: Date?, instructions: String?, subjectId: String?, grade: Double?) async throws -> Assignment {
+        let body = UpdateAssignmentRequest(title: title, dueDate: dueDate, instructions: instructions, subjectId: subjectId, grade: grade)
+        let response: AssignmentResponse = try await request(
+            Endpoint(path: "api/curriculum/assignments/\(id)", method: .patch, body: body),
+            responseType: AssignmentResponse.self
+        )
+        return response.assignment
+    }
+    
+    func deleteAssignment(id: String) async throws {
+        _ = try await request(
+            Endpoint(path: "api/curriculum/assignments/\(id)", method: .delete),
+            responseType: SuccessResponse.self
+        )
+    }
 }
 
 struct Endpoint {

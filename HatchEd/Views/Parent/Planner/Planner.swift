@@ -13,6 +13,7 @@ struct Planner: View {
     @State private var selectedDate = Calendar.current.startOfDay(for: Date())
     @State private var showingDaySheet = false
     @State private var showingAddTask = false
+    @State private var weekOffset: Int = 0
 
     private let calendar = Calendar.current
 
@@ -29,6 +30,22 @@ struct Planner: View {
                         showingDaySheet = true
                     },
                     selectedDate: selectedDate
+                )
+                .gesture(
+                    DragGesture(minimumDistance: 50)
+                        .onEnded { value in
+                            if value.translation.width > 100 {
+                                // Swipe right - previous week
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    weekOffset -= 1
+                                }
+                            } else if value.translation.width < -100 {
+                                // Swipe left - next week
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    weekOffset += 1
+                                }
+                            }
+                        }
                 )
 
                 Spacer()
@@ -49,9 +66,9 @@ struct Planner: View {
             } label: {
                 Image(systemName: "plus")
                     .font(.title)
-                    .foregroundColor(.white)
+                    .foregroundColor(.hatchEdWhite)
                     .padding()
-                    .background(Color.accentColor)
+                    .background(Color.hatchEdAccent)
                     .clipShape(Circle())
                     .shadow(radius: 6)
             }
@@ -68,25 +85,94 @@ struct Planner: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("This Week")
-                .font(.title)
-                .fontWeight(.semibold)
-            Text("Tap a day to see all tasks")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+        HStack {
+            Button {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    weekOffset -= 1
+                }
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.title3)
+                    .foregroundColor(.hatchEdAccent)
+                    .padding(8)
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Image(systemName: "calendar")
+                        .foregroundColor(.hatchEdAccent)
+                    Text(weekTitle)
+                        .font(.title)
+                        .fontWeight(.bold)
+                        .foregroundColor(.hatchEdText)
+                }
+                Text("Tap a day to see all tasks • Swipe to navigate weeks")
+                    .font(.subheadline)
+                    .foregroundColor(.hatchEdSecondaryText)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.hatchEdAccentBackground)
+            )
+            
+            Button {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    weekOffset += 1
+                }
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.title3)
+                    .foregroundColor(.hatchEdAccent)
+                    .padding(8)
+            }
+            
+            Button {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    weekOffset = 0
+                }
+            } label: {
+                Text("Today")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.hatchEdWhite)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.hatchEdAccent)
+                    .cornerRadius(8)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal)
         .padding(.top)
+    }
+    
+    private var weekTitle: String {
+        let dates = currentWeekDates
+        guard let firstDate = dates.first, let lastDate = dates.last else {
+            return "This Week"
+        }
+        
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        
+        if weekOffset == 0 {
+            return "This Week"
+        } else if calendar.isDate(firstDate, equalTo: lastDate, toGranularity: .year) {
+            return "\(formatter.string(from: firstDate)) - \(formatter.string(from: lastDate))"
+        } else {
+            formatter.dateFormat = "MMM d, yyyy"
+            return "\(formatter.string(from: firstDate)) - \(formatter.string(from: lastDate))"
+        }
     }
 
     private var currentWeekDates: [Date] {
         let today = calendar.startOfDay(for: Date())
         let weekday = calendar.component(.weekday, from: today)
         let offset = (weekday - calendar.firstWeekday + 7) % 7
-        let weekStart = calendar.date(byAdding: .day, value: -offset, to: today) ?? today
-        return (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: weekStart) }
+        let currentWeekStart = calendar.date(byAdding: .day, value: -offset, to: today) ?? today
+        let targetWeekStart = calendar.date(byAdding: .weekOfYear, value: weekOffset, to: currentWeekStart) ?? currentWeekStart
+        return (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: targetWeekStart) }
     }
 }
 

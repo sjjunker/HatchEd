@@ -51,6 +51,8 @@ struct AddTaskView: View {
                     Button("Save") {
                         saveTask()
                     }
+                    .fontWeight(.semibold)
+                    .foregroundColor(.hatchEdAccent)
                     .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }

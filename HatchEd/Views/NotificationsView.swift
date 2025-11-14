@@ -18,7 +18,7 @@ struct NotificationsView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "exclamationmark.circle")
-                    .foregroundColor(.orange)
+                    .foregroundColor(.hatchEdWarning)
                 Text("Notifications")
                     .font(.headline)
                 Spacer()
@@ -26,16 +26,16 @@ struct NotificationsView: View {
 
             if notifications.isEmpty {
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(.systemGray6))
+                    .fill(Color.hatchEdSecondaryBackground)
                     .overlay(
                         VStack(spacing: 8) {
                             Text("No new notifications")
                                 .font(.subheadline)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.hatchEdSecondaryText)
                             Text("You're all caught up! We'll let you know when there's something to review.")
                                 .font(.footnote)
                                 .multilineTextAlignment(.center)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.hatchEdSecondaryText)
                         }
                         .padding()
                     )
@@ -50,23 +50,23 @@ struct NotificationsView: View {
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text(notification.title ?? "Untitled")
                                         .font(.headline)
-                                        .foregroundColor(.primary)
+                                        .foregroundColor(.hatchEdText)
                                         .multilineTextAlignment(.leading)
 
                                     Text(previewBody(for: notification))
                                         .font(.subheadline)
-                                        .foregroundColor(.secondary)
+                                        .foregroundColor(.hatchEdSecondaryText)
                                         .multilineTextAlignment(.leading)
 
                                     if let createdAt = notification.createdAt {
                                         Text(createdAt.formatted(date: .abbreviated, time: .shortened))
                                             .font(.caption)
-                                            .foregroundColor(.secondary)
+                                            .foregroundColor(.hatchEdSecondaryText)
                                     }
                                 }
                                 .padding()
                                 .frame(width: cardWidth, alignment: .leading)
-                                .background(Color(.systemGray6))
+                                .background(Color.hatchEdSecondaryBackground)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                             }
                             .buttonStyle(.plain)

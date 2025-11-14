@@ -22,16 +22,26 @@ struct DayDetailSheetView: View {
     var body: some View {
         NavigationView {
             VStack(alignment: .leading) {
-                Text(formatter.string(from: date))
-                    .font(.title3.bold())
-                    .padding()
+                HStack {
+                    Image(systemName: "calendar")
+                        .foregroundColor(.hatchEdAccent)
+                    Text(formatter.string(from: date))
+                        .font(.title3.bold())
+                        .foregroundColor(.hatchEdText)
+                }
+                .padding()
 
                 if tasks.isEmpty {
                     Spacer()
-                    Text("No tasks scheduled for this day.")
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding()
+                    VStack(spacing: 12) {
+                        Image(systemName: "calendar.badge.plus")
+                            .font(.system(size: 48))
+                            .foregroundColor(.hatchEdSecondaryText)
+                        Text("No tasks scheduled for this day.")
+                            .foregroundColor(.hatchEdSecondaryText)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding()
                     Spacer()
                 } else {
                     ScrollView {

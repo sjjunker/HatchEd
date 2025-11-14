@@ -1,0 +1,64 @@
+// Updated with assistance from Cursor (ChatGPT) on 11/7/25.
+
+import { ObjectId } from 'mongodb'
+import { getCollection } from '../lib/mongo.js'
+
+const ASSIGNMENTS_COLLECTION = 'assignments'
+
+function assignmentsCollection () {
+  return getCollection(ASSIGNMENTS_COLLECTION)
+}
+
+export async function createAssignment ({ familyId, title, dueDate, instructions, subjectId, grade, courseId }) {
+  const assignment = {
+    familyId: new ObjectId(familyId),
+    title,
+    dueDate: dueDate ? new Date(dueDate) : null,
+    instructions: instructions ?? null,
+    subjectId: subjectId ? new ObjectId(subjectId) : null,
+    grade: grade ?? null,
+    courseId: courseId ? new ObjectId(courseId) : null,
+    questions: [],
+    createdAt: new Date(),
+    updatedAt: new Date()
+  }
+
+  const result = await assignmentsCollection().insertOne(assignment)
+  return { ...assignment, _id: result.insertedId }
+}
+
+export async function findAssignmentsByFamilyId (familyId) {
+  return assignmentsCollection().find({ familyId: new ObjectId(familyId) }).sort({ dueDate: -1, createdAt: -1 }).toArray()
+}
+
+export async function findAssignmentsByCourseId (courseId) {
+  return assignmentsCollection().find({ courseId: new ObjectId(courseId) }).sort({ dueDate: -1, createdAt: -1 }).toArray()
+}
+
+export async function findAssignmentById (id) {
+  return assignmentsCollection().findOne({ _id: new ObjectId(id) })
+}
+
+export async function updateAssignment (id, { title, dueDate, instructions, subjectId, grade }) {
+  const update = {}
+  if (title !== undefined) update.title = title
+  if (dueDate !== undefined) update.dueDate = dueDate ? new Date(dueDate) : null
+  if (instructions !== undefined) update.instructions = instructions
+  if (subjectId !== undefined) update.subjectId = subjectId ? new ObjectId(subjectId) : null
+  if (grade !== undefined) update.grade = grade
+  update.updatedAt = new Date()
+
+  const result = await assignmentsCollection().findOneAndUpdate(
+    { _id: new ObjectId(id) },
+    { $set: update },
+    { returnDocument: 'after' }
+  )
+
+  return result.value
+}
+
+export async function deleteAssignment (id) {
+  const result = await assignmentsCollection().deleteOne({ _id: new ObjectId(id) })
+  return result.deletedCount > 0
+}
+

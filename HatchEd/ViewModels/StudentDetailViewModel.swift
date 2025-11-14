@@ -24,7 +24,7 @@ final class StudentDetailViewModel: ObservableObject {
     }
 
     struct SubjectSection: Identifiable {
-        let id: UUID
+        let id: String
         let subject: Subject
         let courses: [Course]
 
@@ -63,7 +63,7 @@ final class StudentDetailViewModel: ObservableObject {
         }
 
         struct SubjectSectionSnapshot: Identifiable {
-            let id: UUID
+            let id: String
             let name: String
             let courses: [Course]
         }
@@ -220,8 +220,8 @@ private enum SampleData {
         ]
 
         let courses = [
-            Course(name: "Algebra II", assignments: algebraAssignments, grade: 93.5, subject: math),
-            Course(name: "Biology", assignments: biologyAssignments, grade: 90.0, subject: science)
+            Course(name: "Algebra II", assignments: algebraAssignments, grade: 93.5, subject: math, student: student),
+            Course(name: "Biology", assignments: biologyAssignments, grade: 90.0, subject: science, student: student)
         ]
 
         let assignments = (algebraAssignments + biologyAssignments).sorted { ($0.dueDate ?? .distantPast) > ($1.dueDate ?? .distantPast) }

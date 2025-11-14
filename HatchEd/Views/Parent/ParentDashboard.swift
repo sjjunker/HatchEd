@@ -10,6 +10,7 @@ import SwiftUI
 enum NavigationDestination: String, Identifiable {
     case planner = "Planner"
     case studentList = "Students"
+    case curriculum = "Curriculum"
     case reportCard = "Report Cards"
     case portfolio = "Portfolio"
     case resources = "Resources"
@@ -22,6 +23,7 @@ enum NavigationDestination: String, Identifiable {
         switch self {
         case .planner: return "calendar"
         case .studentList: return "person.2"
+        case .curriculum: return "book.closed"
         case .reportCard: return "doc.text"
         case .portfolio: return "folder"
         case .resources: return "book"
@@ -35,6 +37,7 @@ enum NavigationDestination: String, Identifiable {
         switch self {
         case .planner: Planner()
         case .studentList: StudentList()
+        case .curriculum: CurriculumView()
         case .reportCard: ReportCard()
         case .portfolio: Portfolio()
         case .resources: Resources()
@@ -188,9 +191,16 @@ struct ParentDashboard: View {
     
     private var welcomeSection: some View {
         HStack {
-            Text("Welcome, \(signInManager.currentUser?.name?.capitalized ?? "Parent!")")
-                .font(.largeTitle)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Welcome, \(signInManager.currentUser?.name?.capitalized ?? "Parent!")")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                    .foregroundColor(.hatchEdText)
+                Text("Manage your family's education")
+                    .font(.subheadline)
+                    .foregroundColor(.hatchEdSecondaryText)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
             
             if signInManager.currentUser?.name == nil {
                 Button(action: {
@@ -198,38 +208,59 @@ struct ParentDashboard: View {
                     showingNameEditor = true
                 }) {
                     Image(systemName: "pencil.circle.fill")
-                        .foregroundColor(.blue)
+                        .foregroundColor(.hatchEdWhite)
                         .font(.title2)
+                        .padding(8)
+                        .background(Color.hatchEdAccent)
+                        .clipShape(Circle())
                 }
             }
         }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.hatchEdAccentBackground)
+        )
     }
     
     private var studentsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Students")
-                .font(.headline)
+            HStack {
+                Image(systemName: "person.2.fill")
+                    .foregroundColor(.hatchEdAccent)
+                Text("Students")
+                    .font(.headline)
+                    .foregroundColor(.hatchEdText)
+            }
             
             if signInManager.students.isEmpty {
                 Text("No students linked yet.")
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.hatchEdSecondaryText)
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
+                    .background(RoundedRectangle(cornerRadius: 16).fill(Color.hatchEdCardBackground))
             } else {
                 LazyVStack(spacing: 12) {
                     ForEach(signInManager.students) { student in
                         NavigationLink(destination: StudentDetail(student: student)) {
                             HStack {
+                                Image(systemName: "person.circle.fill")
+                                    .foregroundColor(.hatchEdAccent)
+                                    .font(.title3)
                                 Text(student.name ?? "Student")
-                                    .foregroundColor(.primary)
+                                    .foregroundColor(.hatchEdText)
+                                    .fontWeight(.medium)
                                 Spacer()
                                 Image(systemName: "chevron.right")
                                     .font(.footnote)
-                                    .foregroundColor(.secondary)
+                                    .foregroundColor(.hatchEdAccent)
                             }
                             .padding()
-                            .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
+                            .background(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(Color.hatchEdCardBackground)
+                                    .shadow(color: Color.hatchEdAccent.opacity(0.1), radius: 4, x: 0, y: 2)
+                            )
                         }
                     }
                 }
@@ -240,17 +271,21 @@ struct ParentDashboard: View {
     private var attendanceSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.hatchEdSuccess)
                 Text("Take Attendance")
                     .font(.headline)
+                    .foregroundColor(.hatchEdText)
                 Spacer()
                 DatePicker("Attendance Date", selection: $attendanceDate, displayedComponents: .date)
                     .labelsHidden()
+                    .tint(.hatchEdAccent)
             }
             
             if signInManager.students.isEmpty {
                 Text("Link students to start recording attendance.")
                     .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.hatchEdSecondaryText)
             } else {
                 VStack(spacing: 12) {
                     HStack {
@@ -258,10 +293,12 @@ struct ParentDashboard: View {
                             updateAttendanceStatusForAll(true)
                         }
                         .buttonStyle(.bordered)
+                        .tint(.hatchEdSuccess)
                         Button("Mark All Absent") {
                             updateAttendanceStatusForAll(false)
                         }
                         .buttonStyle(.bordered)
+                        .tint(.hatchEdCoralAccent)
                     }
                     
                     ForEach(signInManager.students) { student in
@@ -281,13 +318,16 @@ struct ParentDashboard: View {
                     HStack {
                         if isSubmittingAttendance {
                             ProgressView()
+                                .tint(.hatchEdWhite)
                         }
                         Text(isSubmittingAttendance ? "Submitting..." : "Submit Attendance")
                             .fontWeight(.semibold)
                     }
                     .frame(maxWidth: .infinity)
+                    .foregroundColor(.hatchEdWhite)
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(.hatchEdAccent)
                 .disabled(isSubmittingAttendance || signInManager.students.isEmpty)
                 
                 switch attendanceSubmissionState {
@@ -296,18 +336,22 @@ struct ParentDashboard: View {
                 case .success(let message):
                     Text(message)
                         .font(.footnote)
-                        .foregroundColor(.green)
+                        .foregroundColor(.hatchEdSuccess)
                         .transition(.opacity)
                 case .failure(let message):
                     Text(message)
                         .font(.footnote)
-                        .foregroundColor(.red)
+                        .foregroundColor(.hatchEdCoralAccent)
                         .transition(.opacity)
                 }
             }
         }
         .padding()
-        .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.hatchEdCardBackground)
+                .shadow(color: Color.hatchEdSuccess.opacity(0.2), radius: 8, x: 0, y: 4)
+        )
         .animation(.easeInOut, value: attendanceSubmissionState)
     }
     
@@ -368,14 +412,14 @@ private struct AttendanceToggleRow: View {
     var body: some View {
         HStack {
             Text(name)
-                .foregroundColor(.primary)
+                .foregroundColor(.hatchEdText)
             Spacer()
             Toggle("Present", isOn: $isPresent)
                 .labelsHidden()
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6)))
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.hatchEdSecondaryBackground))
     }
 }
 

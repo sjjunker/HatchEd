@@ -34,24 +34,34 @@ struct StudentJoinFamilyView: View {
                 
                 if let errorMessage {
                     Section {
-                        Text(errorMessage)
-                            .foregroundColor(.red)
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.hatchEdCoralAccent)
+                            Text(errorMessage)
+                                .foregroundColor(.hatchEdCoralAccent)
+                        }
                     }
                 }
                 
-                Section(footer: Text("Ask your parent or guardian for the six-character code they created in Settings.")) {
+                Section(footer: Text("Ask your parent or guardian for the six-character code they created in Settings.")
+                    .foregroundColor(.hatchEdSecondaryText)) {
                     Button {
                         submitJoin()
                     } label: {
                         if isSubmitting {
                             ProgressView()
                                 .progressViewStyle(.circular)
+                                .tint(.hatchEdWhite)
                                 .frame(maxWidth: .infinity)
                         } else {
                             Text("Join Family")
+                                .fontWeight(.semibold)
+                                .foregroundColor(.hatchEdWhite)
                                 .frame(maxWidth: .infinity)
                         }
                     }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.hatchEdAccent)
                     .disabled(isJoinDisabled)
                 }
             }

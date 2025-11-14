@@ -8,11 +8,15 @@
 import Foundation
 
 struct Subject: Identifiable, Codable, Equatable, Hashable {
-    let id: UUID
+    let id: String
     var name: String
+    var createdAt: Date?
+    var updatedAt: Date?
 
-    init(id: UUID = UUID(), name: String) {
+    init(id: String = UUID().uuidString, name: String, createdAt: Date? = nil, updatedAt: Date? = nil) {
         self.id = id
         self.name = name
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
     }
 }

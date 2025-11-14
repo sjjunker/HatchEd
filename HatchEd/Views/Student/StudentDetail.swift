@@ -65,17 +65,17 @@ struct StudentDetail: View {
             HStack(alignment: .center, spacing: 24) {
                 ZStack {
                     Circle()
-                        .stroke(Color(.systemGray5), lineWidth: 12)
+                        .stroke(Color.hatchEdSecondaryBackground, lineWidth: 12)
                     Circle()
                         .trim(from: 0, to: CGFloat(viewModelState.attendanceAverage))
-                        .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                        .stroke(Color.hatchEdAccent, style: StrokeStyle(lineWidth: 12, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                     VStack {
                         Text(viewModelState.attendancePercentageString)
                             .font(.title.bold())
                         Text("Present")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.hatchEdSecondaryText)
                     }
                 }
                 .frame(width: 140, height: 140)
@@ -88,21 +88,21 @@ struct StudentDetail: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
-            .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
+            .background(RoundedRectangle(cornerRadius: 16).fill(Color.hatchEdSecondaryBackground))
 
             switch viewModelState.attendanceStatus {
             case .loading:
                 ProgressView("Loading attendance…")
                     .progressViewStyle(.linear)
-                    .tint(.accentColor)
+                    .tint(.hatchEdAccent)
             case .error(let message):
                 Text(message)
                     .font(.footnote)
-                    .foregroundColor(.red)
+                    .foregroundColor(.hatchEdCoralAccent)
             case .loaded where viewModelState.attendanceRecords.isEmpty:
                 Text("No attendance records yet.")
                     .font(.footnote)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.hatchEdSecondaryText)
             default:
                 EmptyView()
             }
@@ -129,7 +129,7 @@ struct StudentDetail: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(section.name)
                         .font(.subheadline.bold())
-                        .foregroundColor(.accentColor)
+                        .foregroundColor(.hatchEdAccent)
                     ForEach(section.courses) { course in
                         CourseRow(course: course)
                     }
@@ -145,7 +145,7 @@ struct StudentDetail: View {
                 .font(.headline)
             if viewModelState.recentAssignments.isEmpty {
                 Text("No assignments completed recently.")
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.hatchEdSecondaryText)
                     .font(.subheadline)
             } else {
                 ForEach(viewModelState.recentAssignments) { assignment in
@@ -163,10 +163,11 @@ private struct AttendanceRow: View {
     var body: some View {
         HStack {
             Text(title)
-                .foregroundColor(.secondary)
+                .foregroundColor(.hatchEdSecondaryText)
             Spacer()
             Text(value)
                 .font(.subheadline.bold())
+                .foregroundColor(.hatchEdText)
         }
     }
 }
@@ -178,11 +179,11 @@ private struct AttendanceHistoryRow: View {
         HStack {
             Text(record.date, style: .date)
                 .font(.subheadline)
-                .foregroundColor(.secondary)
+                .foregroundColor(.hatchEdSecondaryText)
             Spacer()
             Text(record.status.capitalized)
                 .font(.subheadline.bold())
-                .foregroundColor(record.isPresent ? .green : .red)
+                .foregroundColor(record.isPresent ? .hatchEdSuccess : .hatchEdCoralAccent)
         }
     }
 }

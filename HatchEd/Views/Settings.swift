@@ -36,7 +36,7 @@ struct Settings: View {
                     familySection
                 } else {
                     Text("Family settings are only available for parent accounts.")
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.hatchEdSecondaryText)
                 }
             }
             .navigationTitle("Settings")
@@ -66,12 +66,14 @@ struct Settings: View {
                     showingCreateFamily = true
                 } label: {
                     Label("Create New Family", systemImage: "plus.circle.fill")
+                        .foregroundColor(.hatchEdAccent)
                 }
                 
                 Button {
                     showingJoinFamily = true
                 } label: {
                     Label("Join Existing Family", systemImage: "person.2.badge.plus")
+                        .foregroundColor(.hatchEdAccent)
                 }
             }
         }
@@ -81,10 +83,10 @@ struct Settings: View {
         Group {
             if let errorMessage {
                 Text(errorMessage)
-                    .foregroundColor(.red)
+                    .foregroundColor(.hatchEdCoralAccent)
             } else if signInManager.isOffline {
                 Text("Offline mode – changes will sync when you're back online.")
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.hatchEdWarning)
             }
         }
     }
@@ -93,12 +95,13 @@ struct Settings: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundColor(.hatchEdSecondaryText)
             Text(value)
                 .font(monospaced ? .system(.body, design: .monospaced) : .body)
+                .foregroundColor(.hatchEdText)
                 .padding(.horizontal, monospaced ? 12 : 0)
                 .padding(.vertical, monospaced ? 6 : 0)
-                .background(monospaced ? Color.gray.opacity(0.1) : Color.clear)
+                .background(monospaced ? Color.hatchEdAccentBackground : Color.clear)
                 .cornerRadius(8)
         }
     }

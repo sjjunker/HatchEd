@@ -18,20 +18,36 @@ struct NotificationDetailView: View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text(notification.title ?? "Untitled Notification")
-                        .font(.title2.bold())
+                    HStack {
+                        Image(systemName: "bell.fill")
+                            .foregroundColor(.hatchEdWarning)
+                        Text(notification.title ?? "Untitled Notification")
+                            .font(.title2.bold())
+                            .foregroundColor(.hatchEdText)
+                    }
 
                     if let createdAt = notification.createdAt {
-                        Text(createdAt.formatted(date: .abbreviated, time: .shortened))
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+                        HStack {
+                            Image(systemName: "calendar")
+                                .font(.caption2)
+                                .foregroundColor(.hatchEdAccent)
+                            Text(createdAt.formatted(date: .abbreviated, time: .shortened))
+                                .font(.subheadline)
+                                .foregroundColor(.hatchEdSecondaryText)
+                        }
                     }
 
                     Divider()
+                        .background(Color.hatchEdSecondaryBackground)
 
                     Text(notification.body ?? "")
                         .font(.body)
-                        .foregroundColor(.primary)
+                        .foregroundColor(.hatchEdText)
+                        .padding()
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color.hatchEdCardBackground)
+                        )
 
                     Spacer(minLength: 24)
 
@@ -41,11 +57,14 @@ struct NotificationDetailView: View {
                     } label: {
                         HStack {
                             Spacer()
+                            Image(systemName: "trash")
                             Text("Delete Notification")
                             Spacer()
                         }
+                        .foregroundColor(.hatchEdWhite)
                     }
                     .buttonStyle(.borderedProminent)
+                    .tint(.hatchEdCoralAccent)
                 }
                 .padding()
             }

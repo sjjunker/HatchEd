@@ -42,6 +42,7 @@ struct WeeklyOverviewView: View {
             .padding(.leading, columnWidth)
             .padding(.top, rowHeight)
         }
+        .background(Color.hatchEdBackground)
     }
 
     private func drawGrid() -> some View {
@@ -62,7 +63,7 @@ struct WeeklyOverviewView: View {
                     path.addLine(to: CGPoint(x: x, y: height))
                 }
             }
-            .stroke(Color(.systemGray5), lineWidth: 1)
+            .stroke(Color.hatchEdSecondaryBackground, lineWidth: 1)
             .frame(
                 width: columnWidth * CGFloat(weekDates.count),
                 height: rowHeight * CGFloat(hours.count),
@@ -81,7 +82,7 @@ struct WeeklyOverviewView: View {
                 let date = Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: Date()) ?? Date()
                 Text(hourFormatter.string(from: date))
                     .font(.caption2)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.hatchEdSecondaryText)
                     .frame(width: columnWidth, height: rowHeight, alignment: .topLeading)
                     .padding(.top, 4)
                     .padding(.leading, -columnWidth)
@@ -99,15 +100,15 @@ struct WeeklyOverviewView: View {
                     VStack(spacing: 6) {
                         Text(weekdayFormatter.string(from: date).uppercased())
                             .font(.caption)
-                            .foregroundColor(isSelected ? .white : .secondary)
+                            .foregroundColor(isSelected ? .hatchEdWhite : .hatchEdSecondaryText)
                         Text(date.formatted(.dateTime.day()))
                             .font(.headline)
-                            .foregroundColor(isSelected ? .white : .primary)
+                            .foregroundColor(isSelected ? .hatchEdWhite : .hatchEdText)
                     }
                     .frame(width: columnWidth, height: rowHeight)
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(isSelected ? Color.accentColor : Color(.systemGray6))
+                            .fill(isSelected ? Color.hatchEdAccent : Color.hatchEdSecondaryBackground)
                     )
                 }
                 .buttonStyle(.plain)

@@ -210,13 +210,13 @@ private enum SampleData {
         let science = Subject(name: "Science")
 
         let algebraAssignments = [
-            Assignment(title: "Quadratic Functions", dueDate: Date().addingTimeInterval(-86_400), grade: 92, subject: math, questions: []),
-            Assignment(title: "Polynomials Worksheet", dueDate: Date().addingTimeInterval(-259_200), grade: 95, subject: math, questions: [])
+            Assignment(title: "Quadratic Functions", studentId: student.id, dueDate: Date().addingTimeInterval(-86_400), pointsPossible: 100, pointsAwarded: 92, subject: math, questions: []),
+            Assignment(title: "Polynomials Worksheet", studentId: student.id, dueDate: Date().addingTimeInterval(-259_200), pointsPossible: 100, pointsAwarded: 95, subject: math, questions: [])
         ]
 
         let biologyAssignments = [
-            Assignment(title: "Cell Structure Lab", dueDate: Date().addingTimeInterval(-172_800), grade: 88, subject: science, questions: []),
-            Assignment(title: "Photosynthesis Quiz", dueDate: Date().addingTimeInterval(-604_800), grade: 94, subject: science, questions: [])
+            Assignment(title: "Cell Structure Lab", studentId: student.id, dueDate: Date().addingTimeInterval(-172_800), pointsPossible: 100, pointsAwarded: 88, subject: science, questions: []),
+            Assignment(title: "Photosynthesis Quiz", studentId: student.id, dueDate: Date().addingTimeInterval(-604_800), pointsPossible: 100, pointsAwarded: 94, subject: science, questions: [])
         ]
 
         let courses = [

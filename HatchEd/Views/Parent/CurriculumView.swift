@@ -315,6 +315,11 @@ private struct CourseRow: View {
 private struct AssignmentRow: View {
     let assignment: Assignment
     
+    private func calculatePercentage(pointsAwarded: Double, pointsPossible: Double) -> Double? {
+        guard pointsPossible > 0 else { return nil }
+        return (pointsAwarded / pointsPossible) * 100
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -328,15 +333,24 @@ private struct AssignmentRow: View {
                     .foregroundColor(.hatchEdText)
                     .fontWeight(.medium)
                 Spacer()
-                if let grade = assignment.grade {
-                    Text(String(format: "%.1f%%", grade))
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.hatchEdWarning)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.hatchEdWarning.opacity(0.15))
-                        .cornerRadius(8)
+                if let pointsAwarded = assignment.pointsAwarded,
+                   let pointsPossible = assignment.pointsPossible,
+                   pointsPossible > 0 {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(String(format: "%.0f/%.0f", pointsAwarded, pointsPossible))
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.hatchEdWarning)
+                        if let percentage = calculatePercentage(pointsAwarded: pointsAwarded, pointsPossible: pointsPossible) {
+                            Text(String(format: "%.0f%%", percentage))
+                                .font(.caption2)
+                                .foregroundColor(.hatchEdSecondaryText)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.hatchEdWarning.opacity(0.15))
+                    .cornerRadius(8)
                 }
             }
             if let dueDate = assignment.dueDate {
@@ -380,6 +394,8 @@ private struct AddItemView: View {
     @State private var assignmentTitle = ""
     @State private var assignmentDueDate = Date()
     @State private var selectedSubjectForAssignment: Subject?
+    @State private var selectedCourseForAssignment: Course?
+    @State private var selectedStudentForAssignment: User?
     @State private var hasDueDate = false
     
     var body: some View {
@@ -427,10 +443,38 @@ private struct AddItemView: View {
                 Section(header: Text("Assignment Details")) {
                     TextField("Enter assignment title", text: $assignmentTitle)
                     
+                    if !students.isEmpty {
+                        Picker("Student", selection: Binding(
+                            get: { selectedStudentForAssignment?.id },
+                            set: { id in
+                                selectedStudentForAssignment = students.first { $0.id == id }
+                            }
+                        )) {
+                            Text("Select a student").tag(nil as String?)
+                            ForEach(students) { student in
+                                Text(student.name ?? "Student").tag(student.id as String?)
+                            }
+                        }
+                    }
+                    
                     Toggle("Has Due Date", isOn: $hasDueDate)
                     
                     if hasDueDate {
                         DatePicker("Due Date", selection: $assignmentDueDate, displayedComponents: .date)
+                    }
+                    
+                    if !courses.isEmpty {
+                        Picker("Course", selection: Binding(
+                            get: { selectedCourseForAssignment?.id },
+                            set: { id in
+                                selectedCourseForAssignment = courses.first { $0.id == id }
+                            }
+                        )) {
+                            Text("None").tag(nil as String?)
+                            ForEach(courses) { course in
+                                Text(course.name).tag(course.id as String?)
+                            }
+                        }
                     }
                     
                     if !subjects.isEmpty {
@@ -475,7 +519,7 @@ private struct AddItemView: View {
         case .course:
             return !courseName.trimmingCharacters(in: .whitespaces).isEmpty && selectedStudentForCourse != nil
         case .assignment:
-            return !assignmentTitle.trimmingCharacters(in: .whitespaces).isEmpty
+            return !assignmentTitle.trimmingCharacters(in: .whitespaces).isEmpty && selectedStudentForAssignment != nil
         }
     }
     
@@ -499,12 +543,16 @@ private struct AddItemView: View {
                 courses.append(newCourse)
                 
             case .assignment:
+                guard let student = selectedStudentForAssignment else { return }
                 let newAssignment = try await api.createAssignment(
                     title: assignmentTitle.trimmingCharacters(in: .whitespaces),
+                    studentId: student.id,
                     dueDate: hasDueDate ? assignmentDueDate : nil,
                     instructions: nil,
                     subjectId: selectedSubjectForAssignment?.id,
-                    grade: nil
+                    pointsPossible: nil,
+                    pointsAwarded: nil,
+                    courseId: selectedCourseForAssignment?.id
                 )
                 assignments.append(newAssignment)
             }

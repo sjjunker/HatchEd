@@ -172,9 +172,13 @@ export async function deleteCourseHandler (req, res) {
 
 // Assignments
 export async function createAssignmentHandler (req, res) {
-  const { title, dueDate, instructions, subjectId, grade, courseId } = req.body
+  const { title, studentId, dueDate, instructions, subjectId, pointsPossible, pointsAwarded, courseId } = req.body
   if (!title || !title.trim()) {
     return res.status(400).json({ error: { message: 'Assignment title is required' } })
+  }
+  
+  if (!studentId) {
+    return res.status(400).json({ error: { message: 'Student ID is required' } })
   }
 
   const user = await findUserById(req.user.userId)
@@ -185,10 +189,12 @@ export async function createAssignmentHandler (req, res) {
   const assignment = await createAssignment({
     familyId: user.familyId,
     title: title.trim(),
+    studentId,
     dueDate,
     instructions,
     subjectId,
-    grade,
+    pointsPossible,
+    pointsAwarded,
     courseId
   })
   
@@ -214,7 +220,7 @@ export async function getAssignmentsHandler (req, res) {
 
 export async function updateAssignmentHandler (req, res) {
   const { id } = req.params
-  const { title, dueDate, instructions, subjectId, grade } = req.body
+  const { title, dueDate, instructions, subjectId, pointsPossible, pointsAwarded } = req.body
 
   const user = await findUserById(req.user.userId)
   if (!user || !user.familyId) {
@@ -230,8 +236,12 @@ export async function updateAssignmentHandler (req, res) {
     return res.status(403).json({ error: { message: 'Not authorized' } })
   }
 
-  const updated = await updateAssignment(id, { title, dueDate, instructions, subjectId, grade })
-  const subject = updated.subjectId ? await findSubjectById(updated.subjectId) : null
+  const updated = await updateAssignment(id, { title, dueDate, instructions, subjectId, pointsPossible, pointsAwarded })
+  if (!updated) {
+    return res.status(404).json({ error: { message: 'Assignment not found or could not be updated' } })
+  }
+  const subjectIdToFind = updated.subjectId ? (updated.subjectId.toString ? updated.subjectId.toString() : updated.subjectId) : null
+  const subject = subjectIdToFind ? await findSubjectById(subjectIdToFind) : null
   res.json({ assignment: serializeAssignment(updated, subject) })
 }
 

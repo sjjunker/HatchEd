@@ -58,6 +58,11 @@ struct ParentDashboard: View {
     @State private var attendanceStatus: [String: Bool] = [:]
     @State private var isSubmittingAttendance = false
     @State private var attendanceSubmissionState: AttendanceSubmissionState = .idle
+    @State private var assignments: [Assignment] = []
+    @State private var courses: [Course] = []
+    @State private var isLoadingAssignments = false
+    @State private var selectedAssignment: Assignment?
+    @State private var showingAssignmentGrading = false
     
     private enum AttendanceSubmissionState: Equatable {
         case idle
@@ -122,6 +127,7 @@ struct ParentDashboard: View {
             signInManager.updateUserFromDatabase()
             Task {
                 await signInManager.fetchNotifications()
+                await loadAssignmentsAndCourses()
             }
             initializeAttendanceStatusIfNeeded(with: signInManager.students)
             if signInManager.currentUser?.name == nil {
@@ -129,6 +135,21 @@ struct ParentDashboard: View {
                     showingNameEditor = true
                 }
             }
+        }
+        .refreshable {
+            await signInManager.fetchNotifications()
+            await loadAssignmentsAndCourses()
+        }
+        .sheet(item: $selectedAssignment) { assignment in
+            AssignmentGradingView(
+                assignment: assignment,
+                courses: courses,
+                onGradeSaved: { updatedAssignment in
+                    Task {
+                        await loadAssignmentsAndCourses()
+                    }
+                }
+            )
         }
         .onChange(of: signInManager.students) { newStudents in
             initializeAttendanceStatusIfNeeded(with: newStudents)
@@ -154,6 +175,7 @@ struct ParentDashboard: View {
                     notifications: signInManager.notifications,
                     onSelect: { selectedNotification = $0 }
                 )
+                completedAssignmentsSection
                 attendanceSection
                 studentsSection
             }
@@ -402,6 +424,140 @@ struct ParentDashboard: View {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         return formatter.string(from: attendanceDate)
+    }
+    
+    // MARK: - Completed Assignments Section
+    
+    private var completedAssignmentsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.hatchEdSuccess)
+                Text("Assignments Pending Grading")
+                    .font(.headline)
+                    .foregroundColor(.hatchEdText)
+                Spacer()
+                if isLoadingAssignments {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                }
+            }
+            
+            if pendingGradingAssignments.isEmpty && !isLoadingAssignments {
+                Text("No assignments pending grading.")
+                    .font(.subheadline)
+                    .foregroundColor(.hatchEdSecondaryText)
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.hatchEdSecondaryBackground))
+            } else {
+                LazyVStack(spacing: 12) {
+                    ForEach(pendingGradingAssignments.prefix(5)) { assignment in
+                        Button {
+                            selectedAssignment = assignment
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(assignment.title)
+                                        .font(.body)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.hatchEdText)
+                                    
+                                    HStack(spacing: 8) {
+                                        if let dueDate = assignment.dueDate {
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "calendar")
+                                                    .font(.caption2)
+                                                Text(dueDate, style: .date)
+                                                    .font(.caption)
+                                            }
+                                        }
+                                        
+                                        if let subject = assignment.subject {
+                                            Text("•")
+                                                .font(.caption)
+                                            Text(subject.name)
+                                                .font(.caption)
+                                        }
+                                    }
+                                    .foregroundColor(.hatchEdSecondaryText)
+                                }
+                                
+                                Spacer()
+                                
+                                if let pointsAwarded = assignment.pointsAwarded,
+                                   let pointsPossible = assignment.pointsPossible,
+                                   pointsPossible > 0 {
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text(String(format: "%.0f/%.0f", pointsAwarded, pointsPossible))
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+                                            .foregroundColor(.hatchEdSuccess)
+                                        if let percentage = calculatePercentage(pointsAwarded: pointsAwarded, pointsPossible: pointsPossible) {
+                                            Text(String(format: "%.0f%%", percentage))
+                                                .font(.caption2)
+                                                .foregroundColor(.hatchEdSecondaryText)
+                                        }
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.hatchEdSuccess.opacity(0.15))
+                                    .cornerRadius(8)
+                                } else {
+                                    Image(systemName: "chevron.right")
+                                        .font(.footnote)
+                                        .foregroundColor(.hatchEdAccent)
+                                }
+                            }
+                            .padding()
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color.hatchEdCardBackground)
+                                    .shadow(color: Color.hatchEdAccent.opacity(0.1), radius: 4, x: 0, y: 2)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.hatchEdCardBackground)
+        )
+    }
+    
+    private var pendingGradingAssignments: [Assignment] {
+        let today = Calendar.current.startOfDay(for: Date())
+        return assignments.filter { assignment in
+            // Show assignments that are due today or in the past
+            guard let dueDate = assignment.dueDate else { return false }
+            let dueDateStart = Calendar.current.startOfDay(for: dueDate)
+            return dueDateStart <= today
+        }
+        .sorted { ($0.dueDate ?? Date()) > ($1.dueDate ?? Date()) }
+    }
+    
+    @MainActor
+    private func loadAssignmentsAndCourses() async {
+        guard !isLoadingAssignments else { return }
+        isLoadingAssignments = true
+        let api = APIClient.shared
+        do {
+            async let assignmentsTask = api.fetchAssignments()
+            async let coursesTask = api.fetchCourses()
+            assignments = try await assignmentsTask
+            courses = try await coursesTask
+        } catch {
+            print("Failed to load assignments/courses: \(error)")
+        }
+        isLoadingAssignments = false
+    }
+    
+    private func calculatePercentage(pointsAwarded: Double, pointsPossible: Double) -> Double? {
+        guard pointsPossible > 0 else { return nil }
+        return (pointsAwarded / pointsPossible) * 100
     }
 }
 

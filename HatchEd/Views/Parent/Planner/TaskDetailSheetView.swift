@@ -162,19 +162,29 @@ struct TaskDetailSheetView: View {
                         }
                         
                         // Grade
-                        if let grade = assignment.grade {
+                        if let pointsAwarded = assignment.pointsAwarded,
+                           let pointsPossible = assignment.pointsPossible,
+                           pointsPossible > 0 {
                             VStack(alignment: .leading, spacing: 12) {
                                 Text("Grade")
                                     .font(.headline)
                                     .foregroundColor(.hatchEdText)
                                 
-                                HStack {
-                                    Image(systemName: "star.fill")
-                                        .foregroundColor(.hatchEdSuccess)
-                                    Text(String(format: "%.1f%%", grade))
-                                        .font(.body)
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(.hatchEdText)
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack {
+                                        Image(systemName: "star.fill")
+                                            .foregroundColor(.hatchEdSuccess)
+                                        Text(String(format: "%.0f / %.0f points", pointsAwarded, pointsPossible))
+                                            .font(.body)
+                                            .fontWeight(.semibold)
+                                            .foregroundColor(.hatchEdText)
+                                    }
+                                    
+                                    if let percentage = calculatePercentage(pointsAwarded: pointsAwarded, pointsPossible: pointsPossible) {
+                                        Text(String(format: "%.1f%%", percentage))
+                                            .font(.subheadline)
+                                            .foregroundColor(.hatchEdSecondaryText)
+                                    }
                                 }
                             }
                             .padding()
@@ -246,6 +256,11 @@ struct TaskDetailSheetView: View {
             return minutes == 0 ? "\(hours) hr" : "\(hours) hr \(minutes) min"
         }
         return "\(minutes) min"
+    }
+    
+    private func calculatePercentage(pointsAwarded: Double, pointsPossible: Double) -> Double? {
+        guard pointsPossible > 0 else { return nil }
+        return (pointsAwarded / pointsPossible) * 100
     }
 }
 

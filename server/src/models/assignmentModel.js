@@ -9,14 +9,16 @@ function assignmentsCollection () {
   return getCollection(ASSIGNMENTS_COLLECTION)
 }
 
-export async function createAssignment ({ familyId, title, dueDate, instructions, subjectId, grade, courseId }) {
+export async function createAssignment ({ familyId, title, studentId, dueDate, instructions, subjectId, pointsPossible, pointsAwarded, courseId }) {
   const assignment = {
     familyId: new ObjectId(familyId),
     title,
+    studentId: new ObjectId(studentId),
     dueDate: dueDate ? new Date(dueDate) : null,
     instructions: instructions ?? null,
     subjectId: subjectId ? new ObjectId(subjectId) : null,
-    grade: grade ?? null,
+    pointsPossible: pointsPossible ?? null,
+    pointsAwarded: pointsAwarded ?? null,
     courseId: courseId ? new ObjectId(courseId) : null,
     questions: [],
     createdAt: new Date(),
@@ -39,13 +41,14 @@ export async function findAssignmentById (id) {
   return assignmentsCollection().findOne({ _id: new ObjectId(id) })
 }
 
-export async function updateAssignment (id, { title, dueDate, instructions, subjectId, grade }) {
+export async function updateAssignment (id, { title, dueDate, instructions, subjectId, pointsPossible, pointsAwarded }) {
   const update = {}
   if (title !== undefined) update.title = title
   if (dueDate !== undefined) update.dueDate = dueDate ? new Date(dueDate) : null
   if (instructions !== undefined) update.instructions = instructions
   if (subjectId !== undefined) update.subjectId = subjectId ? new ObjectId(subjectId) : null
-  if (grade !== undefined) update.grade = grade
+  if (pointsPossible !== undefined) update.pointsPossible = pointsPossible
+  if (pointsAwarded !== undefined) update.pointsAwarded = pointsAwarded
   update.updatedAt = new Date()
 
   const result = await assignmentsCollection().findOneAndUpdate(
@@ -54,7 +57,13 @@ export async function updateAssignment (id, { title, dueDate, instructions, subj
     { returnDocument: 'after' }
   )
 
-  return result.value
+  // If findOneAndUpdate didn't return the document, fetch it manually
+  if (result?.value) {
+    return result.value
+  }
+  
+  // Fallback: fetch the updated assignment
+  return await findAssignmentById(id)
 }
 
 export async function deleteAssignment (id) {

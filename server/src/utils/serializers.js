@@ -87,9 +87,11 @@ export function serializeAssignment (assignment, subject) {
   return {
     id: assignment._id?.toString?.() ?? assignment._id,
     title: assignment.title,
+    studentId: assignment.studentId?.toString?.() ?? assignment.studentId,
     dueDate: assignment.dueDate ?? null,
     instructions: assignment.instructions ?? null,
-    grade: assignment.grade ?? null,
+    pointsPossible: assignment.pointsPossible ?? null,
+    pointsAwarded: assignment.pointsAwarded ?? null,
     subject: subject ? serializeSubject(subject) : null,
     questions: assignment.questions ?? [],
     createdAt: assignment.createdAt,

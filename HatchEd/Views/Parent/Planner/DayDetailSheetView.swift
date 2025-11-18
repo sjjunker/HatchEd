@@ -50,10 +50,13 @@ struct DayDetailSheetView: View {
                                 PlannerTaskRow(task: task)
                                     .padding(.horizontal)
                                     .swipeActions {
-                                        Button(role: .destructive) {
-                                            onDelete(task)
-                                        } label: {
-                                            Label("Delete", systemImage: "trash")
+                                        // Only allow deletion of regular tasks, not assignments
+                                        if !task.id.hasPrefix("assignment-") {
+                                            Button(role: .destructive) {
+                                                onDelete(task)
+                                            } label: {
+                                                Label("Delete", systemImage: "trash")
+                                            }
                                         }
                                     }
                             }

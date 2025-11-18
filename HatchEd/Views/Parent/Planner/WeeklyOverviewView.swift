@@ -12,7 +12,16 @@ struct WeeklyOverviewView: View {
     let weekDates: [Date]
     let tasksProvider: (Date) -> [PlannerTask]
     let onSelectDay: (Date) -> Void
+    let onSelectTask: ((PlannerTask) -> Void)?
     let selectedDate: Date
+    
+    init(weekDates: [Date], tasksProvider: @escaping (Date) -> [PlannerTask], onSelectDay: @escaping (Date) -> Void, selectedDate: Date, onSelectTask: ((PlannerTask) -> Void)? = nil) {
+        self.weekDates = weekDates
+        self.tasksProvider = tasksProvider
+        self.onSelectDay = onSelectDay
+        self.selectedDate = selectedDate
+        self.onSelectTask = onSelectTask
+    }
 
     private let calendar = Calendar.current
     private let weekdayFormatter: DateFormatter = {
@@ -122,7 +131,7 @@ struct WeeklyOverviewView: View {
             ForEach(weekDates.indices, id: \.self) { column in
                 let date = weekDates[column]
                 let tasks = tasksProvider(date)
-                TasksForDay(tasks: tasks, column: column, columnWidth: columnWidth, rowHeight: rowHeight, hours: hours)
+                TasksForDay(tasks: tasks, column: column, columnWidth: columnWidth, rowHeight: rowHeight, hours: hours, onSelectTask: onSelectTask)
             }
         }
     }
@@ -134,6 +143,7 @@ private struct TasksForDay: View {
     let columnWidth: CGFloat
     let rowHeight: CGFloat
     let hours: [Int]
+    let onSelectTask: ((PlannerTask) -> Void)?
 
     private var dayStart: Date {
         Calendar.current.startOfDay(for: tasks.first?.startDate ?? Date())
@@ -148,22 +158,27 @@ private struct TasksForDay: View {
     var body: some View {
         ForEach(tasks) { task in
             let rect = rectForTask(task)
-            RoundedRectangle(cornerRadius: 10)
-                .fill(task.color.opacity(0.8))
-                .frame(width: columnWidth - 12, height: max(rect.height, 24), alignment: .leading)
-                .overlay(
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(task.title)
-                            .font(.caption2.bold())
-                            .foregroundColor(.white)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
-                            .padding(.horizontal, 6)
-                            .padding(.top, 6)
-                        Spacer(minLength: 4)
-                    }
-                )
-                .position(x: rect.midX, y: rect.midY)
+            Button {
+                onSelectTask?(task)
+            } label: {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(task.color.opacity(0.8))
+                    .frame(width: columnWidth - 12, height: max(rect.height, 24), alignment: .leading)
+                    .overlay(
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(task.title)
+                                .font(.caption2.bold())
+                                .foregroundColor(.white)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                                .padding(.horizontal, 6)
+                                .padding(.top, 6)
+                            Spacer(minLength: 4)
+                        }
+                    )
+            }
+            .buttonStyle(.plain)
+            .position(x: rect.midX, y: rect.midY)
         }
     }
 
@@ -190,6 +205,7 @@ private struct TasksForDay: View {
         weekDates: dates,
         tasksProvider: { _ in store.allTasks() },
         onSelectDay: { _ in },
-        selectedDate: Date()
+        selectedDate: Date(),
+        onSelectTask: { _ in }
     )
 }

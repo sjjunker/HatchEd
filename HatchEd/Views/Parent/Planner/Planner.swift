@@ -13,9 +13,13 @@ struct Planner: View {
     @State private var selectedDate = Calendar.current.startOfDay(for: Date())
     @State private var showingDaySheet = false
     @State private var showingAddTask = false
+    @State private var selectedTask: PlannerTask?
     @State private var weekOffset: Int = 0
+    @State private var assignments: [Assignment] = []
+    @State private var isLoadingAssignments = false
 
     private let calendar = Calendar.current
+    private let api = APIClient.shared
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -24,12 +28,19 @@ struct Planner: View {
 
                 WeeklyOverviewView(
                     weekDates: currentWeekDates,
-                    tasksProvider: { taskStore.tasks(for: $0) },
+                    tasksProvider: { date in
+                        let regularTasks = taskStore.tasks(for: date)
+                        let assignmentTasks = assignmentsToTasks(for: date)
+                        return regularTasks + assignmentTasks
+                    },
                     onSelectDay: { date in
                         selectedDate = date
                         showingDaySheet = true
                     },
-                    selectedDate: selectedDate
+                    selectedDate: selectedDate,
+                    onSelectTask: { task in
+                        selectedTask = task
+                    }
                 )
                 .gesture(
                     DragGesture(minimumDistance: 50)
@@ -55,8 +66,17 @@ struct Planner: View {
             .sheet(isPresented: $showingDaySheet) {
                 DayDetailSheetView(
                     date: selectedDate,
-                    tasks: taskStore.tasks(for: selectedDate),
-                    onDelete: { taskStore.remove($0) }
+                    tasks: {
+                        let regularTasks = taskStore.tasks(for: selectedDate)
+                        let assignmentTasks = assignmentsToTasks(for: selectedDate)
+                        return regularTasks + assignmentTasks
+                    }(),
+                    onDelete: { task in
+                        // Only allow deletion of regular tasks, not assignments
+                        if !task.id.hasPrefix("assignment-") {
+                            taskStore.remove(task)
+                        }
+                    }
                 )
                 .presentationDetents([.fraction(0.4), .large])
             }
@@ -73,14 +93,29 @@ struct Planner: View {
                     .shadow(radius: 6)
             }
             .padding()
-            .sheet(isPresented: $showingAddTask) {
-                AddTaskView(initialDate: selectedDate) { task in
-                    Task { @MainActor in
-                        taskStore.add(task)
-                    }
+        }
+        .sheet(isPresented: $showingAddTask) {
+            AddTaskView(initialDate: selectedDate) { task in
+                Task { @MainActor in
+                    taskStore.add(task)
                 }
-                .presentationDetents([.fraction(0.6), .large])
             }
+            .presentationDetents([.fraction(0.6), .large])
+        }
+        .sheet(item: $selectedTask) { task in
+            TaskDetailSheetView(
+                task: task,
+                assignment: assignmentForTask(task)
+            )
+            .presentationDetents([.fraction(0.7), .large])
+        }
+        .onAppear {
+            Task {
+                await loadAssignments()
+            }
+        }
+        .refreshable {
+            await loadAssignments()
         }
     }
 
@@ -173,6 +208,65 @@ struct Planner: View {
         let currentWeekStart = calendar.date(byAdding: .day, value: -offset, to: today) ?? today
         let targetWeekStart = calendar.date(byAdding: .weekOfYear, value: weekOffset, to: currentWeekStart) ?? currentWeekStart
         return (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: targetWeekStart) }
+    }
+    
+    @MainActor
+    private func loadAssignments() async {
+        guard !isLoadingAssignments else { return }
+        isLoadingAssignments = true
+        do {
+            assignments = try await api.fetchAssignments()
+        } catch {
+            print("Failed to load assignments: \(error)")
+        }
+        isLoadingAssignments = false
+    }
+    
+    private func assignmentsToTasks(for date: Date) -> [PlannerTask] {
+        let startOfDay = calendar.startOfDay(for: date)
+        guard let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) else {
+            return []
+        }
+        
+        return assignments
+            .filter { assignment in
+                guard let dueDate = assignment.dueDate else { return false }
+                let dueDateStart = calendar.startOfDay(for: dueDate)
+                return dueDateStart >= startOfDay && dueDateStart < endOfDay
+            }
+            .map { assignment in
+                // Use due date at 3 PM (15:00) as default time, or start of day if not available
+                let dueDate = assignment.dueDate ?? Date()
+                let taskDate = calendar.date(bySettingHour: 15, minute: 0, second: 0, of: dueDate) ?? calendar.startOfDay(for: dueDate)
+                
+                // Determine color based on subject, or use orange as default for assignments
+                let colorName: String
+                if let subject = assignment.subject {
+                    // Map subject to a color - use first available color option
+                    colorName = PlannerTask.colorOptions.first?.name ?? "Orange"
+                } else {
+                    colorName = "Orange" // Default color for assignments
+                }
+                
+                return PlannerTask(
+                    id: "assignment-\(assignment.id)",
+                    title: assignment.title,
+                    startDate: taskDate,
+                    durationMinutes: 60, // Default 1 hour duration for assignments
+                    colorName: colorName
+                )
+            }
+    }
+    
+    private func assignmentForTask(_ task: PlannerTask) -> Assignment? {
+        // Check if this is an assignment-based task
+        guard task.id.hasPrefix("assignment-") else { return nil }
+        
+        // Extract assignment ID from task ID
+        let assignmentId = String(task.id.dropFirst("assignment-".count))
+        
+        // Find the assignment in the assignments array
+        return assignments.first { $0.id == assignmentId }
     }
 }
 

@@ -66,3 +66,11 @@ export async function listStudentsForFamily (familyId) {
   return usersCollection().find({ familyId: new ObjectId(familyId), role: 'student' }).toArray()
 }
 
+export async function listUsersForFamily (familyId) {
+  return usersCollection().find({ familyId: new ObjectId(familyId) }).toArray()
+}
+
+export async function listParentsForFamily (familyId) {
+  return usersCollection().find({ familyId: new ObjectId(familyId), role: 'parent' }).toArray()
+}
+

@@ -6,6 +6,7 @@
 //  Updated with assistance from Cursor (ChatGPT) on 11/7/25.
 //
 import SwiftUI
+import UserNotifications
 
 struct StudentDashboard: View {
     @EnvironmentObject var signInManager: AppleSignInManager
@@ -354,21 +355,23 @@ struct StudentDashboard: View {
         let notificationBody = "\(studentName) needs help with: \(assignment.title)"
         
         do {
-            // Create notification request
-            // The server should route this to all parent users in the family
+            // Create notification request for parents
             let request = CreateNotificationRequest(
                 title: notificationTitle,
                 body: notificationBody,
-                userId: nil, // Server will route to parents in the family
+                userId: nil, // nil means send to all parents in family
                 familyId: familyId
             )
             
-            // Try to create notification via API
-            // Note: This endpoint may need to be created on the server
+            // Create notification via API
+            // Server returns array of notifications when sending to family
             _ = try await api.request(
                 Endpoint(path: "api/notifications", method: .post, body: request),
-                responseType: NotificationResponse.self
+                responseType: NotificationsResponse.self
             )
+            
+            // Send local push notification
+            sendLocalNotification(title: notificationTitle, body: notificationBody)
             
             // Refresh notifications
             await signInManager.fetchNotifications()
@@ -378,6 +381,25 @@ struct StudentDashboard: View {
         } catch {
             print("Failed to send help request: \(error)")
             // Note: In production, you'd show an error alert to the user
+        }
+    }
+    
+    private func sendLocalNotification(title: String, body: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        
+        let request = UNNotificationRequest(
+            identifier: UUID().uuidString,
+            content: content,
+            trigger: nil // Send immediately
+        )
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Error sending local notification: \(error)")
+            }
         }
     }
 }
@@ -447,9 +469,5 @@ private struct CreateNotificationRequest: Encodable {
     let body: String
     let userId: String?
     let familyId: String
-}
-
-private struct NotificationResponse: Decodable {
-    let notification: Notification
 }
 

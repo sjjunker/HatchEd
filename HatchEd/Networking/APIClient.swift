@@ -380,3 +380,8 @@ extension JSONEncoder {
     }()
 }
 
+// Notification Response Types
+struct NotificationResponse: Decodable {
+    let notification: Notification
+}
+

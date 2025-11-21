@@ -39,6 +39,10 @@ export async function addMemberToFamily ({ familyId, userId }) {
   )
 }
 
+export async function listAllFamilies () {
+  return familiesCollection().find({}).toArray()
+}
+
 function generateJoinCode (length = 6) {
   const characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   let code = ''

@@ -50,6 +50,21 @@ async function start () {
     app.listen(port, () => {
       console.log(`API listening on port ${port}`)
     })
+    
+    // Set up background task to check for overdue assignments every hour
+    const { checkAllFamiliesOverdueAssignments } = await import('./services/assignmentNotificationService.js')
+    setInterval(() => {
+      checkAllFamiliesOverdueAssignments().catch(err => {
+        console.error('Error in scheduled overdue assignment check:', err)
+      })
+    }, 60 * 60 * 1000) // Check every hour
+    
+    // Run initial check after 30 seconds
+    setTimeout(() => {
+      checkAllFamiliesOverdueAssignments().catch(err => {
+        console.error('Error in initial overdue assignment check:', err)
+      })
+    }, 30000)
   } catch (error) {
     console.error('Failed to start server', error)
     process.exit(1)

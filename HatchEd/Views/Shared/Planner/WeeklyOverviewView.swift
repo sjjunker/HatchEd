@@ -37,52 +37,83 @@ struct WeeklyOverviewView: View {
     }()
 
     private let hours: [Int] = Array(6...22)
-    private let columnWidth: CGFloat = 90
-    private let rowHeight: CGFloat = 60
+    private let columnWidth: CGFloat = 45
+    private let rowHeight: CGFloat = 45
 
     var body: some View {
-        ScrollView([.vertical, .horizontal], showsIndicators: false) {
-            ZStack(alignment: .topLeading) {
-                drawGrid()
-                drawTimeLabels()
+        ZStack(alignment: .topLeading) {
+            // ScrollView containing scrollable content
+            GeometryReader { geometry in
+                ScrollView([.vertical], showsIndicators: false) {
+                    ZStack(alignment: .topLeading) {
+                        // Time labels column (left side)
+                        VStack(spacing: 0) {
+                            // Empty space for header row
+                            Color.clear
+                                .frame(width: columnWidth, height: rowHeight)
+                            
+                            // Time labels
+                            drawTimeLabels()
+                        }
+                        .padding(.top, rowHeight)
+                        
+                        // Grid and tasks (offset to account for headers)
+                        ZStack(alignment: .topLeading) {
+                            drawGrid()
+                            drawTasks()
+                        }
+                        .frame(
+                            width: columnWidth * CGFloat(weekDates.count),
+                            height: rowHeight * CGFloat(hours.count)
+                        )
+                        .offset(x: columnWidth, y: rowHeight * 2)
+                    }
+                    .frame(
+                        width: columnWidth + (columnWidth * CGFloat(weekDates.count)),
+                        height: rowHeight + (rowHeight * CGFloat(hours.count)),
+                        alignment: .topLeading
+                    )
+                }
+                .frame(width: geometry.size.width, height: geometry.size.height)
+                .background(Color.hatchEdBackground)
+            }
+            
+            // Sticky day headers overlay (stays visible when scrolling vertically)
+            HStack(spacing: 0) {
+                // Empty space for time column
+                Color.clear
+                    .frame(width: columnWidth, height: rowHeight)
+                
+                // Day headers
                 drawDayHeaders()
-                drawTasks()
             }
             .padding(.leading, columnWidth)
-            .padding(.top, rowHeight)
+            .frame(height: rowHeight)
+            .background(Color.hatchEdBackground)
+            .zIndex(2)
         }
         .background(Color.hatchEdBackground)
     }
 
     private func drawGrid() -> some View {
-        GeometryReader { proxy in
-            Path { path in
-                let width = columnWidth * CGFloat(weekDates.count)
-                let height = rowHeight * CGFloat(hours.count)
-
-                for row in 0...hours.count {
-                    let y = CGFloat(row) * rowHeight
-                    path.move(to: CGPoint(x: 0, y: y))
-                    path.addLine(to: CGPoint(x: width, y: y))
-                }
-
-                for column in 0...weekDates.count {
-                    let x = CGFloat(column) * columnWidth
-                    path.move(to: CGPoint(x: x, y: 0))
-                    path.addLine(to: CGPoint(x: x, y: height))
-                }
+        let width = columnWidth * CGFloat(weekDates.count)
+        let height = rowHeight * CGFloat(hours.count)
+        
+        return Path { path in
+            for row in 0...hours.count {
+                let y = CGFloat(row) * rowHeight
+                path.move(to: CGPoint(x: 0, y: y))
+                path.addLine(to: CGPoint(x: width, y: y))
             }
-            .stroke(Color.hatchEdSecondaryBackground, lineWidth: 1)
-            .frame(
-                width: columnWidth * CGFloat(weekDates.count),
-                height: rowHeight * CGFloat(hours.count),
-                alignment: .topLeading
-            )
+
+            for column in 0...weekDates.count {
+                let x = CGFloat(column) * columnWidth
+                path.move(to: CGPoint(x: x, y: 0))
+                path.addLine(to: CGPoint(x: x, y: height))
+            }
         }
-        .frame(
-            width: columnWidth * CGFloat(weekDates.count),
-            height: rowHeight * CGFloat(hours.count)
-        )
+        .stroke(Color.hatchEdSecondaryBackground, lineWidth: 1)
+        .frame(width: width, height: height, alignment: .topLeading)
     }
 
     private func drawTimeLabels() -> some View {
@@ -94,9 +125,12 @@ struct WeeklyOverviewView: View {
                     .foregroundColor(.hatchEdSecondaryText)
                     .frame(width: columnWidth, height: rowHeight, alignment: .topLeading)
                     .padding(.top, 4)
-                    .padding(.leading, -columnWidth)
+                    .padding(.leading, 8)
+                    .background(Color.hatchEdBackground)
             }
         }
+        .frame(width: columnWidth)
+        .frame(height: rowHeight * CGFloat(hours.count))
     }
 
     private func drawDayHeaders() -> some View {
@@ -123,7 +157,6 @@ struct WeeklyOverviewView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.top, -rowHeight)
     }
 
     private func drawTasks() -> some View {

@@ -215,6 +215,11 @@ export async function getAssignmentsHandler (req, res) {
       return serializeAssignment(assignment, subject)
     })
   )
+  
+  // Check for overdue assignments in the background
+  const { checkOverdueAssignmentsOnFetch } = await import('../services/assignmentNotificationService.js')
+  checkOverdueAssignmentsOnFetch(user.familyId)
+  
   res.json({ assignments: assignmentsWithDetails })
 }
 

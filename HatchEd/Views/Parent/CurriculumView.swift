@@ -287,7 +287,7 @@ private struct AssignmentRow: View {
                     Image(systemName: "calendar")
                         .font(.caption2)
                         .foregroundColor(.hatchEdWarning)
-                    Text("Due: \(dueDate, style: .date)")
+                    Text("Due: \(dueDate, style: .date) at \(dueDate, style: .time)")
                         .font(.caption)
                         .foregroundColor(.hatchEdSecondaryText)
                 }
@@ -361,7 +361,7 @@ private struct AddItemView: View {
                     Toggle("Has Due Date", isOn: $hasDueDate)
                     
                     if hasDueDate {
-                        DatePicker("Due Date", selection: $assignmentDueDate, displayedComponents: .date)
+                        DatePicker("Due Date & Time", selection: $assignmentDueDate, displayedComponents: [.date, .hourAndMinute])
                     }
                     
                     if !courses.isEmpty {

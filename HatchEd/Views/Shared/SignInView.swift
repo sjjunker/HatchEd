@@ -13,9 +13,12 @@ struct SignInView: View {
     var body: some View {
         VStack(spacing: 32) {
             VStack(spacing: 12) {
-                Image(systemName: "book.closed.fill")
-                    .font(.system(size: 64))
-                    .foregroundColor(.hatchEdAccent)
+                Image("AppIconImage")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 120, height: 120)
+                    .cornerRadius(26)
+                    .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
                 
                 Text("Welcome to HatchEd")
                     .font(.largeTitle.bold())

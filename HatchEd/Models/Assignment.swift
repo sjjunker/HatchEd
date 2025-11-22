@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct Assignment: Identifiable, Codable, Equatable {
+struct Assignment: Identifiable, Codable, Equatable, Hashable {
     let id: String
     var title: String
     var studentId: String

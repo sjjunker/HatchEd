@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct Question: Identifiable, Codable, Equatable {
+struct Question: Identifiable, Codable, Equatable, Hashable {
     let id: UUID
     var text: String
     var correctAnswer: String?

@@ -95,11 +95,22 @@ struct Planner: View {
             .padding()
         }
         .sheet(isPresented: $showingAddTask) {
-            AddTaskView(initialDate: selectedDate) { task in
-                Task { @MainActor in
-                    taskStore.add(task)
+            AddTaskView(
+                initialDate: selectedDate,
+                assignments: assignments,
+                existingTaskIds: {
+                    // Get all assignment-based task IDs from all dates in the current week
+                    let allRegularTasks = taskStore.allTasks()
+                    let allWeekDates = currentWeekDates
+                    let allAssignmentTasks = allWeekDates.flatMap { assignmentsToTasks(for: $0) }
+                    return Set(allRegularTasks.map { $0.id } + allAssignmentTasks.map { $0.id })
+                }(),
+                onSave: { task in
+                    Task { @MainActor in
+                        taskStore.add(task)
+                    }
                 }
-            }
+            )
             .presentationDetents([.fraction(0.6), .large])
         }
         .sheet(item: $selectedTask) { task in

@@ -47,7 +47,12 @@ export async function getCoursesHandler (req, res) {
   const coursesWithDetails = await Promise.all(
     courses.map(async (course) => {
       const student = await findUserById(course.studentUserId)
-      return serializeCourse(course, student)
+      // Fetch assignments for this course
+      const assignments = await findAssignmentsByCourseId(course._id.toString())
+      const serializedAssignments = assignments.map(assignment => serializeAssignment(assignment))
+      // Add assignments to course before serializing
+      const courseWithAssignments = { ...course, assignments: serializedAssignments }
+      return serializeCourse(courseWithAssignments, student)
     })
   )
   res.json({ courses: coursesWithDetails })
@@ -73,7 +78,12 @@ export async function updateCourseHandler (req, res) {
 
   const updated = await updateCourse(id, { name, grade })
   const student = await findUserById(updated.studentUserId)
-  res.json({ course: serializeCourse(updated, student) })
+  // Fetch assignments for this course
+  const assignments = await findAssignmentsByCourseId(id)
+  const serializedAssignments = assignments.map(assignment => serializeAssignment(assignment))
+  // Add assignments to course before serializing
+  const courseWithAssignments = { ...updated, assignments: serializedAssignments }
+  res.json({ course: serializeCourse(courseWithAssignments, student) })
 }
 
 export async function deleteCourseHandler (req, res) {

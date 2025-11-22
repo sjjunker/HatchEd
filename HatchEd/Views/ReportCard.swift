@@ -109,13 +109,11 @@ struct ReportCard: View {
         errorMessage = nil
         do {
             courses = try await api.fetchCourses()
-            // Use course grade from server if available, otherwise calculate from assignments
+            // Calculate grade for each course based on its assignments
             courses = courses.map { course in
                 var updatedCourse = course
-                // If course grade is not set on server, calculate from assignments
-                if updatedCourse.grade == nil {
-                    updatedCourse.grade = calculateCourseGrade(for: course)
-                }
+                // Always calculate from assignments
+                updatedCourse.grade = calculateCourseGrade(for: course)
                 return updatedCourse
             }
         } catch {
@@ -125,24 +123,26 @@ struct ReportCard: View {
     }
     
     private func calculateCourseGrade(for course: Course) -> Double? {
+        // Filter to only graded assignments (have both pointsAwarded and pointsPossible)
         let gradedAssignments = course.assignments.filter { assignment in
             assignment.pointsAwarded != nil && assignment.pointsPossible != nil && assignment.pointsPossible! > 0
         }
         guard !gradedAssignments.isEmpty else { return nil }
         
-        // Calculate percentage for each assignment, then average
-        let percentages = gradedAssignments.compactMap { assignment -> Double? in
-            guard let pointsAwarded = assignment.pointsAwarded,
-                  let pointsPossible = assignment.pointsPossible,
-                  pointsPossible > 0 else {
-                return nil
-            }
-            return (pointsAwarded / pointsPossible) * 100
+        // Sum all pointsAwarded
+        let totalPointsAwarded = gradedAssignments.reduce(0.0) { sum, assignment in
+            sum + (assignment.pointsAwarded ?? 0)
         }
         
-        guard !percentages.isEmpty else { return nil }
-        let totalPercentage = percentages.reduce(0.0) { $0 + $1 }
-        return totalPercentage / Double(percentages.count)
+        // Sum all pointsPossible
+        let totalPointsPossible = gradedAssignments.reduce(0.0) { sum, assignment in
+            sum + (assignment.pointsPossible ?? 0)
+        }
+        
+        guard totalPointsPossible > 0 else { return nil }
+        
+        // Calculate percentage: (total earned / total possible) * 100
+        return (totalPointsAwarded / totalPointsPossible) * 100
     }
 }
 

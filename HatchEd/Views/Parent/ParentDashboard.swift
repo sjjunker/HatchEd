@@ -472,13 +472,6 @@ struct ParentDashboard: View {
                                                     .font(.caption)
                                             }
                                         }
-                                        
-                                        if let subject = assignment.subject {
-                                            Text("•")
-                                                .font(.caption)
-                                            Text(subject.name)
-                                                .font(.caption)
-                                        }
                                     }
                                     .foregroundColor(.hatchEdSecondaryText)
                                 }

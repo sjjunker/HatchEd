@@ -15,12 +15,11 @@ struct Assignment: Identifiable, Codable, Equatable {
     var instructions: String?
     var pointsPossible: Double?
     var pointsAwarded: Double?
-    var subject: Subject?
     var questions: [Question]
     var createdAt: Date?
     var updatedAt: Date?
 
-    init(id: String = UUID().uuidString, title: String, studentId: String, dueDate: Date? = nil, instructions: String? = nil, pointsPossible: Double? = nil, pointsAwarded: Double? = nil, subject: Subject? = nil, questions: [Question] = [], createdAt: Date? = nil, updatedAt: Date? = nil) {
+    init(id: String = UUID().uuidString, title: String, studentId: String, dueDate: Date? = nil, instructions: String? = nil, pointsPossible: Double? = nil, pointsAwarded: Double? = nil, questions: [Question] = [], createdAt: Date? = nil, updatedAt: Date? = nil) {
         self.id = id
         self.title = title
         self.studentId = studentId
@@ -28,7 +27,6 @@ struct Assignment: Identifiable, Codable, Equatable {
         self.instructions = instructions
         self.pointsPossible = pointsPossible
         self.pointsAwarded = pointsAwarded
-        self.subject = subject
         self.questions = questions
         self.createdAt = createdAt
         self.updatedAt = updatedAt

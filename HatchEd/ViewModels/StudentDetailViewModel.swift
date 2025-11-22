@@ -23,17 +23,6 @@ final class StudentDetailViewModel: ObservableObject {
         }
     }
 
-    struct SubjectSection: Identifiable {
-        let id: String
-        let subject: Subject
-        let courses: [Course]
-
-        init(subject: Subject, courses: [Course]) {
-            self.id = subject.id
-            self.subject = subject
-            self.courses = courses
-        }
-    }
 
     @Published private(set) var student: User
     @Published private(set) var attendance: AttendanceSummary
@@ -53,19 +42,13 @@ final class StudentDetailViewModel: ObservableObject {
         let attendanceStreakText: String
         let attendanceStatus: AttendanceStatus
         let attendanceRecords: [AttendanceRecordDTO]
-        let subjectSections: [SubjectSectionSnapshot]
+        let courses: [Course]
         let recentAssignments: [Assignment]
 
         enum AttendanceStatus {
             case loading
             case loaded
             case error(String)
-        }
-
-        struct SubjectSectionSnapshot: Identifiable {
-            let id: String
-            let name: String
-            let courses: [Course]
         }
     }
 
@@ -119,9 +102,7 @@ final class StudentDetailViewModel: ObservableObject {
             attendanceStreakText: attendanceStreakText,
             attendanceStatus: attendanceStatus,
             attendanceRecords: attendanceRecords,
-            subjectSections: subjectSections.map { section in
-                StateSnapshot.SubjectSectionSnapshot(id: section.id, name: section.subject.name, courses: section.courses)
-            },
+            courses: courses,
             recentAssignments: recentAssignments
         )
     }
@@ -146,19 +127,6 @@ final class StudentDetailViewModel: ObservableObject {
         attendance.streakDays > 0 ? "\(attendance.streakDays) day\(attendance.streakDays == 1 ? "" : "s")" : "No streak"
     }
 
-    var subjectSections: [SubjectSection] {
-        let grouped = Dictionary(grouping: courses) { course -> Subject in
-            if let subject = course.subject {
-                return subject
-            } else {
-                return Subject(name: "General Studies")
-            }
-        }
-
-        return grouped
-            .map { SubjectSection(subject: $0.key, courses: $0.value.sorted { $0.name < $1.name }) }
-            .sorted { $0.subject.name < $1.subject.name }
-    }
 
     var recentAssignments: [Assignment] {
         assignments
@@ -206,22 +174,20 @@ extension StudentDetailViewModel {
 private enum SampleData {
     static func make() -> (student: User, courses: [Course], assignments: [Assignment], attendanceRecords: [AttendanceRecordDTO]) {
         let student = User(id: "preview-student", appleId: nil, name: "Alex Student", email: "alex@example.com", role: "student", familyId: "preview-family", createdAt: Date(), updatedAt: Date())
-        let math = Subject(name: "Mathematics")
-        let science = Subject(name: "Science")
 
         let algebraAssignments = [
-            Assignment(title: "Quadratic Functions", studentId: student.id, dueDate: Date().addingTimeInterval(-86_400), pointsPossible: 100, pointsAwarded: 92, subject: math, questions: []),
-            Assignment(title: "Polynomials Worksheet", studentId: student.id, dueDate: Date().addingTimeInterval(-259_200), pointsPossible: 100, pointsAwarded: 95, subject: math, questions: [])
+            Assignment(title: "Quadratic Functions", studentId: student.id, dueDate: Date().addingTimeInterval(-86_400), pointsPossible: 100, pointsAwarded: 92, questions: []),
+            Assignment(title: "Polynomials Worksheet", studentId: student.id, dueDate: Date().addingTimeInterval(-259_200), pointsPossible: 100, pointsAwarded: 95, questions: [])
         ]
 
         let biologyAssignments = [
-            Assignment(title: "Cell Structure Lab", studentId: student.id, dueDate: Date().addingTimeInterval(-172_800), pointsPossible: 100, pointsAwarded: 88, subject: science, questions: []),
-            Assignment(title: "Photosynthesis Quiz", studentId: student.id, dueDate: Date().addingTimeInterval(-604_800), pointsPossible: 100, pointsAwarded: 94, subject: science, questions: [])
+            Assignment(title: "Cell Structure Lab", studentId: student.id, dueDate: Date().addingTimeInterval(-172_800), pointsPossible: 100, pointsAwarded: 88, questions: []),
+            Assignment(title: "Photosynthesis Quiz", studentId: student.id, dueDate: Date().addingTimeInterval(-604_800), pointsPossible: 100, pointsAwarded: 94, questions: [])
         ]
 
         let courses = [
-            Course(name: "Algebra II", assignments: algebraAssignments, grade: 93.5, subject: math, student: student),
-            Course(name: "Biology", assignments: biologyAssignments, grade: 90.0, subject: science, student: student)
+            Course(name: "Algebra II", assignments: algebraAssignments, grade: 93.5, student: student),
+            Course(name: "Biology", assignments: biologyAssignments, grade: 90.0, student: student)
         ]
 
         let assignments = (algebraAssignments + biologyAssignments).sorted { ($0.dueDate ?? .distantPast) > ($1.dueDate ?? .distantPast) }

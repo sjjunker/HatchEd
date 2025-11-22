@@ -90,7 +90,7 @@ struct ReportCard: View {
             
             // Courses List
             VStack(spacing: 12) {
-                ForEach(courses.sorted(by: { ($0.subject?.name ?? "") < ($1.subject?.name ?? "") })) { course in
+                ForEach(courses.sorted(by: { $0.name < $1.name })) { course in
                     CourseGradeRow(course: course)
                 }
             }
@@ -156,12 +156,6 @@ private struct CourseGradeRow: View {
                     .font(.body)
                     .fontWeight(.medium)
                     .foregroundColor(.hatchEdText)
-                
-                if let subject = course.subject {
-                    Text(subject.name)
-                        .font(.caption)
-                        .foregroundColor(.hatchEdSecondaryText)
-                }
             }
             
             Spacer()

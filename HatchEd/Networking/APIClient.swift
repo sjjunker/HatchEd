@@ -110,20 +110,12 @@ final class APIClient {
     }
     
     // Curriculum API methods
-    struct SubjectsResponse: Decodable {
-        let subjects: [Subject]
-    }
-    
     struct CoursesResponse: Decodable {
         let courses: [Course]
     }
     
     struct AssignmentsResponse: Decodable {
         let assignments: [Assignment]
-    }
-    
-    struct SubjectResponse: Decodable {
-        let subject: Subject
     }
     
     struct CourseResponse: Decodable {
@@ -138,24 +130,14 @@ final class APIClient {
         let success: Bool
     }
     
-    struct CreateSubjectRequest: Encodable {
-        let name: String
-    }
-    
-    struct UpdateSubjectRequest: Encodable {
-        let name: String
-    }
-    
     struct CreateCourseRequest: Encodable {
         let name: String
-        let subjectId: String?
         let studentUserId: String
         let grade: Double?
     }
     
     struct UpdateCourseRequest: Encodable {
         let name: String?
-        let subjectId: String?
         let grade: Double?
     }
     
@@ -164,7 +146,6 @@ final class APIClient {
         let studentId: String
         let dueDate: Date?
         let instructions: String?
-        let subjectId: String?
         let pointsPossible: Double?
         let pointsAwarded: Double?
         let courseId: String?
@@ -174,48 +155,13 @@ final class APIClient {
         let title: String?
         let dueDate: Date?
         let instructions: String?
-        let subjectId: String?
         let pointsPossible: Double?
         let pointsAwarded: Double?
     }
     
-    // Subjects
-    func createSubject(name: String) async throws -> Subject {
-        let body = CreateSubjectRequest(name: name)
-        let response: SubjectResponse = try await request(
-            Endpoint(path: "api/curriculum/subjects", method: .post, body: body),
-            responseType: SubjectResponse.self
-        )
-        return response.subject
-    }
-    
-    func fetchSubjects() async throws -> [Subject] {
-        let response: SubjectsResponse = try await request(
-            Endpoint(path: "api/curriculum/subjects"),
-            responseType: SubjectsResponse.self
-        )
-        return response.subjects
-    }
-    
-    func updateSubject(id: String, name: String) async throws -> Subject {
-        let body = UpdateSubjectRequest(name: name)
-        let response: SubjectResponse = try await request(
-            Endpoint(path: "api/curriculum/subjects/\(id)", method: .patch, body: body),
-            responseType: SubjectResponse.self
-        )
-        return response.subject
-    }
-    
-    func deleteSubject(id: String) async throws {
-        _ = try await request(
-            Endpoint(path: "api/curriculum/subjects/\(id)", method: .delete),
-            responseType: SuccessResponse.self
-        )
-    }
-    
     // Courses
-    func createCourse(name: String, subjectId: String?, studentUserId: String, grade: Double?) async throws -> Course {
-        let body = CreateCourseRequest(name: name, subjectId: subjectId, studentUserId: studentUserId, grade: grade)
+    func createCourse(name: String, studentUserId: String, grade: Double?) async throws -> Course {
+        let body = CreateCourseRequest(name: name, studentUserId: studentUserId, grade: grade)
         let response: CourseResponse = try await request(
             Endpoint(path: "api/curriculum/courses", method: .post, body: body),
             responseType: CourseResponse.self
@@ -231,8 +177,8 @@ final class APIClient {
         return response.courses
     }
     
-    func updateCourse(id: String, name: String?, subjectId: String?, grade: Double?) async throws -> Course {
-        let body = UpdateCourseRequest(name: name, subjectId: subjectId, grade: grade)
+    func updateCourse(id: String, name: String?, grade: Double?) async throws -> Course {
+        let body = UpdateCourseRequest(name: name, grade: grade)
         let response: CourseResponse = try await request(
             Endpoint(path: "api/curriculum/courses/\(id)", method: .patch, body: body),
             responseType: CourseResponse.self
@@ -248,8 +194,8 @@ final class APIClient {
     }
     
     // Assignments
-    func createAssignment(title: String, studentId: String, dueDate: Date?, instructions: String?, subjectId: String?, pointsPossible: Double?, pointsAwarded: Double?, courseId: String?) async throws -> Assignment {
-        let body = CreateAssignmentRequest(title: title, studentId: studentId, dueDate: dueDate, instructions: instructions, subjectId: subjectId, pointsPossible: pointsPossible, pointsAwarded: pointsAwarded, courseId: courseId)
+    func createAssignment(title: String, studentId: String, dueDate: Date?, instructions: String?, pointsPossible: Double?, pointsAwarded: Double?, courseId: String?) async throws -> Assignment {
+        let body = CreateAssignmentRequest(title: title, studentId: studentId, dueDate: dueDate, instructions: instructions, pointsPossible: pointsPossible, pointsAwarded: pointsAwarded, courseId: courseId)
         let response: AssignmentResponse = try await request(
             Endpoint(path: "api/curriculum/assignments", method: .post, body: body),
             responseType: AssignmentResponse.self
@@ -265,8 +211,8 @@ final class APIClient {
         return response.assignments
     }
     
-    func updateAssignment(id: String, title: String?, dueDate: Date?, instructions: String?, subjectId: String?, pointsPossible: Double?, pointsAwarded: Double?) async throws -> Assignment {
-        let body = UpdateAssignmentRequest(title: title, dueDate: dueDate, instructions: instructions, subjectId: subjectId, pointsPossible: pointsPossible, pointsAwarded: pointsAwarded)
+    func updateAssignment(id: String, title: String?, dueDate: Date?, instructions: String?, pointsPossible: Double?, pointsAwarded: Double?) async throws -> Assignment {
+        let body = UpdateAssignmentRequest(title: title, dueDate: dueDate, instructions: instructions, pointsPossible: pointsPossible, pointsAwarded: pointsAwarded)
         let response: AssignmentResponse = try await request(
             Endpoint(path: "api/curriculum/assignments/\(id)", method: .patch, body: body),
             responseType: AssignmentResponse.self

@@ -4,10 +4,6 @@ import { Router } from 'express'
 import { asyncHandler } from '../middleware/asyncHandler.js'
 import { requireAuth } from '../middleware/requireAuth.js'
 import {
-  createSubjectHandler,
-  getSubjectsHandler,
-  updateSubjectHandler,
-  deleteSubjectHandler,
   createCourseHandler,
   getCoursesHandler,
   updateCourseHandler,
@@ -21,12 +17,6 @@ import {
 const router = Router()
 
 router.use(requireAuth)
-
-// Subjects
-router.post('/subjects', asyncHandler(createSubjectHandler))
-router.get('/subjects', asyncHandler(getSubjectsHandler))
-router.patch('/subjects/:id', asyncHandler(updateSubjectHandler))
-router.delete('/subjects/:id', asyncHandler(deleteSubjectHandler))
 
 // Courses
 router.post('/courses', asyncHandler(createCourseHandler))

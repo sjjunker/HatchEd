@@ -437,12 +437,6 @@ private struct AssignmentRow: View {
                     }
                     .foregroundColor(.hatchEdSecondaryText)
                 }
-                
-                if let subject = assignment.subject {
-                    Text(subject.name)
-                        .font(.caption)
-                        .foregroundColor(.hatchEdSecondaryText)
-                }
             }
             
             Spacer()

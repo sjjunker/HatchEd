@@ -125,16 +125,8 @@ struct StudentDetail: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Courses")
                 .font(.headline)
-            ForEach(viewModelState.subjectSections) { section in
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(section.name)
-                        .font(.subheadline.bold())
-                        .foregroundColor(.hatchEdAccent)
-                    ForEach(section.courses) { course in
-                        CourseRow(course: course)
-                    }
-                }
-                Divider()
+            ForEach(viewModelState.courses) { course in
+                CourseRow(course: course)
             }
         }
     }
@@ -235,18 +227,10 @@ private struct AssignmentRow: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(assignment.title)
                 .font(.subheadline.bold())
-            HStack {
-                if let subject = assignment.subject?.name {
-                    Text(subject)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
-                if let dueDate = assignment.dueDate {
-                    Text(dueDate, style: .date)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+            if let dueDate = assignment.dueDate {
+                Text(dueDate, style: .date)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
         }
         .padding()

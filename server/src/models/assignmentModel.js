@@ -9,14 +9,13 @@ function assignmentsCollection () {
   return getCollection(ASSIGNMENTS_COLLECTION)
 }
 
-export async function createAssignment ({ familyId, title, studentId, dueDate, instructions, subjectId, pointsPossible, pointsAwarded, courseId }) {
+export async function createAssignment ({ familyId, title, studentId, dueDate, instructions, pointsPossible, pointsAwarded, courseId }) {
   const assignment = {
     familyId: new ObjectId(familyId),
     title,
     studentId: new ObjectId(studentId),
     dueDate: dueDate ? new Date(dueDate) : null,
     instructions: instructions ?? null,
-    subjectId: subjectId ? new ObjectId(subjectId) : null,
     pointsPossible: pointsPossible ?? null,
     pointsAwarded: pointsAwarded ?? null,
     courseId: courseId ? new ObjectId(courseId) : null,
@@ -41,12 +40,11 @@ export async function findAssignmentById (id) {
   return assignmentsCollection().findOne({ _id: new ObjectId(id) })
 }
 
-export async function updateAssignment (id, { title, dueDate, instructions, subjectId, pointsPossible, pointsAwarded }) {
+export async function updateAssignment (id, { title, dueDate, instructions, pointsPossible, pointsAwarded }) {
   const update = {}
   if (title !== undefined) update.title = title
   if (dueDate !== undefined) update.dueDate = dueDate ? new Date(dueDate) : null
   if (instructions !== undefined) update.instructions = instructions
-  if (subjectId !== undefined) update.subjectId = subjectId ? new ObjectId(subjectId) : null
   if (pointsPossible !== undefined) update.pointsPossible = pointsPossible
   if (pointsAwarded !== undefined) update.pointsAwarded = pointsAwarded
   update.updatedAt = new Date()

@@ -9,7 +9,6 @@ import SwiftUI
 
 struct CurriculumView: View {
     @EnvironmentObject private var signInManager: AppleSignInManager
-    @State private var subjects: [Subject] = []
     @State private var courses: [Course] = []
     @State private var assignments: [Assignment] = []
     @State private var showingAddSheet = false
@@ -20,13 +19,11 @@ struct CurriculumView: View {
     private let api = APIClient.shared
     
     enum AddType: Identifiable {
-        case subject
         case course
         case assignment
         
         var id: String {
             switch self {
-            case .subject: return "subject"
             case .course: return "course"
             case .assignment: return "assignment"
             }
@@ -34,7 +31,6 @@ struct CurriculumView: View {
         
         var title: String {
             switch self {
-            case .subject: return "Add Subject"
             case .course: return "Add Course"
             case .assignment: return "Add Assignment"
             }
@@ -45,10 +41,9 @@ struct CurriculumView: View {
         ZStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    if subjects.isEmpty && courses.isEmpty && assignments.isEmpty {
+                    if courses.isEmpty && assignments.isEmpty {
                         emptyStateView
                     } else {
-                        subjectsSection
                         coursesSection
                         assignmentsSection
                     }
@@ -99,9 +94,6 @@ struct CurriculumView: View {
             }
         }
         .confirmationDialog("Add New Item", isPresented: $showingAddSheet, titleVisibility: .visible) {
-            Button("Subject") {
-                addSheetType = .subject
-            }
             Button("Course") {
                 addSheetType = .course
             }
@@ -116,7 +108,6 @@ struct CurriculumView: View {
             NavigationView {
                 AddItemView(
                     type: type,
-                    subjects: $subjects,
                     courses: $courses,
                     assignments: $assignments,
                     students: signInManager.students,
@@ -131,11 +122,9 @@ struct CurriculumView: View {
         isLoading = true
         errorMessage = nil
         do {
-            async let subjectsTask = api.fetchSubjects()
             async let coursesTask = api.fetchCourses()
             async let assignmentsTask = api.fetchAssignments()
             
-            subjects = try await subjectsTask
             courses = try await coursesTask
             assignments = try await assignmentsTask
         } catch {
@@ -152,38 +141,13 @@ struct CurriculumView: View {
             Text("No curriculum items yet")
                 .font(.headline)
                 .foregroundColor(.hatchEdSecondaryText)
-            Text("Tap the + button to add subjects, courses, or assignments")
+            Text("Tap the + button to add courses or assignments")
                 .font(.subheadline)
                 .foregroundColor(.hatchEdSecondaryText)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 60)
-    }
-    
-    private var subjectsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "folder.fill")
-                    .foregroundColor(.hatchEdAccent)
-                Text("Subjects")
-                    .font(.headline)
-                    .foregroundColor(.hatchEdText)
-            }
-            
-            if subjects.isEmpty {
-                Text("No subjects yet")
-                    .font(.subheadline)
-                    .foregroundColor(.hatchEdSecondaryText)
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.hatchEdSecondaryBackground))
-            } else {
-                ForEach(subjects) { subject in
-                    SubjectRow(subject: subject)
-                }
-            }
-        }
     }
     
     private var coursesSection: some View {
@@ -237,31 +201,6 @@ struct CurriculumView: View {
     }
 }
 
-private struct SubjectRow: View {
-    let subject: Subject
-    
-    var body: some View {
-        HStack {
-            Image(systemName: "folder.fill")
-                .foregroundColor(.hatchEdWhite)
-                .font(.title3)
-                .padding(8)
-                .background(Color.hatchEdAccent)
-                .clipShape(Circle())
-            Text(subject.name)
-                .foregroundColor(.hatchEdText)
-                .fontWeight(.medium)
-            Spacer()
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.hatchEdCardBackground)
-                .shadow(color: Color.hatchEdAccent.opacity(0.15), radius: 4, x: 0, y: 2)
-        )
-    }
-}
-
 private struct CourseRow: View {
     let course: Course
     
@@ -289,19 +228,9 @@ private struct CourseRow: View {
                         .cornerRadius(8)
                 }
             }
-            HStack(spacing: 8) {
-                if let subject = course.subject {
-                    Text(subject.name)
-                        .font(.caption)
-                        .foregroundColor(.hatchEdSecondaryText)
-                    Text("•")
-                        .font(.caption)
-                        .foregroundColor(.hatchEdSecondaryText)
-                }
-                Text(course.student.name ?? "Student")
-                    .font(.caption)
-                    .foregroundColor(.hatchEdSecondaryText)
-            }
+            Text(course.student.name ?? "Student")
+                .font(.caption)
+                .foregroundColor(.hatchEdSecondaryText)
         }
         .padding()
         .background(
@@ -363,11 +292,6 @@ private struct AssignmentRow: View {
                         .foregroundColor(.hatchEdSecondaryText)
                 }
             }
-            if let subject = assignment.subject {
-                Text(subject.name)
-                    .font(.caption)
-                    .foregroundColor(.hatchEdSecondaryText)
-            }
         }
         .padding()
         .background(
@@ -380,20 +304,16 @@ private struct AssignmentRow: View {
 
 private struct AddItemView: View {
     let type: CurriculumView.AddType
-    @Binding var subjects: [Subject]
     @Binding var courses: [Course]
     @Binding var assignments: [Assignment]
     let students: [User]
     @Binding var errorMessage: String?
     @Environment(\.dismiss) private var dismiss
     
-    @State private var subjectName = ""
     @State private var courseName = ""
-    @State private var selectedSubjectForCourse: Subject?
     @State private var selectedStudentForCourse: User?
     @State private var assignmentTitle = ""
     @State private var assignmentDueDate = Date()
-    @State private var selectedSubjectForAssignment: Subject?
     @State private var selectedCourseForAssignment: Course?
     @State private var selectedStudentForAssignment: User?
     @State private var hasDueDate = false
@@ -401,11 +321,6 @@ private struct AddItemView: View {
     var body: some View {
         Form {
             switch type {
-            case .subject:
-                Section(header: Text("Subject Name")) {
-                    TextField("Enter subject name", text: $subjectName)
-                }
-                
             case .course:
                 Section(header: Text("Course Details")) {
                     TextField("Enter course name", text: $courseName)
@@ -420,20 +335,6 @@ private struct AddItemView: View {
                             Text("Select a student").tag(nil as String?)
                             ForEach(students) { student in
                                 Text(student.name ?? "Student").tag(student.id as String?)
-                            }
-                        }
-                    }
-                    
-                    if !subjects.isEmpty {
-                        Picker("Subject", selection: Binding(
-                            get: { selectedSubjectForCourse?.id },
-                            set: { id in
-                                selectedSubjectForCourse = subjects.first { $0.id == id }
-                            }
-                        )) {
-                            Text("None").tag(nil as String?)
-                            ForEach(subjects) { subject in
-                                Text(subject.name).tag(subject.id as String?)
                             }
                         }
                     }
@@ -476,20 +377,6 @@ private struct AddItemView: View {
                             }
                         }
                     }
-                    
-                    if !subjects.isEmpty {
-                        Picker("Subject", selection: Binding(
-                            get: { selectedSubjectForAssignment?.id },
-                            set: { id in
-                                selectedSubjectForAssignment = subjects.first { $0.id == id }
-                            }
-                        )) {
-                            Text("None").tag(nil as String?)
-                            ForEach(subjects) { subject in
-                                Text(subject.name).tag(subject.id as String?)
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -514,8 +401,6 @@ private struct AddItemView: View {
     
     private var isValid: Bool {
         switch type {
-        case .subject:
-            return !subjectName.trimmingCharacters(in: .whitespaces).isEmpty
         case .course:
             return !courseName.trimmingCharacters(in: .whitespaces).isEmpty && selectedStudentForCourse != nil
         case .assignment:
@@ -528,15 +413,10 @@ private struct AddItemView: View {
         let api = APIClient.shared
         do {
             switch type {
-            case .subject:
-                let newSubject = try await api.createSubject(name: subjectName.trimmingCharacters(in: .whitespaces))
-                subjects.append(newSubject)
-                
             case .course:
                 guard let student = selectedStudentForCourse else { return }
                 let newCourse = try await api.createCourse(
                     name: courseName.trimmingCharacters(in: .whitespaces),
-                    subjectId: selectedSubjectForCourse?.id,
                     studentUserId: student.id,
                     grade: nil
                 )
@@ -549,7 +429,6 @@ private struct AddItemView: View {
                     studentId: student.id,
                     dueDate: hasDueDate ? assignmentDueDate : nil,
                     instructions: nil,
-                    subjectId: selectedSubjectForAssignment?.id,
                     pointsPossible: nil,
                     pointsAwarded: nil,
                     courseId: selectedCourseForAssignment?.id

@@ -48,12 +48,6 @@ struct AssignmentGradingView: View {
                             .fontWeight(.bold)
                             .foregroundColor(.hatchEdText)
                         
-                        if let subject = assignment.subject {
-                            Text(subject.name)
-                                .font(.subheadline)
-                                .foregroundColor(.hatchEdSecondaryText)
-                        }
-                        
                         if let dueDate = assignment.dueDate {
                             HStack {
                                 Image(systemName: "calendar")
@@ -310,7 +304,6 @@ struct AssignmentGradingView: View {
                 title: nil,
                 dueDate: nil,
                 instructions: nil,
-                subjectId: nil,
                 pointsPossible: pointsPossibleValue,
                 pointsAwarded: pointsAwardedValue
             )
@@ -337,7 +330,6 @@ struct AssignmentGradingView: View {
                                 _ = try await api.updateCourse(
                                     id: course.id,
                                     name: nil,
-                                    subjectId: nil,
                                     grade: courseGrade
                                 )
                             }
@@ -368,8 +360,7 @@ struct AssignmentGradingView: View {
         dueDate: Date(),
         instructions: "Complete all problems on page 45",
         pointsPossible: 100,
-        pointsAwarded: nil,
-        subject: Subject(name: "Mathematics")
+        pointsAwarded: nil
     )
     
     AssignmentGradingView(

@@ -42,14 +42,6 @@ struct TaskDetailSheetView: View {
                                 .font(.title2)
                                 .fontWeight(.bold)
                                 .foregroundColor(.hatchEdText)
-                            
-                            if let assignment = assignment {
-                                if let subject = assignment.subject {
-                                    Text(subject.name)
-                                        .font(.subheadline)
-                                        .foregroundColor(.hatchEdSecondaryText)
-                                }
-                            }
                         }
                         
                         Spacer()

@@ -9,11 +9,10 @@ function coursesCollection () {
   return getCollection(COURSES_COLLECTION)
 }
 
-export async function createCourse ({ familyId, name, subjectId, studentUserId, grade }) {
+export async function createCourse ({ familyId, name, studentUserId, grade }) {
   const course = {
     familyId: new ObjectId(familyId),
     name,
-    subjectId: subjectId ? new ObjectId(subjectId) : null,
     studentUserId: new ObjectId(studentUserId),
     grade: grade ?? null,
     assignments: [],
@@ -37,10 +36,9 @@ export async function findCourseById (id) {
   return coursesCollection().findOne({ _id: new ObjectId(id) })
 }
 
-export async function updateCourse (id, { name, subjectId, grade }) {
+export async function updateCourse (id, { name, grade }) {
   const update = {}
   if (name !== undefined) update.name = name
-  if (subjectId !== undefined) update.subjectId = subjectId ? new ObjectId(subjectId) : null
   if (grade !== undefined) update.grade = grade
   update.updatedAt = new Date()
 

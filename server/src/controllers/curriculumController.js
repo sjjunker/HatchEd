@@ -3,83 +3,13 @@
 import { ObjectId } from 'mongodb'
 import { findUserById } from '../models/userModel.js'
 import { findFamilyById } from '../models/familyModel.js'
-import { createSubject, findSubjectsByFamilyId, updateSubject, deleteSubject, findSubjectById } from '../models/subjectModel.js'
 import { createCourse, findCoursesByFamilyId, findCoursesByStudentId, updateCourse, deleteCourse, findCourseById } from '../models/courseModel.js'
 import { createAssignment, findAssignmentsByFamilyId, findAssignmentsByCourseId, updateAssignment, deleteAssignment, findAssignmentById } from '../models/assignmentModel.js'
-import { serializeSubject, serializeCourse, serializeAssignment } from '../utils/serializers.js'
-
-// Subjects
-export async function createSubjectHandler (req, res) {
-  const { name } = req.body
-  if (!name || !name.trim()) {
-    return res.status(400).json({ error: { message: 'Subject name is required' } })
-  }
-
-  const user = await findUserById(req.user.userId)
-  if (!user || !user.familyId) {
-    return res.status(400).json({ error: { message: 'User must belong to a family' } })
-  }
-
-  const subject = await createSubject({ familyId: user.familyId, name: name.trim() })
-  res.status(201).json({ subject: serializeSubject(subject) })
-}
-
-export async function getSubjectsHandler (req, res) {
-  const user = await findUserById(req.user.userId)
-  if (!user || !user.familyId) {
-    return res.json({ subjects: [] })
-  }
-
-  const subjects = await findSubjectsByFamilyId(user.familyId)
-  res.json({ subjects: subjects.map(serializeSubject) })
-}
-
-export async function updateSubjectHandler (req, res) {
-  const { id } = req.params
-  const { name } = req.body
-
-  const user = await findUserById(req.user.userId)
-  if (!user || !user.familyId) {
-    return res.status(400).json({ error: { message: 'User must belong to a family' } })
-  }
-
-  const subject = await findSubjectById(id)
-  if (!subject) {
-    return res.status(404).json({ error: { message: 'Subject not found' } })
-  }
-
-  if (subject.familyId.toString() !== user.familyId.toString()) {
-    return res.status(403).json({ error: { message: 'Not authorized' } })
-  }
-
-  const updated = await updateSubject(id, { name })
-  res.json({ subject: serializeSubject(updated) })
-}
-
-export async function deleteSubjectHandler (req, res) {
-  const { id } = req.params
-
-  const user = await findUserById(req.user.userId)
-  if (!user || !user.familyId) {
-    return res.status(400).json({ error: { message: 'User must belong to a family' } })
-  }
-
-  const subject = await findSubjectById(id)
-  if (!subject) {
-    return res.status(404).json({ error: { message: 'Subject not found' } })
-  }
-
-  if (subject.familyId.toString() !== user.familyId.toString()) {
-    return res.status(403).json({ error: { message: 'Not authorized' } })
-  }
-
-  await deleteSubject(id)
-  res.json({ success: true })
-}
+import { serializeCourse, serializeAssignment } from '../utils/serializers.js'
 
 // Courses
 export async function createCourseHandler (req, res) {
-  const { name, subjectId, studentUserId, grade } = req.body
+  const { name, studentUserId, grade } = req.body
   if (!name || !name.trim()) {
     return res.status(400).json({ error: { message: 'Course name is required' } })
   }
@@ -101,7 +31,6 @@ export async function createCourseHandler (req, res) {
   const course = await createCourse({
     familyId: user.familyId,
     name: name.trim(),
-    subjectId,
     studentUserId,
     grade
   })
@@ -118,8 +47,7 @@ export async function getCoursesHandler (req, res) {
   const coursesWithDetails = await Promise.all(
     courses.map(async (course) => {
       const student = await findUserById(course.studentUserId)
-      const subject = course.subjectId ? await findSubjectById(course.subjectId) : null
-      return serializeCourse(course, student, subject)
+      return serializeCourse(course, student)
     })
   )
   res.json({ courses: coursesWithDetails })
@@ -127,7 +55,7 @@ export async function getCoursesHandler (req, res) {
 
 export async function updateCourseHandler (req, res) {
   const { id } = req.params
-  const { name, subjectId, grade } = req.body
+  const { name, grade } = req.body
 
   const user = await findUserById(req.user.userId)
   if (!user || !user.familyId) {
@@ -143,10 +71,9 @@ export async function updateCourseHandler (req, res) {
     return res.status(403).json({ error: { message: 'Not authorized' } })
   }
 
-  const updated = await updateCourse(id, { name, subjectId, grade })
+  const updated = await updateCourse(id, { name, grade })
   const student = await findUserById(updated.studentUserId)
-  const subject = updated.subjectId ? await findSubjectById(updated.subjectId) : null
-  res.json({ course: serializeCourse(updated, student, subject) })
+  res.json({ course: serializeCourse(updated, student) })
 }
 
 export async function deleteCourseHandler (req, res) {
@@ -172,7 +99,7 @@ export async function deleteCourseHandler (req, res) {
 
 // Assignments
 export async function createAssignmentHandler (req, res) {
-  const { title, studentId, dueDate, instructions, subjectId, pointsPossible, pointsAwarded, courseId } = req.body
+  const { title, studentId, dueDate, instructions, pointsPossible, pointsAwarded, courseId } = req.body
   if (!title || !title.trim()) {
     return res.status(400).json({ error: { message: 'Assignment title is required' } })
   }
@@ -192,14 +119,12 @@ export async function createAssignmentHandler (req, res) {
     studentId,
     dueDate,
     instructions,
-    subjectId,
     pointsPossible,
     pointsAwarded,
     courseId
   })
   
-  const subject = assignment.subjectId ? await findSubjectById(assignment.subjectId) : null
-  res.status(201).json({ assignment: serializeAssignment(assignment, subject) })
+  res.status(201).json({ assignment: serializeAssignment(assignment) })
 }
 
 export async function getAssignmentsHandler (req, res) {
@@ -209,12 +134,7 @@ export async function getAssignmentsHandler (req, res) {
   }
 
   const assignments = await findAssignmentsByFamilyId(user.familyId)
-  const assignmentsWithDetails = await Promise.all(
-    assignments.map(async (assignment) => {
-      const subject = assignment.subjectId ? await findSubjectById(assignment.subjectId) : null
-      return serializeAssignment(assignment, subject)
-    })
-  )
+  const assignmentsWithDetails = assignments.map(assignment => serializeAssignment(assignment))
   
   // Check for overdue assignments in the background
   const { checkOverdueAssignmentsOnFetch } = await import('../services/assignmentNotificationService.js')
@@ -225,7 +145,7 @@ export async function getAssignmentsHandler (req, res) {
 
 export async function updateAssignmentHandler (req, res) {
   const { id } = req.params
-  const { title, dueDate, instructions, subjectId, pointsPossible, pointsAwarded } = req.body
+  const { title, dueDate, instructions, pointsPossible, pointsAwarded } = req.body
 
   const user = await findUserById(req.user.userId)
   if (!user || !user.familyId) {
@@ -241,13 +161,11 @@ export async function updateAssignmentHandler (req, res) {
     return res.status(403).json({ error: { message: 'Not authorized' } })
   }
 
-  const updated = await updateAssignment(id, { title, dueDate, instructions, subjectId, pointsPossible, pointsAwarded })
+  const updated = await updateAssignment(id, { title, dueDate, instructions, pointsPossible, pointsAwarded })
   if (!updated) {
     return res.status(404).json({ error: { message: 'Assignment not found or could not be updated' } })
   }
-  const subjectIdToFind = updated.subjectId ? (updated.subjectId.toString ? updated.subjectId.toString() : updated.subjectId) : null
-  const subject = subjectIdToFind ? await findSubjectById(subjectIdToFind) : null
-  res.json({ assignment: serializeAssignment(updated, subject) })
+  res.json({ assignment: serializeAssignment(updated) })
 }
 
 export async function deleteAssignmentHandler (req, res) {

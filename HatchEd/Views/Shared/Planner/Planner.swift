@@ -239,14 +239,8 @@ struct Planner: View {
                 let dueDate = assignment.dueDate ?? Date()
                 let taskDate = calendar.date(bySettingHour: 15, minute: 0, second: 0, of: dueDate) ?? calendar.startOfDay(for: dueDate)
                 
-                // Determine color based on subject, or use orange as default for assignments
-                let colorName: String
-                if let subject = assignment.subject {
-                    // Map subject to a color - use first available color option
-                    colorName = PlannerTask.colorOptions.first?.name ?? "Orange"
-                } else {
-                    colorName = "Orange" // Default color for assignments
-                }
+                // Use orange as default color for assignments
+                let colorName = "Orange"
                 
                 return PlannerTask(
                     id: "assignment-\(assignment.id)",

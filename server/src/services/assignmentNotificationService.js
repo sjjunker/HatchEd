@@ -4,7 +4,20 @@ import { findAssignmentsByFamilyId } from '../models/assignmentModel.js'
 import { createNotification, createNotificationsForParents, findNotificationsForFamily } from '../models/notificationModel.js'
 import { listStudentsForFamily } from '../models/userModel.js'
 
+// Track ongoing checks to prevent concurrent execution
+const ongoingChecks = new Set()
+
 export async function checkOverdueAssignments (familyId) {
+  const familyIdStr = familyId.toString()
+  
+  // Prevent concurrent execution for the same family
+  if (ongoingChecks.has(familyIdStr)) {
+    console.log(`Skipping duplicate check for family ${familyIdStr}`)
+    return
+  }
+  
+  ongoingChecks.add(familyIdStr)
+  
   try {
     const assignments = await findAssignmentsByFamilyId(familyId)
     const students = await listStudentsForFamily(familyId)
@@ -42,22 +55,30 @@ export async function checkOverdueAssignments (familyId) {
           // Check if we've already notified for this assignment
           // Look for existing notifications about this assignment
           const existingNotifications = await findNotificationsForFamily(familyId)
-          const notificationKey = `overdue-${assignmentId}`
-          const alreadyNotified = existingNotifications.some(n => 
-            n.body && n.body.includes(assignment.title) && 
-            n.body.includes('overdue') &&
-            // Only check notifications from the last 24 hours to allow re-notification
-            n.createdAt && (now - new Date(n.createdAt)) < 24 * 60 * 60 * 1000
-          )
+          const alreadyNotified = existingNotifications.some(n => {
+            if (!n.body || !n.createdAt) return false
+            
+            // Check if notification is about this specific assignment by title and "overdue" text
+            const isAboutThisAssignment = n.body.includes(assignment.title) && n.body.includes('overdue')
+            
+            // Only check notifications from the last 7 days to prevent duplicate notifications
+            const notificationAge = now - new Date(n.createdAt)
+            const isRecent = notificationAge < 7 * 24 * 60 * 60 * 1000
+            
+            return isAboutThisAssignment && isRecent
+          })
           
           if (!alreadyNotified) {
             const studentName = student.name || 'Student'
             const daysOverdue = Math.floor((now - dueDate) / (1000 * 60 * 60 * 24))
             
+            const studentBody = `"${assignment.title}" is ${daysOverdue === 0 ? 'due today' : `${daysOverdue} day${daysOverdue > 1 ? 's' : ''} overdue`}`
+            const parentBody = `${studentName}'s assignment "${assignment.title}" is ${daysOverdue === 0 ? 'due today' : `${daysOverdue} day${daysOverdue > 1 ? 's' : ''} overdue`}`
+            
             // Create notification for student
             await createNotification({
               title: 'Overdue Assignment',
-              body: `"${assignment.title}" is ${daysOverdue === 0 ? 'due today' : `${daysOverdue} day${daysOverdue > 1 ? 's' : ''} overdue`}`,
+              body: studentBody,
               userId: studentId,
               familyId: familyId.toString()
             })
@@ -65,7 +86,7 @@ export async function checkOverdueAssignments (familyId) {
             // Create notification for parents
             await createNotificationsForParents({
               title: 'Overdue Assignment',
-              body: `${studentName}'s assignment "${assignment.title}" is ${daysOverdue === 0 ? 'due today' : `${daysOverdue} day${daysOverdue > 1 ? 's' : ''} overdue`}`,
+              body: parentBody,
               familyId: familyId.toString()
             })
           }
@@ -74,6 +95,9 @@ export async function checkOverdueAssignments (familyId) {
     }
   } catch (error) {
     console.error('Error checking overdue assignments:', error)
+  } finally {
+    // Remove from ongoing checks
+    ongoingChecks.delete(familyIdStr)
   }
 }
 

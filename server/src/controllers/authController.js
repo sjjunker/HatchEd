@@ -5,37 +5,116 @@ import { upsertUserByAppleId } from '../models/userModel.js'
 import { signToken } from '../utils/jwt.js'
 import { serializeUser } from '../utils/serializers.js'
 import { ObjectId } from 'mongodb'
+import { ValidationError, AppError } from '../utils/errors.js'
 
-export async function appleSignIn (req, res) {
-  const { identityToken, fullName, email } = req.body
-  if (!identityToken) {
-    return res.status(400).json({ error: { message: 'identityToken is required' } })
+export async function appleSignIn (req, res, next) {
+  const startTime = Date.now()
+  try {
+    console.log('[Sign In] Apple sign-in request received', {
+      timestamp: new Date().toISOString(),
+      ip: req.ip,
+      hasIdentityToken: !!req.body.identityToken,
+      hasFullName: !!req.body.fullName,
+      hasEmail: !!req.body.email
+    })
+
+    const { identityToken, fullName, email } = req.body
+    if (!identityToken) {
+      console.log('[Sign In] Validation failed: identityToken is missing')
+      throw new ValidationError('identityToken is required')
+    }
+
+    const audience = process.env.APPLE_CLIENT_ID
+    if (!audience) {
+      console.error('[Sign In] Configuration error: APPLE_CLIENT_ID not set')
+      throw new AppError('Apple Client ID not configured', 500, 'CONFIGURATION_ERROR')
+    }
+
+    console.log('[Sign In] Verifying Apple identity token...', {
+      audience,
+      tokenLength: identityToken.length
+    })
+
+    const payload = await verifyAppleIdentityToken(identityToken, audience)
+
+    console.log('[Sign In] Apple token verified successfully', {
+      appleId: payload.sub,
+      hasEmail: !!payload.email,
+      hasName: !!payload.name,
+      hasRole: !!payload.role
+    })
+
+    const appleId = payload.sub
+    const updateData = {}
+    const resolvedEmail = email ?? payload.email
+    if (resolvedEmail) updateData.email = resolvedEmail
+    const resolvedName = fullName ?? payload.name
+    if (resolvedName) updateData.name = resolvedName
+    if (payload.role) updateData.role = payload.role
+
+    console.log('[Sign In] Upserting user in database...', {
+      appleId,
+      updateData: {
+        hasEmail: !!updateData.email,
+        hasName: !!updateData.name,
+        hasRole: !!updateData.role
+      }
+    })
+
+    const user = await upsertUserByAppleId(appleId, updateData)
+
+    const userId = user._id instanceof ObjectId ? user._id.toString() : user._id
+
+    console.log('[Sign In] User found/created', {
+      userId,
+      appleId: user.appleId,
+      role: user.role,
+      name: user.name,
+      isNewUser: !user.createdAt || (Date.now() - new Date(user.createdAt).getTime()) < 5000
+    })
+
+    console.log('[Sign In] Generating JWT token...')
+    const token = signToken({
+      userId,
+      appleId: user.appleId,
+      role: user.role
+    })
+
+    const duration = Date.now() - startTime
+    const serializedUser = serializeUser({ ...user, _id: userId })
+    console.log('[Sign In] Sign-in completed successfully', {
+      userId,
+      role: user.role,
+      duration: `${duration}ms`,
+      timestamp: new Date().toISOString(),
+      userData: {
+        id: serializedUser?.id,
+        role: serializedUser?.role,
+        name: serializedUser?.name,
+        hasFamilyId: !!serializedUser?.familyId
+      }
+    })
+
+    const response = {
+      token,
+      user: serializedUser
+    }
+    console.log('[Sign In] Sending response to client', {
+      hasToken: !!response.token,
+      hasUser: !!response.user,
+      userRole: response.user?.role
+    })
+    res.json(response)
+  } catch (error) {
+    const duration = Date.now() - startTime
+    console.error('[Sign In] Sign-in failed', {
+      error: error.message,
+      code: error.code,
+      status: error.status || error.statusCode,
+      duration: `${duration}ms`,
+      timestamp: new Date().toISOString()
+    })
+    next(error)
   }
-
-  const audience = process.env.APPLE_CLIENT_ID
-  const payload = await verifyAppleIdentityToken(identityToken, audience)
-
-  const appleId = payload.sub
-  const updateData = {}
-  const resolvedEmail = email ?? payload.email
-  if (resolvedEmail) updateData.email = resolvedEmail
-  const resolvedName = fullName ?? payload.name
-  if (resolvedName) updateData.name = resolvedName
-  if (payload.role) updateData.role = payload.role
-
-  const user = await upsertUserByAppleId(appleId, updateData)
-
-  const userId = user._id instanceof ObjectId ? user._id.toString() : user._id
-
-  const token = signToken({
-    userId,
-    appleId: user.appleId,
-    role: user.role
-  })
-
-  res.json({
-    token,
-    user: serializeUser({ ...user, _id: userId })
-  })
 }
 

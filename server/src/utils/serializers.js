@@ -87,3 +87,36 @@ export function serializeAssignment (assignment) {
   }
 }
 
+export function serializePortfolio (portfolio) {
+  if (!portfolio) return null
+  return {
+    id: portfolio._id?.toString?.() ?? portfolio._id,
+    studentId: portfolio.studentId?.toString?.() ?? portfolio.studentId,
+    studentName: portfolio.studentName,
+    designPattern: portfolio.designPattern,
+    studentWorkFileIds: portfolio.studentWorkFileIds?.map(id => id.toString()) ?? [],
+    studentRemarks: portfolio.studentRemarks ?? null,
+    instructorRemarks: portfolio.instructorRemarks ?? null,
+    reportCardSnapshot: portfolio.reportCardSnapshot ?? null,
+    compiledContent: portfolio.compiledContent ?? '',
+    snippet: portfolio.snippet ?? '',
+    createdAt: portfolio.createdAt,
+    updatedAt: portfolio.updatedAt
+  }
+}
+
+export function serializeStudentWorkFile (file) {
+  if (!file) return null
+  return {
+    id: file._id?.toString?.() ?? file._id,
+    fileName: file.fileName,
+    fileUrl: file.fileUrl,
+    fileType: file.fileType,
+    fileSize: file.fileSize,
+    studentId: file.studentId?.toString?.() ?? file.studentId,
+    uploadedAt: file.uploadedAt,
+    createdAt: file.createdAt,
+    updatedAt: file.updatedAt
+  }
+}
+

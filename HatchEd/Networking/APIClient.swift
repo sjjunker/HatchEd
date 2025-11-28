@@ -226,6 +226,117 @@ final class APIClient {
             responseType: SuccessResponse.self
         )
     }
+    
+    // Portfolio API methods
+    struct PortfoliosResponse: Decodable {
+        let portfolios: [Portfolio]
+    }
+    
+    struct PortfolioResponse: Decodable {
+        let portfolio: Portfolio
+    }
+    
+    struct StudentWorkFilesResponse: Decodable {
+        let files: [StudentWorkFile]
+    }
+    
+    struct StudentWorkFileResponse: Decodable {
+        let file: StudentWorkFile
+    }
+    
+    struct CreatePortfolioRequest: Encodable {
+        let studentId: String
+        let studentName: String
+        let designPattern: String
+        let studentWorkFileIds: [String]
+        let studentRemarks: String?
+        let instructorRemarks: String?
+        let reportCardSnapshot: String?
+    }
+    
+    func fetchPortfolios() async throws -> [Portfolio] {
+        let response: PortfoliosResponse = try await request(
+            Endpoint(path: "api/portfolios"),
+            responseType: PortfoliosResponse.self
+        )
+        return response.portfolios
+    }
+    
+    func createPortfolio(
+        studentId: String,
+        studentName: String,
+        designPattern: PortfolioDesignPattern,
+        studentWorkFileIds: [String],
+        studentRemarks: String?,
+        instructorRemarks: String?,
+        reportCardSnapshot: String?
+    ) async throws -> Portfolio {
+        let body = CreatePortfolioRequest(
+            studentId: studentId,
+            studentName: studentName,
+            designPattern: designPattern.rawValue,
+            studentWorkFileIds: studentWorkFileIds,
+            studentRemarks: studentRemarks,
+            instructorRemarks: instructorRemarks,
+            reportCardSnapshot: reportCardSnapshot
+        )
+        let response: PortfolioResponse = try await request(
+            Endpoint(path: "api/portfolios", method: .post, body: body),
+            responseType: PortfolioResponse.self
+        )
+        return response.portfolio
+    }
+    
+    func fetchStudentWorkFiles(studentId: String) async throws -> [StudentWorkFile] {
+        let response: StudentWorkFilesResponse = try await request(
+            Endpoint(path: "api/portfolios/student-work/\(studentId)"),
+            responseType: StudentWorkFilesResponse.self
+        )
+        return response.files
+    }
+    
+    func uploadStudentWorkFile(
+        studentId: String,
+        fileName: String,
+        fileData: Data,
+        fileType: String
+    ) async throws -> StudentWorkFile {
+        // For now, we'll use a simple multipart upload
+        // In production, you'd want to use a proper file upload endpoint
+        var request = URLRequest(url: baseURL.appendingPathComponent("api/portfolios/student-work/upload"))
+        request.httpMethod = "POST"
+        if let token = tokenStore.token {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        let boundary = UUID().uuidString
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"studentId\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(studentId)\r\n".data(using: .utf8)!)
+        
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(fileType)\r\n\r\n".data(using: .utf8)!)
+        body.append(fileData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        
+        request.httpBody = body
+        
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        
+        switch httpResponse.statusCode {
+        case 200...299:
+            return try JSONDecoder.api.decode(StudentWorkFileResponse.self, from: data).file
+        default:
+            throw try APIError(from: data, statusCode: httpResponse.statusCode)
+        }
+    }
 }
 
 struct Endpoint {

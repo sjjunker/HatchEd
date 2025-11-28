@@ -81,12 +81,15 @@ class AppleSignInManager: NSObject, ObservableObject {
 
     private func updateSignInState() {
         guard let user = currentUser else {
+            print("[Sign In State] No current user, setting to notSignedIn")
             signInState = .notSignedIn
             return
         }
         if let role = user.role, !role.isEmpty {
+            print("[Sign In State] User has role '\(role)', setting to signedIn")
             signInState = .signedIn
         } else {
+            print("[Sign In State] User has no role or empty role, setting to needsRoleSelection")
             signInState = .needsRoleSelection
         }
     }
@@ -175,6 +178,7 @@ class AppleSignInManager: NSObject, ObservableObject {
     }
 
     private func applyUser(_ user: User) {
+        print("[Sign In] Applying user - id: \(user.id), role: \(user.role ?? "nil"), name: \(user.name ?? "nil"), hasFamilyId: \(user.familyId != nil)")
         currentUser = user
         cache.save(user, as: "user.json")
         updateSignInState()
@@ -191,7 +195,9 @@ class AppleSignInManager: NSObject, ObservableObject {
     }
 
     private func processSignIn(authResults: ASAuthorization) async {
+        print("[Sign In] Starting sign-in process...")
         guard let credential = authResults.credential as? ASAuthorizationAppleIDCredential else {
+            print("[Sign In] Failed: Invalid credential type")
             signInState = .notSignedIn
             return
         }
@@ -199,26 +205,39 @@ class AppleSignInManager: NSObject, ObservableObject {
         let userId = credential.user
         let name = credential.fullName?.givenName
         let email = credential.email
+        print("[Sign In] Credential extracted - userId: \(userId), hasName: \(name != nil), hasEmail: \(email != nil)")
 
         guard let identityTokenData = credential.identityToken,
               let identityToken = String(data: identityTokenData, encoding: .utf8) else {
+            print("[Sign In] Failed: Missing or invalid identity token")
             signInState = .notSignedIn
             return
         }
 
+        print("[Sign In] Identity token extracted, sending to API...")
         do {
             let body = AuthRequest(identityToken: identityToken, fullName: name, email: email)
             let response: AuthResponse = try await api.request(
                 Endpoint(path: "api/auth/apple", method: .post, body: body)
             )
+            print("[Sign In] API response received - hasToken: \(!response.token.isEmpty), userId: \(response.user.id), userRole: \(response.user.role ?? "nil"), userName: \(response.user.name ?? "nil"), hasFamilyId: \(response.user.familyId != nil)")
+            
             api.setAuthToken(response.token)
             storeUserID(userId)
+            print("[Sign In] Token stored, applying user...")
             applyUser(response.user)
+            print("[Sign In] User applied, current state - signInState: \(signInState), userRole: \(currentUser?.role ?? "nil"), hasUser: \(currentUser != nil)")
+            
             cache.save(response.token, as: "token.json")
+            print("[Sign In] Fetching family and notifications...")
             await fetchFamilyIfNeeded()
             await fetchNotifications()
+            print("[Sign In] Sign-in process completed - signInState: \(signInState), hasFamily: \(currentFamily != nil), notificationCount: \(notifications.count)")
         } catch {
-            print("Apple Sign-In exchange failed: \(error.localizedDescription)")
+            print("[Sign In] Sign-in exchange failed - error: \(error.localizedDescription), errorType: \(type(of: error))")
+            if let apiError = error as? APIError {
+                print("[Sign In] API Error details - message: \(apiError.errorDescription ?? "unknown")")
+            }
             signInState = .notSignedIn
         }
     }

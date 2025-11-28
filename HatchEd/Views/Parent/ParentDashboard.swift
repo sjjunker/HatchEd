@@ -39,7 +39,7 @@ enum NavigationDestination: String, Identifiable {
         case .studentList: StudentList()
         case .curriculum: CurriculumView()
         case .reportCard: ReportCard()
-        case .portfolio: Portfolio()
+        case .portfolio: PortfolioView()
         case .resources: Resources()
         case .settings: Settings()
         case .dashboard: EmptyView() // Handled by setting selectedDestination to nil

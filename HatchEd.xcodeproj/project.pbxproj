@@ -7,23 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		96417E072EBE55F4002DFB97 /* asyncHandler.js in Resources */ = {isa = PBXBuildFile; fileRef = 96417DF22EBE55F4002DFB97 /* asyncHandler.js */; };
-		96417E082EBE55F4002DFB97 /* userController.js in Resources */ = {isa = PBXBuildFile; fileRef = 96417DEE2EBE55F4002DFB97 /* userController.js */; };
-		96417E092EBE55F4002DFB97 /* errorHandler.js in Resources */ = {isa = PBXBuildFile; fileRef = 96417DF32EBE55F4002DFB97 /* errorHandler.js */; };
-		96417E0A2EBE55F4002DFB97 /* mongo.js in Resources */ = {isa = PBXBuildFile; fileRef = 96417DF02EBE55F4002DFB97 /* mongo.js */; };
-		96417E0B2EBE55F4002DFB97 /* familyModel.js in Resources */ = {isa = PBXBuildFile; fileRef = 96417DF62EBE55F4002DFB97 /* familyModel.js */; };
-		96417E0C2EBE55F4002DFB97 /* jwt.js in Resources */ = {isa = PBXBuildFile; fileRef = 96417DFF2EBE55F4002DFB97 /* jwt.js */; };
-		96417E0D2EBE55F4002DFB97 /* userModel.js in Resources */ = {isa = PBXBuildFile; fileRef = 96417DF72EBE55F4002DFB97 /* userModel.js */; };
-		96417E0E2EBE55F4002DFB97 /* users.js in Resources */ = {isa = PBXBuildFile; fileRef = 96417DFB2EBE55F4002DFB97 /* users.js */; };
-		96417E0F2EBE55F4002DFB97 /* auth.js in Resources */ = {isa = PBXBuildFile; fileRef = 96417DF92EBE55F4002DFB97 /* auth.js */; };
-		96417E102EBE55F4002DFB97 /* index.js in Resources */ = {isa = PBXBuildFile; fileRef = 96417E022EBE55F4002DFB97 /* index.js */; };
-		96417E112EBE55F4002DFB97 /* serializers.js in Resources */ = {isa = PBXBuildFile; fileRef = 96417E002EBE55F4002DFB97 /* serializers.js */; };
-		96417E122EBE55F4002DFB97 /* package.json in Resources */ = {isa = PBXBuildFile; fileRef = 96417E052EBE55F4002DFB97 /* package.json */; };
-		96417E132EBE55F4002DFB97 /* requireAuth.js in Resources */ = {isa = PBXBuildFile; fileRef = 96417DF42EBE55F4002DFB97 /* requireAuth.js */; };
-		96417E142EBE55F4002DFB97 /* appleAuth.js in Resources */ = {isa = PBXBuildFile; fileRef = 96417DFD2EBE55F4002DFB97 /* appleAuth.js */; };
-		96417E152EBE55F4002DFB97 /* .env in Resources */ = {isa = PBXBuildFile; fileRef = 96417E042EBE55F4002DFB97 /* .env */; };
-		96417E162EBE55F4002DFB97 /* authController.js in Resources */ = {isa = PBXBuildFile; fileRef = 96417DED2EBE55F4002DFB97 /* authController.js */; };
-		96417E172EBE55F4002DFB97 /* families.js in Resources */ = {isa = PBXBuildFile; fileRef = 96417DFA2EBE55F4002DFB97 /* families.js */; };
 		9647C7102EC38148008B79B8 /* .gitignore in Resources */ = {isa = PBXBuildFile; fileRef = 9647C70F2EC38139008B79B8 /* .gitignore */; };
 /* End PBXBuildFile section */
 
@@ -45,23 +28,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		96417DED2EBE55F4002DFB97 /* authController.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = authController.js; sourceTree = "<group>"; };
-		96417DEE2EBE55F4002DFB97 /* userController.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = userController.js; sourceTree = "<group>"; };
-		96417DF02EBE55F4002DFB97 /* mongo.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = mongo.js; sourceTree = "<group>"; };
-		96417DF22EBE55F4002DFB97 /* asyncHandler.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = asyncHandler.js; sourceTree = "<group>"; };
-		96417DF32EBE55F4002DFB97 /* errorHandler.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = errorHandler.js; sourceTree = "<group>"; };
-		96417DF42EBE55F4002DFB97 /* requireAuth.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = requireAuth.js; sourceTree = "<group>"; };
-		96417DF62EBE55F4002DFB97 /* familyModel.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = familyModel.js; sourceTree = "<group>"; };
-		96417DF72EBE55F4002DFB97 /* userModel.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = userModel.js; sourceTree = "<group>"; };
-		96417DF92EBE55F4002DFB97 /* auth.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = auth.js; sourceTree = "<group>"; };
-		96417DFA2EBE55F4002DFB97 /* families.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = families.js; sourceTree = "<group>"; };
-		96417DFB2EBE55F4002DFB97 /* users.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = users.js; sourceTree = "<group>"; };
-		96417DFD2EBE55F4002DFB97 /* appleAuth.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = appleAuth.js; sourceTree = "<group>"; };
-		96417DFF2EBE55F4002DFB97 /* jwt.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = jwt.js; sourceTree = "<group>"; };
-		96417E002EBE55F4002DFB97 /* serializers.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = serializers.js; sourceTree = "<group>"; };
-		96417E022EBE55F4002DFB97 /* index.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = index.js; sourceTree = "<group>"; };
-		96417E042EBE55F4002DFB97 /* .env */ = {isa = PBXFileReference; lastKnownFileType = text; path = .env; sourceTree = "<group>"; };
-		96417E052EBE55F4002DFB97 /* package.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = package.json; sourceTree = "<group>"; };
 		9647C70F2EC38139008B79B8 /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
 		966A570A2DCA2F5A00879ACA /* HatchEd.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HatchEd.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		966A571B2DCA2F5C00879ACA /* HatchEdTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HatchEdTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -69,7 +35,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		966A572D2DCA2F5C00879ACA /* Exceptions for "HatchEd" folder in "HatchEd" target */ = {
+		9639ABA72EE46A070071909C /* Exceptions for "HatchEd" folder in "HatchEd" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -79,12 +45,17 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		966A570C2DCA2F5A00879ACA /* HatchEd */ = {
+		9639612D2EE4671B0071909C /* HatchEd */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				966A572D2DCA2F5C00879ACA /* Exceptions for "HatchEd" folder in "HatchEd" target */,
+				9639ABA72EE46A070071909C /* Exceptions for "HatchEd" folder in "HatchEd" target */,
 			);
 			path = HatchEd;
+			sourceTree = "<group>";
+		};
+		96398C742EE4671B0071909C /* server */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = server;
 			sourceTree = "<group>";
 		};
 		966A571E2DCA2F5C00879ACA /* HatchEdTests */ = {
@@ -124,99 +95,11 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		96417DEF2EBE55F4002DFB97 /* controllers */ = {
-			isa = PBXGroup;
-			children = (
-				96417DED2EBE55F4002DFB97 /* authController.js */,
-				96417DEE2EBE55F4002DFB97 /* userController.js */,
-			);
-			path = controllers;
-			sourceTree = "<group>";
-		};
-		96417DF12EBE55F4002DFB97 /* lib */ = {
-			isa = PBXGroup;
-			children = (
-				96417DF02EBE55F4002DFB97 /* mongo.js */,
-			);
-			path = lib;
-			sourceTree = "<group>";
-		};
-		96417DF52EBE55F4002DFB97 /* middleware */ = {
-			isa = PBXGroup;
-			children = (
-				96417DF22EBE55F4002DFB97 /* asyncHandler.js */,
-				96417DF32EBE55F4002DFB97 /* errorHandler.js */,
-				96417DF42EBE55F4002DFB97 /* requireAuth.js */,
-			);
-			path = middleware;
-			sourceTree = "<group>";
-		};
-		96417DF82EBE55F4002DFB97 /* models */ = {
-			isa = PBXGroup;
-			children = (
-				96417DF62EBE55F4002DFB97 /* familyModel.js */,
-				96417DF72EBE55F4002DFB97 /* userModel.js */,
-			);
-			path = models;
-			sourceTree = "<group>";
-		};
-		96417DFC2EBE55F4002DFB97 /* routes */ = {
-			isa = PBXGroup;
-			children = (
-				96417DF92EBE55F4002DFB97 /* auth.js */,
-				96417DFA2EBE55F4002DFB97 /* families.js */,
-				96417DFB2EBE55F4002DFB97 /* users.js */,
-			);
-			path = routes;
-			sourceTree = "<group>";
-		};
-		96417DFE2EBE55F4002DFB97 /* services */ = {
-			isa = PBXGroup;
-			children = (
-				96417DFD2EBE55F4002DFB97 /* appleAuth.js */,
-			);
-			path = services;
-			sourceTree = "<group>";
-		};
-		96417E012EBE55F4002DFB97 /* utils */ = {
-			isa = PBXGroup;
-			children = (
-				96417DFF2EBE55F4002DFB97 /* jwt.js */,
-				96417E002EBE55F4002DFB97 /* serializers.js */,
-			);
-			path = utils;
-			sourceTree = "<group>";
-		};
-		96417E032EBE55F4002DFB97 /* src */ = {
-			isa = PBXGroup;
-			children = (
-				96417DEF2EBE55F4002DFB97 /* controllers */,
-				96417DF12EBE55F4002DFB97 /* lib */,
-				96417DF52EBE55F4002DFB97 /* middleware */,
-				96417DF82EBE55F4002DFB97 /* models */,
-				96417DFC2EBE55F4002DFB97 /* routes */,
-				96417DFE2EBE55F4002DFB97 /* services */,
-				96417E012EBE55F4002DFB97 /* utils */,
-				96417E022EBE55F4002DFB97 /* index.js */,
-			);
-			path = src;
-			sourceTree = "<group>";
-		};
-		96417E062EBE55F4002DFB97 /* server */ = {
-			isa = PBXGroup;
-			children = (
-				96417E032EBE55F4002DFB97 /* src */,
-				96417E042EBE55F4002DFB97 /* .env */,
-				96417E052EBE55F4002DFB97 /* package.json */,
-			);
-			path = server;
-			sourceTree = "<group>";
-		};
 		966A57012DCA2F5A00879ACA = {
 			isa = PBXGroup;
 			children = (
-				96417E062EBE55F4002DFB97 /* server */,
-				966A570C2DCA2F5A00879ACA /* HatchEd */,
+				9639612D2EE4671B0071909C /* HatchEd */,
+				96398C742EE4671B0071909C /* server */,
 				966A571E2DCA2F5C00879ACA /* HatchEdTests */,
 				966A57282DCA2F5C00879ACA /* HatchEdUITests */,
 				966A570B2DCA2F5A00879ACA /* Products */,
@@ -250,7 +133,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				966A570C2DCA2F5A00879ACA /* HatchEd */,
+				9639612D2EE4671B0071909C /* HatchEd */,
 			);
 			name = HatchEd;
 			packageProductDependencies = (
@@ -354,24 +237,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				96417E072EBE55F4002DFB97 /* asyncHandler.js in Resources */,
-				96417E082EBE55F4002DFB97 /* userController.js in Resources */,
-				96417E092EBE55F4002DFB97 /* errorHandler.js in Resources */,
-				96417E0A2EBE55F4002DFB97 /* mongo.js in Resources */,
-				96417E0B2EBE55F4002DFB97 /* familyModel.js in Resources */,
-				96417E0C2EBE55F4002DFB97 /* jwt.js in Resources */,
-				96417E0D2EBE55F4002DFB97 /* userModel.js in Resources */,
-				96417E0E2EBE55F4002DFB97 /* users.js in Resources */,
-				96417E0F2EBE55F4002DFB97 /* auth.js in Resources */,
-				96417E102EBE55F4002DFB97 /* index.js in Resources */,
-				96417E112EBE55F4002DFB97 /* serializers.js in Resources */,
 				9647C7102EC38148008B79B8 /* .gitignore in Resources */,
-				96417E122EBE55F4002DFB97 /* package.json in Resources */,
-				96417E132EBE55F4002DFB97 /* requireAuth.js in Resources */,
-				96417E142EBE55F4002DFB97 /* appleAuth.js in Resources */,
-				96417E152EBE55F4002DFB97 /* .env in Resources */,
-				96417E162EBE55F4002DFB97 /* authController.js in Resources */,
-				96417E172EBE55F4002DFB97 /* families.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

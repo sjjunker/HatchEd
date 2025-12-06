@@ -1,7 +1,7 @@
 // Updated with assistance from Cursor (ChatGPT) on 11/7/25.
 
 import { ObjectId } from 'mongodb'
-import { getCollection } from '../lib/mongo.js'
+import { getCollection, pingDatabase } from '../lib/mongo.js'
 
 const USERS_COLLECTION = 'users'
 
@@ -18,38 +18,108 @@ export async function findUserById (id) {
 }
 
 export async function upsertUserByAppleId (appleId, userData) {
-  const filteredData = Object.fromEntries(
-    Object.entries(userData).filter(([, value]) => value !== undefined)
-  )
+  const startTime = Date.now()
+  console.log('[Database] Starting upsertUserByAppleId', {
+    appleId,
+    hasUserData: !!userData,
+    userDataKeys: Object.keys(userData || {}),
+    timestamp: new Date().toISOString()
+  })
 
-  const update = {
-    $set: {
-      ...filteredData,
-      updatedAt: new Date()
-    },
-    $setOnInsert: {
-      appleId,
-      createdAt: new Date()
+  try {
+    // Verify database connection before operation
+    const isConnected = await pingDatabase()
+    if (!isConnected) {
+      throw new Error('Database connection not available')
     }
-  }
+    console.log('[Database] Database connection verified via ping')
+    const filteredData = Object.fromEntries(
+      Object.entries(userData).filter(([, value]) => value !== undefined)
+    )
 
-  const options = { upsert: true, returnDocument: 'after' }
-  const result = await usersCollection().findOneAndUpdate({ appleId }, update, options)
+    console.log('[Database] Filtered user data', {
+      filteredKeys: Object.keys(filteredData),
+      hasRole: 'role' in filteredData
+    })
 
-  if (result.value) {
-    return result.value
-  }
+    const update = {
+      $set: {
+        ...filteredData,
+        updatedAt: new Date()
+      },
+      $setOnInsert: {
+        appleId,
+        createdAt: new Date()
+      }
+    }
 
-  const upsertedId = result.lastErrorObject?.upserted
-  if (upsertedId) {
-    return await usersCollection().findOne({ _id: upsertedId })
-  }
+    console.log('[Database] Executing findOneAndUpdate...')
+    const options = { upsert: true, returnDocument: 'after' }
+    const operationStartTime = Date.now()
+    const result = await usersCollection().findOneAndUpdate({ appleId }, update, options)
+    const operationDuration = Date.now() - operationStartTime
 
-  const fallback = await usersCollection().findOne({ appleId })
-  if (!fallback) {
-    throw new Error('Failed to load user after upsert')
+    console.log('[Database] findOneAndUpdate completed', {
+      duration: `${operationDuration}ms`,
+      hasResult: !!result,
+      hasValue: !!result?.value,
+      hasUpsertedId: !!result?.lastErrorObject?.upserted
+    })
+
+    if (result.value) {
+      const totalDuration = Date.now() - startTime
+      console.log('[Database] User upserted successfully (from result.value)', {
+        userId: result.value._id,
+        role: result.value.role || 'null/empty',
+        duration: `${totalDuration}ms`
+      })
+      return result.value
+    }
+
+    const upsertedId = result.lastErrorObject?.upserted
+    if (upsertedId) {
+      console.log('[Database] Fetching upserted user by ID...', { upsertedId })
+      const fetchedUser = await usersCollection().findOne({ _id: upsertedId })
+      if (fetchedUser) {
+        const totalDuration = Date.now() - startTime
+        console.log('[Database] User upserted successfully (from upsertedId)', {
+          userId: fetchedUser._id,
+          role: fetchedUser.role || 'null/empty',
+          duration: `${totalDuration}ms`
+        })
+        return fetchedUser
+      }
+    }
+
+    console.log('[Database] Fallback: fetching user by appleId...')
+    const fallback = await usersCollection().findOne({ appleId })
+    if (!fallback) {
+      const totalDuration = Date.now() - startTime
+      console.error('[Database] Failed to load user after upsert', {
+        appleId,
+        duration: `${totalDuration}ms`
+      })
+      throw new Error('Failed to load user after upsert')
+    }
+    
+    const totalDuration = Date.now() - startTime
+    console.log('[Database] User retrieved via fallback', {
+      userId: fallback._id,
+      role: fallback.role || 'null/empty',
+      duration: `${totalDuration}ms`
+    })
+    return fallback
+  } catch (error) {
+    const totalDuration = Date.now() - startTime
+    console.error('[Database] Error in upsertUserByAppleId', {
+      appleId,
+      error: error.message,
+      errorName: error.name,
+      duration: `${totalDuration}ms`,
+      timestamp: new Date().toISOString()
+    })
+    throw error
   }
-  return fallback
 }
 
 export async function updateUserFamily (userId, familyId) {

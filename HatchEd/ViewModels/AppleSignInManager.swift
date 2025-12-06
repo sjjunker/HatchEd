@@ -41,20 +41,42 @@ class AppleSignInManager: NSObject, ObservableObject {
 
     @ViewBuilder
     var dashboardView: some View {
-        if let role = userRole {
-            switch role {
-            case "parent":
-                ParentDashboard()
-            case "student":
-                if studentRequiresFamily {
-                    StudentJoinFamilyView()
-                } else {
-                    StudentDashboard()
+        // Trust signInState - if we're signed in, we should have a role
+        if signInState == .signedIn {
+            if let role = userRole {
+                switch role {
+                case "parent":
+                    ParentDashboard()
+                case "student":
+                    if studentRequiresFamily {
+                        StudentJoinFamilyView()
+                    } else {
+                        StudentDashboard()
+                    }
+                default:
+                    // Unknown role - show role selection
+                    if let userID = currentUser?.id {
+                        RoleSelectionView(userID: userID)
+                    } else {
+                        SignInView()
+                    }
                 }
-            default:
-                SignInView()
+            } else {
+                // Signed in but no role - should not happen, but show role selection
+                if let userID = currentUser?.id {
+                    RoleSelectionView(userID: userID)
+                        .onAppear {
+                            print("[Dashboard] WARNING: signInState is signedIn but userRole is nil")
+                        }
+                } else {
+                    SignInView()
+                        .onAppear {
+                            print("[Dashboard] WARNING: signInState is signedIn but userRole is nil and no userID")
+                        }
+                }
             }
         } else {
+            // Not signed in - show sign in view
             SignInView()
         }
     }
@@ -179,9 +201,23 @@ class AppleSignInManager: NSObject, ObservableObject {
 
     private func applyUser(_ user: User) {
         print("[Sign In] Applying user - id: \(user.id), role: \(user.role ?? "nil"), name: \(user.name ?? "nil"), hasFamilyId: \(user.familyId != nil)")
-        currentUser = user
-        cache.save(user, as: "user.json")
+        
+        // Create a mutable copy to ensure we preserve all fields
+        var userToApply = user
+        currentUser = userToApply
+        cache.save(userToApply, as: "user.json")
+        
+        // Force state update after a small delay to ensure UI updates
         updateSignInState()
+        
+        // Double-check state after update
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            print("[Sign In] State check after applyUser - signInState: \(self.signInState), userRole: \(self.userRole ?? "nil"), hasUser: \(self.currentUser != nil)")
+            if self.signInState == .signedIn && self.userRole == nil {
+                print("[Sign In] ERROR: State mismatch - signedIn but no role, forcing needsRoleSelection")
+                self.signInState = .needsRoleSelection
+            }
+        }
     }
 
     func handleSignIn(result: Result<ASAuthorization, Error>) {
@@ -222,11 +258,30 @@ class AppleSignInManager: NSObject, ObservableObject {
             )
             print("[Sign In] API response received - hasToken: \(!response.token.isEmpty), userId: \(response.user.id), userRole: \(response.user.role ?? "nil"), userName: \(response.user.name ?? "nil"), hasFamilyId: \(response.user.familyId != nil)")
             
+            // Verify role is present in response
+            if response.user.role == nil || response.user.role?.isEmpty == true {
+                print("[Sign In] WARNING: User role is missing or empty in API response!")
+                print("[Sign In] Full user object: \(response.user)")
+            }
+            
             api.setAuthToken(response.token)
             storeUserID(userId)
             print("[Sign In] Token stored, applying user...")
             applyUser(response.user)
+            
+            // Wait a moment for state to update
+            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+            
             print("[Sign In] User applied, current state - signInState: \(signInState), userRole: \(currentUser?.role ?? "nil"), hasUser: \(currentUser != nil)")
+            
+            // Final verification
+            if signInState == .signedIn {
+                print("[Sign In] ✓ Sign-in successful - Dashboard should be visible")
+            } else if signInState == .needsRoleSelection {
+                print("[Sign In] ⚠ User needs to select a role")
+            } else {
+                print("[Sign In] ✗ Sign-in failed - State: \(signInState)")
+            }
             
             cache.save(response.token, as: "token.json")
             print("[Sign In] Fetching family and notifications...")

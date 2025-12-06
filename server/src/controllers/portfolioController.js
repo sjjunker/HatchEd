@@ -11,9 +11,11 @@ import path from 'path'
 import fs from 'fs/promises'
 
 // Configure multer for file uploads
+// Accepts all file types (documents, images, videos, etc.)
 const upload = multer({
   dest: 'uploads/',
-  limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+  // No fileFilter - accepts all file types
 })
 
 export async function getPortfoliosHandler (req, res) {

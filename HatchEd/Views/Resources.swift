@@ -6,7 +6,7 @@
 //  Updated with assistance from Cursor (ChatGPT) on 11/7/25.
 //
 import SwiftUI
-import PhotosUI
+import UniformTypeIdentifiers
 
 struct Resources: View {
     @EnvironmentObject private var signInManager: AppleSignInManager
@@ -15,7 +15,6 @@ struct Resources: View {
     @State private var errorMessage: String?
     @State private var selectedStudent: User?
     @State private var showingFilePicker = false
-    @State private var selectedPhotos: [PhotosPickerItem] = []
     
     private let api = APIClient.shared
     
@@ -36,10 +35,13 @@ struct Resources: View {
         .refreshable {
             await loadStudentWorkFiles()
         }
-        .photosPicker(isPresented: $showingFilePicker, selection: $selectedPhotos, maxSelectionCount: 10)
-        .onChange(of: selectedPhotos) { newItems in
+        .fileImporter(
+            isPresented: $showingFilePicker,
+            allowedContentTypes: [.item], // Allow all file types
+            allowsMultipleSelection: true
+        ) { result in
             Task {
-                await uploadSelectedFiles(newItems)
+                await handleFileSelection(result)
             }
         }
     }
@@ -108,34 +110,84 @@ struct Resources: View {
     }
     
     @MainActor
-    private func uploadSelectedFiles(_ items: [PhotosPickerItem]) async {
+    private func handleFileSelection(_ result: Result<[URL], Error>) async {
         guard let student = selectedStudent ?? signInManager.students.first else { return }
         
-        for item in items {
-            do {
-                if let data = try await item.loadTransferable(type: Data.self) {
-                    // Get file type from item
-                    let contentType = item.supportedContentTypes.first
-                    let fileExtension = contentType?.preferredFilenameExtension ?? "dat"
-                    let fileName = "file_\(UUID().uuidString).\(fileExtension)"
-                    let fileType = contentType?.identifier ?? "application/octet-stream"
+        switch result {
+        case .success(let urls):
+            for url in urls {
+                do {
+                    // Start accessing the security-scoped resource
+                    guard url.startAccessingSecurityScopedResource() else {
+                        print("Failed to access security-scoped resource: \(url)")
+                        continue
+                    }
+                    defer { url.stopAccessingSecurityScopedResource() }
+                    
+                    // Read file data
+                    let fileData = try Data(contentsOf: url)
+                    
+                    // Get file name from URL
+                    let fileName = url.lastPathComponent
+                    
+                    // Determine file type from URL extension
+                    let fileExtension = url.pathExtension.lowercased()
+                    let fileType = getMimeType(for: fileExtension)
+                    
+                    print("[Resources] Uploading file - name: \(fileName), type: \(fileType), size: \(fileData.count) bytes")
                     
                     let uploadedFile = try await api.uploadStudentWorkFile(
                         studentId: student.id,
                         fileName: fileName,
-                        fileData: data,
+                        fileData: fileData,
                         fileType: fileType
                     )
                     
-                    // Refresh files
-                    await loadStudentWorkFiles()
+                    print("[Resources] File uploaded successfully: \(uploadedFile.fileName)")
+                } catch {
+                    print("[Resources] Failed to upload file \(url.lastPathComponent): \(error.localizedDescription)")
+                    errorMessage = "Failed to upload \(url.lastPathComponent): \(error.localizedDescription)"
                 }
-            } catch {
-                print("Failed to upload file: \(error)")
             }
+            
+            // Refresh files after uploads
+            await loadStudentWorkFiles()
+            
+        case .failure(let error):
+            print("[Resources] File picker error: \(error.localizedDescription)")
+            errorMessage = "Failed to select files: \(error.localizedDescription)"
         }
+    }
+    
+    private func getMimeType(for fileExtension: String) -> String {
+        let mimeTypes: [String: String] = [
+            "pdf": "application/pdf",
+            "doc": "application/msword",
+            "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "xls": "application/vnd.ms-excel",
+            "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "ppt": "application/vnd.ms-powerpoint",
+            "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "txt": "text/plain",
+            "rtf": "application/rtf",
+            "zip": "application/zip",
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "png": "image/png",
+            "gif": "image/gif",
+            "mp4": "video/mp4",
+            "mov": "video/quicktime",
+            "mp3": "audio/mpeg",
+            "wav": "audio/wav",
+            "html": "text/html",
+            "css": "text/css",
+            "js": "application/javascript",
+            "json": "application/json",
+            "xml": "application/xml",
+            "csv": "text/csv"
+        ]
         
-        selectedPhotos = []
+        return mimeTypes[fileExtension.lowercased()] ?? "application/octet-stream"
     }
 }
 
@@ -191,12 +243,25 @@ private struct StudentWorkFilesList: View {
     }
     
     private func fileIcon(for fileType: String) -> String {
-        if fileType.contains("image") {
+        let lowercased = fileType.lowercased()
+        if lowercased.contains("image") {
             return "photo"
-        } else if fileType.contains("pdf") {
+        } else if lowercased.contains("pdf") {
             return "doc.fill"
-        } else if fileType.contains("text") {
+        } else if lowercased.contains("text") || lowercased.contains("plain") {
             return "doc.text"
+        } else if lowercased.contains("video") {
+            return "video.fill"
+        } else if lowercased.contains("audio") {
+            return "music.note"
+        } else if lowercased.contains("spreadsheet") || lowercased.contains("excel") || lowercased.contains("csv") {
+            return "tablecells.fill"
+        } else if lowercased.contains("presentation") || lowercased.contains("powerpoint") {
+            return "rectangle.stack.fill"
+        } else if lowercased.contains("zip") || lowercased.contains("archive") {
+            return "archivebox.fill"
+        } else if lowercased.contains("word") || lowercased.contains("document") {
+            return "doc.text.fill"
         } else {
             return "doc"
         }

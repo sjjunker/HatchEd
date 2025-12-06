@@ -144,7 +144,7 @@ async function start () {
         accessibleAt: [
           `http://localhost:${port}`,
           `http://127.0.0.1:${port}`,
-          `http://10.0.0.155:${port}`
+          `http://192.168.1.40:${port}`
         ]
       })
     })

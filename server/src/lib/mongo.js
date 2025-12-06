@@ -45,8 +45,12 @@ export async function connectToDatabase () {
     })
 
     client = new MongoClient(uri, {
-      serverSelectionTimeoutMS: 5000,
-      retryWrites: true
+      serverSelectionTimeoutMS: 30000, // Increased to 30 seconds
+      connectTimeoutMS: 30000, // Connection timeout
+      socketTimeoutMS: 45000, // Socket timeout for operations
+      retryWrites: true,
+      maxPoolSize: 10,
+      minPoolSize: 1
     })
 
     console.log('[Database] Attempting to connect to MongoDB server...')
@@ -126,12 +130,33 @@ export function getDb () {
   return db
 }
 
+export async function pingDatabase () {
+  try {
+    if (!db) {
+      throw new DatabaseError('Database not connected')
+    }
+    const adminDb = db.admin()
+    const result = await adminDb.ping()
+    return result.ok === 1
+  } catch (error) {
+    console.error('[Database] Ping failed', {
+      error: error.message
+    })
+    return false
+  }
+}
+
 export function getCollection (name) {
   try {
     console.log('[Database] Getting collection', {
       collectionName: name,
       databaseName: db?.databaseName
     })
+    
+    if (!db) {
+      throw new DatabaseError('Database connection not established')
+    }
+    
     const collection = getDb().collection(name)
     console.log('[Database] Collection retrieved successfully', {
       collectionName: name

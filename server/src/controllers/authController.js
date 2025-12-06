@@ -1,7 +1,7 @@
 // Updated with assistance from Cursor (ChatGPT) on 11/7/25.
 
 import { verifyAppleIdentityToken } from '../services/appleAuth.js'
-import { upsertUserByAppleId } from '../models/userModel.js'
+import { upsertUserByAppleId, findUserByAppleId } from '../models/userModel.js'
 import { signToken } from '../utils/jwt.js'
 import { serializeUser } from '../utils/serializers.js'
 import { ObjectId } from 'mongodb'
@@ -18,13 +18,13 @@ export async function appleSignIn (req, res, next) {
       hasEmail: !!req.body.email
     })
 
-    const { identityToken, fullName, email } = req.body
-    if (!identityToken) {
+  const { identityToken, fullName, email } = req.body
+  if (!identityToken) {
       console.log('[Sign In] Validation failed: identityToken is missing')
       throw new ValidationError('identityToken is required')
-    }
+  }
 
-    const audience = process.env.APPLE_CLIENT_ID
+  const audience = process.env.APPLE_CLIENT_ID
     if (!audience) {
       console.error('[Sign In] Configuration error: APPLE_CLIENT_ID not set')
       throw new AppError('Apple Client ID not configured', 500, 'CONFIGURATION_ERROR')
@@ -35,7 +35,7 @@ export async function appleSignIn (req, res, next) {
       tokenLength: identityToken.length
     })
 
-    const payload = await verifyAppleIdentityToken(identityToken, audience)
+  const payload = await verifyAppleIdentityToken(identityToken, audience)
 
     console.log('[Sign In] Apple token verified successfully', {
       appleId: payload.sub,
@@ -44,26 +44,58 @@ export async function appleSignIn (req, res, next) {
       hasRole: !!payload.role
     })
 
-    const appleId = payload.sub
-    const updateData = {}
-    const resolvedEmail = email ?? payload.email
-    if (resolvedEmail) updateData.email = resolvedEmail
-    const resolvedName = fullName ?? payload.name
-    if (resolvedName) updateData.name = resolvedName
-    if (payload.role) updateData.role = payload.role
+  const appleId = payload.sub
+  
+  // Check if user already exists to preserve their role
+  const existingUser = await findUserByAppleId(appleId)
+  console.log('[Sign In] Existing user check', {
+    appleId,
+    exists: !!existingUser,
+    existingRole: existingUser?.role || 'none',
+    existingName: existingUser?.name || 'none'
+  })
+  
+  const updateData = {}
+  const resolvedEmail = email ?? payload.email
+  if (resolvedEmail) updateData.email = resolvedEmail
+  const resolvedName = fullName ?? payload.name
+  if (resolvedName) updateData.name = resolvedName
+  
+  // Only set role from payload if it exists (it won't from Apple, but preserve existing role)
+  if (payload.role) {
+    updateData.role = payload.role
+    console.log('[Sign In] Role provided in payload:', payload.role)
+  } else if (existingUser?.role) {
+    // Preserve existing role - explicitly include it so it's not lost
+    updateData.role = existingUser.role
+    console.log('[Sign In] Preserving existing role:', existingUser.role)
+  } else {
+    console.log('[Sign In] No role found - user will need to select one')
+  }
 
     console.log('[Sign In] Upserting user in database...', {
       appleId,
       updateData: {
         hasEmail: !!updateData.email,
         hasName: !!updateData.name,
-        hasRole: !!updateData.role
+        hasRole: !!updateData.role,
+        role: updateData.role || 'null'
       }
     })
 
-    const user = await upsertUserByAppleId(appleId, updateData)
+  const user = await upsertUserByAppleId(appleId, updateData)
+  
+  // Double-check: if user still doesn't have role but existing user did, fetch again
+  if (!user.role && existingUser?.role) {
+    console.log('[Sign In] Role missing after upsert, fetching user again...')
+    const refetchedUser = await findUserByAppleId(appleId)
+    if (refetchedUser?.role) {
+      user.role = refetchedUser.role
+      console.log('[Sign In] Role restored from refetch:', refetchedUser.role)
+    }
+  }
 
-    const userId = user._id instanceof ObjectId ? user._id.toString() : user._id
+  const userId = user._id instanceof ObjectId ? user._id.toString() : user._id
 
     console.log('[Sign In] User found/created', {
       userId,
@@ -74,11 +106,11 @@ export async function appleSignIn (req, res, next) {
     })
 
     console.log('[Sign In] Generating JWT token...')
-    const token = signToken({
-      userId,
-      appleId: user.appleId,
-      role: user.role
-    })
+  const token = signToken({
+    userId,
+    appleId: user.appleId,
+    role: user.role
+  })
 
     const duration = Date.now() - startTime
     const serializedUser = serializeUser({ ...user, _id: userId })
@@ -96,7 +128,7 @@ export async function appleSignIn (req, res, next) {
     })
 
     const response = {
-      token,
+    token,
       user: serializedUser
     }
     console.log('[Sign In] Sending response to client', {
@@ -113,7 +145,7 @@ export async function appleSignIn (req, res, next) {
       status: error.status || error.statusCode,
       duration: `${duration}ms`,
       timestamp: new Date().toISOString()
-    })
+  })
     next(error)
   }
 }

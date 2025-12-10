@@ -193,29 +193,47 @@ private struct CourseRow: View {
     var body: some View {
         HStack {
             Text(course.name)
-                .font(.subheadline)
-                .foregroundColor(.primary)
+                .font(.body)
+                .fontWeight(.medium)
+                .foregroundColor(.hatchEdText)
             Spacer()
-            if let grade = course.grade, let gradeText = gradeFormatter.string(from: NSNumber(value: grade)) {
-                Text("\(gradeText)%")
-                    .font(.headline)
+            if let grade = course.grade {
+                Text(String(format: "%.1f%%", grade))
+                    .font(.title3)
+                    .fontWeight(.bold)
                     .foregroundColor(gradeColor(for: grade))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(gradeColor(for: grade).opacity(0.15))
+                    )
             } else {
-                Text("–")
-                    .foregroundColor(.secondary)
+                Text("No Grade")
+                    .font(.subheadline)
+                    .foregroundColor(.hatchEdSecondaryText)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.hatchEdSecondaryBackground)
+                    )
             }
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 12)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6)))
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.hatchEdSecondaryBackground)
+        )
     }
 
     private func gradeColor(for grade: Double) -> Color {
-        switch grade {
-        case 90...: return .green
-        case 80..<90: return .blue
-        case 70..<80: return .orange
-        default: return .red
+        if grade >= 90 {
+            return .hatchEdSuccess
+        } else if grade >= 70 {
+            return .hatchEdWarning
+        } else {
+            return .hatchEdCoralAccent
         }
     }
 }
@@ -223,19 +241,70 @@ private struct CourseRow: View {
 private struct AssignmentRow: View {
     let assignment: Assignment
 
+    private var gradeFormatter: NumberFormatter {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 1
+        return formatter
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(assignment.title)
-                .font(.subheadline.bold())
-            if let dueDate = assignment.dueDate {
-                Text(dueDate, style: .date)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(assignment.title)
+                    .font(.subheadline.bold())
+                if let dueDate = assignment.dueDate {
+                    Text(dueDate, style: .date)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            Spacer()
+            
+            // Show grade if assignment is completed
+            if assignment.isCompleted {
+                if let pointsAwarded = assignment.pointsAwarded,
+                   let pointsPossible = assignment.pointsPossible,
+                   pointsPossible > 0 {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(String(format: "%.0f/%.0f", pointsAwarded, pointsPossible))
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(gradeColor(for: pointsAwarded, possible: pointsPossible))
+                        if let percentage = calculatePercentage(pointsAwarded: pointsAwarded, pointsPossible: pointsPossible),
+                           let percentageText = gradeFormatter.string(from: NSNumber(value: percentage)) {
+                            Text("\(percentageText)%")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                } else {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                        .font(.title3)
+                }
             }
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6)))
+    }
+    
+    private func calculatePercentage(pointsAwarded: Double, pointsPossible: Double) -> Double? {
+        guard pointsPossible > 0 else { return nil }
+        return (pointsAwarded / pointsPossible) * 100
+    }
+    
+    private func gradeColor(for pointsAwarded: Double, possible: Double) -> Color {
+        guard possible > 0 else { return .primary }
+        let percentage = (pointsAwarded / possible) * 100
+        switch percentage {
+        case 90...: return .green
+        case 80..<90: return .blue
+        case 70..<80: return .orange
+        default: return .red
+        }
     }
 }
 

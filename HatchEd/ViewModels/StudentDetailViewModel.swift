@@ -92,6 +92,13 @@ final class StudentDetailViewModel: ObservableObject {
         } else {
             attendanceStatus = .loaded
         }
+        
+        // Calculate grades for each course based on assignments
+        let coursesWithCalculatedGrades = courses.map { course in
+            var updatedCourse = course
+            updatedCourse.grade = calculateCourseGrade(for: course)
+            return updatedCourse
+        }
 
         return StateSnapshot(
             studentName: student.name ?? "Student",
@@ -102,9 +109,32 @@ final class StudentDetailViewModel: ObservableObject {
             attendanceStreakText: attendanceStreakText,
             attendanceStatus: attendanceStatus,
             attendanceRecords: attendanceRecords,
-            courses: courses,
+            courses: coursesWithCalculatedGrades,
             recentAssignments: recentAssignments
         )
+    }
+    
+    private func calculateCourseGrade(for course: Course) -> Double? {
+        // Filter to only graded assignments (have both pointsAwarded and pointsPossible)
+        let gradedAssignments = course.assignments.filter { assignment in
+            assignment.pointsAwarded != nil && assignment.pointsPossible != nil && assignment.pointsPossible! > 0
+        }
+        guard !gradedAssignments.isEmpty else { return nil }
+        
+        // Sum all pointsAwarded
+        let totalPointsAwarded = gradedAssignments.reduce(0.0) { sum, assignment in
+            sum + (assignment.pointsAwarded ?? 0)
+        }
+        
+        // Sum all pointsPossible
+        let totalPointsPossible = gradedAssignments.reduce(0.0) { sum, assignment in
+            sum + (assignment.pointsPossible ?? 0)
+        }
+        
+        guard totalPointsPossible > 0 else { return nil }
+        
+        // Calculate percentage: (total earned / total possible) * 100
+        return (totalPointsAwarded / totalPointsPossible) * 100
     }
 
     var attendanceAverage: Double {
@@ -130,6 +160,7 @@ final class StudentDetailViewModel: ObservableObject {
 
     var recentAssignments: [Assignment] {
         assignments
+            .filter { $0.isCompleted } // Only show completed assignments
             .sorted { ($0.dueDate ?? Date.distantPast) > ($1.dueDate ?? Date.distantPast) }
             .prefix(5)
             .map { $0 }

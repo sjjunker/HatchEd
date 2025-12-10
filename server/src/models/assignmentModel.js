@@ -20,6 +20,7 @@ export async function createAssignment ({ familyId, title, studentId, dueDate, i
     pointsAwarded: pointsAwarded ?? null,
     courseId: courseId ? new ObjectId(courseId) : null,
     questions: [],
+    completed: pointsAwarded != null, // Mark as completed if points are awarded
     createdAt: new Date(),
     updatedAt: new Date()
   }
@@ -46,7 +47,11 @@ export async function updateAssignment (id, { title, dueDate, instructions, poin
   if (dueDate !== undefined) update.dueDate = dueDate ? new Date(dueDate) : null
   if (instructions !== undefined) update.instructions = instructions
   if (pointsPossible !== undefined) update.pointsPossible = pointsPossible
-  if (pointsAwarded !== undefined) update.pointsAwarded = pointsAwarded
+  if (pointsAwarded !== undefined) {
+    update.pointsAwarded = pointsAwarded
+    // Automatically mark as completed when points are awarded
+    update.completed = pointsAwarded != null
+  }
   update.updatedAt = new Date()
 
   const result = await assignmentsCollection().findOneAndUpdate(

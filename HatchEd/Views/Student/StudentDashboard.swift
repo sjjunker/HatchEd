@@ -240,7 +240,7 @@ struct StudentDashboard: View {
                 ForEach(dailyAssignments) { assignment in
                     AssignmentRow(
                         assignment: assignment,
-                        isCompleted: completedAssignments.contains(assignment.id),
+                        isCompleted: assignment.isCompleted || completedAssignments.contains(assignment.id),
                         onToggleComplete: {
                             toggleAssignmentCompletion(assignment)
                         },

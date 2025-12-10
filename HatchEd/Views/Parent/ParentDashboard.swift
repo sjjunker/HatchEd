@@ -264,7 +264,11 @@ struct ParentDashboard: View {
             } else {
                 LazyVStack(spacing: 12) {
                     ForEach(signInManager.students) { student in
-                        NavigationLink(destination: StudentDetail(student: student)) {
+                        NavigationLink(destination: StudentDetail(
+                            student: student,
+                            courses: courses.filter { $0.student.id == student.id },
+                            assignments: assignments.filter { $0.studentId == student.id }
+                        )) {
                             HStack {
                                 Image(systemName: "person.circle.fill")
                                     .foregroundColor(.hatchEdAccent)
@@ -524,6 +528,10 @@ struct ParentDashboard: View {
     private var pendingGradingAssignments: [Assignment] {
         let today = Calendar.current.startOfDay(for: Date())
         return assignments.filter { assignment in
+            // Exclude assignments that are already graded (completed)
+            if assignment.isCompleted {
+                return false
+            }
             // Show assignments that are due today or in the past
             guard let dueDate = assignment.dueDate else { return false }
             let dueDateStart = Calendar.current.startOfDay(for: dueDate)

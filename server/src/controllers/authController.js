@@ -1,8 +1,9 @@
 // Updated with assistance from Cursor (ChatGPT) on 11/7/25.
 
+import bcrypt from 'bcrypt'
 import { verifyAppleIdentityToken } from '../services/appleAuth.js'
 import { verifyGoogleIdToken } from '../services/googleAuth.js'
-import { upsertUserByAppleId, findUserByAppleId, upsertUserByGoogleId, findUserByGoogleId } from '../models/userModel.js'
+import { upsertUserByAppleId, findUserByAppleId, upsertUserByGoogleId, findUserByGoogleId, findUserByUsername, createUserWithPassword } from '../models/userModel.js'
 import { signToken } from '../utils/jwt.js'
 import { serializeUser } from '../utils/serializers.js'
 import { ObjectId } from 'mongodb'
@@ -276,6 +277,175 @@ export async function googleSignIn (req, res, next) {
       userRole: response.user?.role
     })
     res.json(response)
+  } catch (error) {
+    const duration = Date.now() - startTime
+    console.error('[Sign In] Sign-in failed', {
+      error: error.message,
+      code: error.code,
+      status: error.status || error.statusCode,
+      duration: `${duration}ms`,
+      timestamp: new Date().toISOString()
+    })
+    next(error)
+  }
+}
+
+export async function signUp (req, res, next) {
+  const startTime = Date.now()
+  try {
+    console.log('[Sign Up] Username/password sign-up request received', {
+      timestamp: new Date().toISOString(),
+      ip: req.ip,
+      hasUsername: !!req.body.username,
+      hasPassword: !!req.body.password
+    })
+
+    const { username, password, email, name } = req.body
+
+    if (!username || !password) {
+      console.log('[Sign Up] Validation failed: username or password missing')
+      throw new ValidationError('Username and password are required')
+    }
+
+    if (username.length < 3) {
+      throw new ValidationError('Username must be at least 3 characters')
+    }
+
+    if (password.length < 6) {
+      throw new ValidationError('Password must be at least 6 characters')
+    }
+
+    // Check if username already exists
+    const existingUser = await findUserByUsername(username)
+    if (existingUser) {
+      throw new ValidationError('Username already exists')
+    }
+
+    // Hash the password
+    const saltRounds = 10
+    const hashedPassword = await bcrypt.hash(password, saltRounds)
+
+    console.log('[Sign Up] Creating user...')
+    const userData = {
+      username,
+      password: hashedPassword,
+      email: email || undefined,
+      name: name || undefined
+    }
+
+    const user = await createUserWithPassword(userData)
+
+    const userId = user._id instanceof ObjectId ? user._id.toString() : user._id
+
+    console.log('[Sign Up] User created', {
+      userId,
+      username: user.username,
+      role: user.role
+    })
+
+    // Generate JWT token
+    console.log('[Sign Up] Generating JWT token...')
+    const token = signToken({
+      userId,
+      username: user.username,
+      role: user.role
+    })
+
+    const duration = Date.now() - startTime
+    const serializedUser = serializeUser({ ...user, _id: userId })
+    // Don't send password hash in response
+    delete serializedUser.password
+
+    console.log('[Sign Up] Sign-up completed successfully', {
+      userId,
+      role: user.role,
+      duration: `${duration}ms`,
+      timestamp: new Date().toISOString()
+    })
+
+    res.json({
+      token,
+      user: serializedUser
+    })
+  } catch (error) {
+    const duration = Date.now() - startTime
+    console.error('[Sign Up] Sign-up failed', {
+      error: error.message,
+      code: error.code,
+      status: error.status || error.statusCode,
+      duration: `${duration}ms`,
+      timestamp: new Date().toISOString()
+    })
+    next(error)
+  }
+}
+
+export async function usernamePasswordSignIn (req, res, next) {
+  const startTime = Date.now()
+  try {
+    console.log('[Sign In] Username/password sign-in request received', {
+      timestamp: new Date().toISOString(),
+      ip: req.ip,
+      hasUsername: !!req.body.username,
+      hasPassword: !!req.body.password
+    })
+
+    const { username, password } = req.body
+
+    if (!username || !password) {
+      console.log('[Sign In] Validation failed: username or password missing')
+      throw new ValidationError('Username and password are required')
+    }
+
+    // Find user by username
+    const user = await findUserByUsername(username)
+    if (!user) {
+      throw new ValidationError('Invalid username or password')
+    }
+
+    // Check if user has a password (might be OAuth-only user)
+    if (!user.password) {
+      throw new ValidationError('This account uses a different sign-in method')
+    }
+
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(password, user.password)
+    if (!isPasswordValid) {
+      throw new ValidationError('Invalid username or password')
+    }
+
+    const userId = user._id instanceof ObjectId ? user._id.toString() : user._id
+
+    console.log('[Sign In] User authenticated', {
+      userId,
+      username: user.username,
+      role: user.role
+    })
+
+    // Generate JWT token
+    console.log('[Sign In] Generating JWT token...')
+    const token = signToken({
+      userId,
+      username: user.username,
+      role: user.role
+    })
+
+    const duration = Date.now() - startTime
+    const serializedUser = serializeUser({ ...user, _id: userId })
+    // Don't send password hash in response
+    delete serializedUser.password
+
+    console.log('[Sign In] Sign-in completed successfully', {
+      userId,
+      role: user.role,
+      duration: `${duration}ms`,
+      timestamp: new Date().toISOString()
+    })
+
+    res.json({
+      token,
+      user: serializedUser
+    })
   } catch (error) {
     const duration = Date.now() - startTime
     console.error('[Sign In] Sign-in failed', {

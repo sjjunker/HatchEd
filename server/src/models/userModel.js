@@ -17,6 +17,10 @@ export async function findUserByGoogleId (googleId) {
   return usersCollection().findOne({ googleId })
 }
 
+export async function findUserByUsername (username) {
+  return usersCollection().findOne({ username })
+}
+
 export async function findUserById (id) {
   return usersCollection().findOne({ _id: new ObjectId(id) })
 }
@@ -251,5 +255,68 @@ export async function listUsersForFamily (familyId) {
 
 export async function listParentsForFamily (familyId) {
   return usersCollection().find({ familyId: new ObjectId(familyId), role: 'parent' }).toArray()
+}
+
+export async function createUserWithPassword (userData) {
+  const startTime = Date.now()
+  console.log('[Database] Starting createUserWithPassword', {
+    username: userData.username,
+    hasEmail: !!userData.email,
+    hasName: !!userData.name,
+    timestamp: new Date().toISOString()
+  })
+
+  try {
+    const isConnected = await pingDatabase()
+    if (!isConnected) {
+      throw new Error('Database connection not available')
+    }
+    console.log('[Database] Database connection verified via ping')
+
+    // Check if username already exists
+    const existingUser = await findUserByUsername(userData.username)
+    if (existingUser) {
+      throw new Error('Username already exists')
+    }
+
+    const filteredData = Object.fromEntries(
+      Object.entries(userData).filter(([, value]) => value !== undefined && value !== null)
+    )
+
+    const newUser = {
+      ...filteredData,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    }
+
+    console.log('[Database] Inserting new user...')
+    const operationStartTime = Date.now()
+    const result = await usersCollection().insertOne(newUser)
+    const operationDuration = Date.now() - operationStartTime
+
+    console.log('[Database] User inserted successfully', {
+      userId: result.insertedId,
+      duration: `${operationDuration}ms`
+    })
+
+    const createdUser = await usersCollection().findOne({ _id: result.insertedId })
+    const totalDuration = Date.now() - startTime
+    console.log('[Database] User created successfully', {
+      userId: createdUser._id,
+      role: createdUser.role || 'null/empty',
+      duration: `${totalDuration}ms`
+    })
+    return createdUser
+  } catch (error) {
+    const totalDuration = Date.now() - startTime
+    console.error('[Database] Error in createUserWithPassword', {
+      username: userData.username,
+      error: error.message,
+      errorName: error.name,
+      duration: `${totalDuration}ms`,
+      timestamp: new Date().toISOString()
+    })
+    throw error
+  }
 }
 

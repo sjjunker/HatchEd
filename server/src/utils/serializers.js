@@ -5,6 +5,8 @@ export function serializeUser (user) {
   return {
     id: user._id?.toString?.() ?? user._id,
     appleId: user.appleId,
+    googleId: user.googleId,
+    username: user.username,
     name: user.name ?? null,
     email: user.email ?? null,
     role: user.role ?? null,

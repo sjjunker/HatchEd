@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		9647C7102EC38148008B79B8 /* .gitignore in Resources */ = {isa = PBXBuildFile; fileRef = 9647C70F2EC38139008B79B8 /* .gitignore */; };
+		96BD297D2EEE22DD00049235 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 96BDCFBB2EEE1AD500049235 /* GoogleSignIn */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -75,6 +76,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				96BD297D2EEE22DD00049235 /* GoogleSignIn in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

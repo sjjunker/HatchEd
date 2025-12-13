@@ -234,6 +234,66 @@ class AppleSignInManager: NSObject, ObservableObject {
         Task { await processGoogleSignIn(idToken: idToken, fullName: fullName, email: email) }
     }
     
+    func handleUsernamePasswordSignIn(username: String, password: String) async {
+        print("[Sign In] Starting username/password sign-in process...")
+        
+        do {
+            let body = UsernamePasswordSignInRequest(username: username, password: password)
+            let response: AuthResponse = try await api.request(
+                Endpoint(path: "api/auth/signin", method: .post, body: body)
+            )
+            print("[Sign In] API response received - hasToken: \(!response.token.isEmpty), userId: \(response.user.id), userRole: \(response.user.role ?? "nil")")
+            
+            api.setAuthToken(response.token)
+            if let userId = response.user.id as String? {
+                storeUserID(userId)
+            }
+            print("[Sign In] Token stored, applying user...")
+            applyUser(response.user)
+            
+            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+            
+            cache.save(response.token, as: "token.json")
+            print("[Sign In] Fetching family and notifications...")
+            await fetchFamilyIfNeeded()
+            await fetchNotifications()
+            print("[Sign In] Sign-in process completed - signInState: \(signInState), hasFamily: \(currentFamily != nil), notificationCount: \(notifications.count)")
+        } catch {
+            print("[Sign In] Username/password sign-in failed - error: \(error.localizedDescription)")
+            throw error
+        }
+    }
+    
+    func handleUsernamePasswordSignUp(username: String, password: String, email: String?, name: String?) async {
+        print("[Sign Up] Starting username/password sign-up process...")
+        
+        do {
+            let body = UsernamePasswordSignUpRequest(username: username, password: password, email: email, name: name)
+            let response: AuthResponse = try await api.request(
+                Endpoint(path: "api/auth/signup", method: .post, body: body)
+            )
+            print("[Sign Up] API response received - hasToken: \(!response.token.isEmpty), userId: \(response.user.id), userRole: \(response.user.role ?? "nil")")
+            
+            api.setAuthToken(response.token)
+            if let userId = response.user.id as String? {
+                storeUserID(userId)
+            }
+            print("[Sign Up] Token stored, applying user...")
+            applyUser(response.user)
+            
+            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+            
+            cache.save(response.token, as: "token.json")
+            print("[Sign Up] Fetching family and notifications...")
+            await fetchFamilyIfNeeded()
+            await fetchNotifications()
+            print("[Sign Up] Sign-up process completed - signInState: \(signInState), hasFamily: \(currentFamily != nil), notificationCount: \(notifications.count)")
+        } catch {
+            print("[Sign Up] Username/password sign-up failed - error: \(error.localizedDescription)")
+            throw error
+        }
+    }
+    
     private func processGoogleSignIn(idToken: String, fullName: String?, email: String?) async {
         print("[Sign In] Starting Google sign-in process...")
         
@@ -497,6 +557,18 @@ struct GoogleAuthRequest: Encodable {
     let idToken: String
     let fullName: String?
     let email: String?
+}
+
+struct UsernamePasswordSignInRequest: Encodable {
+    let username: String
+    let password: String
+}
+
+struct UsernamePasswordSignUpRequest: Encodable {
+    let username: String
+    let password: String
+    let email: String?
+    let name: String?
 }
 
 struct AuthResponse: Decodable {

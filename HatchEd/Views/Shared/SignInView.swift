@@ -10,6 +10,7 @@ import GoogleSignIn
 
 struct SignInView: View {
     @EnvironmentObject var signInManager: AppleSignInManager
+    @State private var showUsernamePasswordSignIn = false
     
     var body: some View {
         VStack(spacing: 32) {
@@ -56,6 +57,26 @@ struct SignInView: View {
                     .background(Color(red: 0.26, green: 0.52, blue: 0.96))
                     .cornerRadius(12)
                 }
+                
+                Button(action: {
+                    showUsernamePasswordSignIn = true
+                }) {
+                    HStack {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 18))
+                        Text("Sign in with Username")
+                            .font(.system(size: 17, weight: .medium))
+                    }
+                    .foregroundColor(.hatchEdText)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(Color.hatchEdSecondaryBackground)
+                    .cornerRadius(12)
+                }
+            }
+            .sheet(isPresented: $showUsernamePasswordSignIn) {
+                UsernamePasswordSignInView()
+                    .environmentObject(signInManager)
             }
         }
         .padding()

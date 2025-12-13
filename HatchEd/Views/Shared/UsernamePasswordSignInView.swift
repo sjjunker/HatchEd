@@ -74,7 +74,7 @@ struct UsernamePasswordSignInView: View {
                             .frame(height: 50)
                     }
                 }
-                .background(Color.hatchEdPrimary)
+                .background(Color.hatchEdAccent)
                 .cornerRadius(12)
                 .disabled(isLoading || username.isEmpty || password.isEmpty)
                 
@@ -83,7 +83,7 @@ struct UsernamePasswordSignInView: View {
                 }) {
                     Text("Don't have an account? Sign Up")
                         .font(.subheadline)
-                        .foregroundColor(.hatchEdPrimary)
+                        .foregroundColor(.hatchEdAccent)
                 }
             }
         }
@@ -95,7 +95,7 @@ struct UsernamePasswordSignInView: View {
         errorMessage = nil
         
         do {
-            await signInManager.handleUsernamePasswordSignIn(username: username, password: password)
+            try await signInManager.handleUsernamePasswordSignIn(username: username, password: password)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -175,7 +175,7 @@ struct UsernamePasswordSignUpView: View {
                                 .frame(height: 50)
                         }
                     }
-                    .background(Color.hatchEdPrimary)
+                    .background(Color.hatchEdAccent)
                     .cornerRadius(12)
                     .disabled(isLoading || !isFormValid)
                     
@@ -184,7 +184,7 @@ struct UsernamePasswordSignUpView: View {
                     }) {
                         Text("Already have an account? Sign In")
                             .font(.subheadline)
-                            .foregroundColor(.hatchEdPrimary)
+                            .foregroundColor(.hatchEdAccent)
                     }
                 }
             }
@@ -223,7 +223,7 @@ struct UsernamePasswordSignUpView: View {
         }
         
         do {
-            await signInManager.handleUsernamePasswordSignUp(
+            try await signInManager.handleUsernamePasswordSignUp(
                 username: username,
                 password: password,
                 email: email.isEmpty ? nil : email,

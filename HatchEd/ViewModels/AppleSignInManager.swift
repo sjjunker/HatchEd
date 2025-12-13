@@ -234,7 +234,7 @@ class AppleSignInManager: NSObject, ObservableObject {
         Task { await processGoogleSignIn(idToken: idToken, fullName: fullName, email: email) }
     }
     
-    func handleUsernamePasswordSignIn(username: String, password: String) async {
+    func handleUsernamePasswordSignIn(username: String, password: String) async throws {
         print("[Sign In] Starting username/password sign-in process...")
         
         do {
@@ -264,7 +264,7 @@ class AppleSignInManager: NSObject, ObservableObject {
         }
     }
     
-    func handleUsernamePasswordSignUp(username: String, password: String, email: String?, name: String?) async {
+    func handleUsernamePasswordSignUp(username: String, password: String, email: String?, name: String?) async throws {
         print("[Sign Up] Starting username/password sign-up process...")
         
         do {

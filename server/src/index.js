@@ -25,6 +25,9 @@ dotenv.config({ path: join(__dirname, '../.env') })
 
 const app = express()
 
+// Trust proxy - required for correct IP addresses and x-forwarded-* headers behind Render's load balancer
+app.set('trust proxy', 1)
+
 // Request logging middleware (before other middleware)
 app.use((req, res, next) => {
   const startTime = Date.now()
@@ -47,6 +50,16 @@ app.use((req, res, next) => {
   })
   next()
 })
+
+// HTTPS redirect middleware (production only)
+if (process.env.NODE_ENV === 'production') {
+  app.use((req, res, next) => {
+    if (req.headers['x-forwarded-proto'] !== 'https') {
+      return res.redirect(`https://${req.headers.host}${req.url}`)
+    }
+    next()
+  })
+}
 
 app.use(helmet())
 app.use(cors({ origin: true, credentials: true }))

@@ -17,6 +17,7 @@
     "dotenv": "^16.6.1",
     "express": "^4.19.2",
     "helmet": "^7.0.0",
+    "google-auth-library": "^9.0.0",
     "jsonwebtoken": "^9.0.2",
     "jwk-to-pem": "^2.0.5",
     "mongodb": "^6.8.0",

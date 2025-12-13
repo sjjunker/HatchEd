@@ -1,7 +1,8 @@
 // Updated with assistance from Cursor (ChatGPT) on 11/7/25.
 
 import { verifyAppleIdentityToken } from '../services/appleAuth.js'
-import { upsertUserByAppleId, findUserByAppleId } from '../models/userModel.js'
+import { verifyGoogleIdToken } from '../services/googleAuth.js'
+import { upsertUserByAppleId, findUserByAppleId, upsertUserByGoogleId, findUserByGoogleId } from '../models/userModel.js'
 import { signToken } from '../utils/jwt.js'
 import { serializeUser } from '../utils/serializers.js'
 import { ObjectId } from 'mongodb'
@@ -146,6 +147,144 @@ export async function appleSignIn (req, res, next) {
       duration: `${duration}ms`,
       timestamp: new Date().toISOString()
   })
+    next(error)
+  }
+}
+
+export async function googleSignIn (req, res, next) {
+  const startTime = Date.now()
+  try {
+    console.log('[Sign In] Google sign-in request received', {
+      timestamp: new Date().toISOString(),
+      ip: req.ip,
+      hasIdToken: !!req.body.idToken,
+      hasFullName: !!req.body.fullName,
+      hasEmail: !!req.body.email
+    })
+
+    const { idToken, fullName, email } = req.body
+    if (!idToken) {
+      console.log('[Sign In] Validation failed: idToken is missing')
+      throw new ValidationError('idToken is required')
+    }
+
+    const clientId = process.env.GOOGLE_CLIENT_ID
+    if (!clientId) {
+      console.error('[Sign In] Configuration error: GOOGLE_CLIENT_ID not set')
+      throw new AppError('Google Client ID not configured', 500, 'CONFIGURATION_ERROR')
+    }
+
+    console.log('[Sign In] Verifying Google ID token...', {
+      clientId,
+      tokenLength: idToken.length
+    })
+
+    const payload = await verifyGoogleIdToken(idToken)
+
+    console.log('[Sign In] Google token verified successfully', {
+      googleId: payload.sub,
+      hasEmail: !!payload.email,
+      hasName: !!payload.name
+    })
+
+    const googleId = payload.sub
+
+    // Check if user already exists to preserve their role
+    const existingUser = await findUserByGoogleId(googleId)
+    console.log('[Sign In] Existing user check', {
+      googleId,
+      exists: !!existingUser,
+      existingRole: existingUser?.role || 'none',
+      existingName: existingUser?.name || 'none'
+    })
+
+    const updateData = {}
+    const resolvedEmail = email ?? payload.email
+    if (resolvedEmail) updateData.email = resolvedEmail
+    const resolvedName = fullName ?? payload.name
+    if (resolvedName) updateData.name = resolvedName
+
+    // Preserve existing role
+    if (existingUser?.role) {
+      updateData.role = existingUser.role
+      console.log('[Sign In] Preserving existing role:', existingUser.role)
+    } else {
+      console.log('[Sign In] No role found - user will need to select one')
+    }
+
+    console.log('[Sign In] Upserting user in database...', {
+      googleId,
+      updateData: {
+        hasEmail: !!updateData.email,
+        hasName: !!updateData.name,
+        hasRole: !!updateData.role,
+        role: updateData.role || 'null'
+      }
+    })
+
+    const user = await upsertUserByGoogleId(googleId, updateData)
+
+    // Double-check: if user still doesn't have role but existing user did, fetch again
+    if (!user.role && existingUser?.role) {
+      console.log('[Sign In] Role missing after upsert, fetching user again...')
+      const refetchedUser = await findUserByGoogleId(googleId)
+      if (refetchedUser?.role) {
+        user.role = refetchedUser.role
+        console.log('[Sign In] Role restored from refetch:', refetchedUser.role)
+      }
+    }
+
+    const userId = user._id instanceof ObjectId ? user._id.toString() : user._id
+
+    console.log('[Sign In] User found/created', {
+      userId,
+      googleId: user.googleId,
+      role: user.role,
+      name: user.name,
+      isNewUser: !user.createdAt || (Date.now() - new Date(user.createdAt).getTime()) < 5000
+    })
+
+    console.log('[Sign In] Generating JWT token...')
+    const token = signToken({
+      userId,
+      googleId: user.googleId,
+      role: user.role
+    })
+
+    const duration = Date.now() - startTime
+    const serializedUser = serializeUser({ ...user, _id: userId })
+    console.log('[Sign In] Sign-in completed successfully', {
+      userId,
+      role: user.role,
+      duration: `${duration}ms`,
+      timestamp: new Date().toISOString(),
+      userData: {
+        id: serializedUser?.id,
+        role: serializedUser?.role,
+        name: serializedUser?.name,
+        hasFamilyId: !!serializedUser?.familyId
+      }
+    })
+
+    const response = {
+      token,
+      user: serializedUser
+    }
+    console.log('[Sign In] Sending response to client', {
+      hasToken: !!response.token,
+      hasUser: !!response.user,
+      userRole: response.user?.role
+    })
+    res.json(response)
+  } catch (error) {
+    const duration = Date.now() - startTime
+    console.error('[Sign In] Sign-in failed', {
+      error: error.message,
+      code: error.code,
+      status: error.status || error.statusCode,
+      duration: `${duration}ms`,
+      timestamp: new Date().toISOString()
+    })
     next(error)
   }
 }

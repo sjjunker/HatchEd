@@ -229,6 +229,63 @@ class AppleSignInManager: NSObject, ObservableObject {
             signInState = .notSignedIn
         }
     }
+    
+    func handleGoogleSignIn(idToken: String, fullName: String?, email: String?) {
+        Task { await processGoogleSignIn(idToken: idToken, fullName: fullName, email: email) }
+    }
+    
+    private func processGoogleSignIn(idToken: String, fullName: String?, email: String?) async {
+        print("[Sign In] Starting Google sign-in process...")
+        
+        print("[Sign In] ID token extracted, sending to API...")
+        do {
+            let body = GoogleAuthRequest(idToken: idToken, fullName: fullName, email: email)
+            let response: AuthResponse = try await api.request(
+                Endpoint(path: "api/auth/google", method: .post, body: body)
+            )
+            print("[Sign In] API response received - hasToken: \(!response.token.isEmpty), userId: \(response.user.id), userRole: \(response.user.role ?? "nil"), userName: \(response.user.name ?? "nil"), hasFamilyId: \(response.user.familyId != nil)")
+            
+            // Verify role is present in response
+            if response.user.role == nil || response.user.role?.isEmpty == true {
+                print("[Sign In] WARNING: User role is missing or empty in API response!")
+                print("[Sign In] Full user object: \(response.user)")
+            }
+            
+            api.setAuthToken(response.token)
+            // For Google, we'll use the user ID from the response as the stored ID
+            if let userId = response.user.id as String? {
+                storeUserID(userId)
+            }
+            print("[Sign In] Token stored, applying user...")
+            applyUser(response.user)
+            
+            // Wait a moment for state to update
+            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+            
+            print("[Sign In] User applied, current state - signInState: \(signInState), userRole: \(currentUser?.role ?? "nil"), hasUser: \(currentUser != nil)")
+            
+            // Final verification
+            if signInState == .signedIn {
+                print("[Sign In] ✓ Sign-in successful - Dashboard should be visible")
+            } else if signInState == .needsRoleSelection {
+                print("[Sign In] ⚠ User needs to select a role")
+            } else {
+                print("[Sign In] ✗ Sign-in failed - State: \(signInState)")
+            }
+            
+            cache.save(response.token, as: "token.json")
+            print("[Sign In] Fetching family and notifications...")
+            await fetchFamilyIfNeeded()
+            await fetchNotifications()
+            print("[Sign In] Sign-in process completed - signInState: \(signInState), hasFamily: \(currentFamily != nil), notificationCount: \(notifications.count)")
+        } catch {
+            print("[Sign In] Sign-in exchange failed - error: \(error.localizedDescription), errorType: \(type(of: error))")
+            if let apiError = error as? APIError {
+                print("[Sign In] API Error details - message: \(apiError.errorDescription ?? "unknown")")
+            }
+            signInState = .notSignedIn
+        }
+    }
 
     private func processSignIn(authResults: ASAuthorization) async {
         print("[Sign In] Starting sign-in process...")
@@ -432,6 +489,12 @@ class AppleSignInManager: NSObject, ObservableObject {
 
 struct AuthRequest: Encodable {
     let identityToken: String
+    let fullName: String?
+    let email: String?
+}
+
+struct GoogleAuthRequest: Encodable {
+    let idToken: String
     let fullName: String?
     let email: String?
 }

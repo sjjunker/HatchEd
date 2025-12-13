@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
-    "build": "npm run lint",
+    "build": "echo \"No build step required\"",
     "lint": "eslint \"src/**/*.js\""
   },
   "dependencies": {

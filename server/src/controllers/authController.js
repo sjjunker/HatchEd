@@ -1,6 +1,6 @@
 // Updated with assistance from Cursor (ChatGPT) on 11/7/25.
 
-import bcrypt from 'bcrypt'
+import bcrypt from 'bcryptjs'
 import { verifyAppleIdentityToken } from '../services/appleAuth.js'
 import { verifyGoogleIdToken } from '../services/googleAuth.js'
 import { upsertUserByAppleId, findUserByAppleId, upsertUserByGoogleId, findUserByGoogleId, findUserByUsername, createUserWithPassword } from '../models/userModel.js'

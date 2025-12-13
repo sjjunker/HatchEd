@@ -74,11 +74,7 @@ struct SignInView: View {
             return
         }
         
-        guard let config = GIDConfiguration(clientID: clientId) else {
-            print("[Google Sign-In] Failed to create GIDConfiguration")
-            return
-        }
-        
+        let config = GIDConfiguration(clientID: clientId)
         GIDSignIn.sharedInstance.configuration = config
     }
     

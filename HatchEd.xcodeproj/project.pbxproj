@@ -137,6 +137,7 @@
 			);
 			name = HatchEd;
 			packageProductDependencies = (
+				96BDCFBB2EEE1AD500049235 /* GoogleSignIn */,
 			);
 			productName = HatchEd;
 			productReference = 966A570A2DCA2F5A00879ACA /* HatchEd.app */;
@@ -616,6 +617,14 @@
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		96BDCFBB2EEE1AD500049235 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 96BDCFBA2EEE1AD500049235 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 966A57022DCA2F5A00879ACA /* Project object */;
 }

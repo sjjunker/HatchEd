@@ -11,13 +11,15 @@ import SwiftUI
 struct WeeklyOverviewView: View {
     let weekDates: [Date]
     let tasksProvider: (Date) -> [PlannerTask]
+    let assignmentsProvider: (Date) -> [PlannerTask]
     let onSelectDay: (Date) -> Void
     let onSelectTask: ((PlannerTask) -> Void)?
     let selectedDate: Date
     
-    init(weekDates: [Date], tasksProvider: @escaping (Date) -> [PlannerTask], onSelectDay: @escaping (Date) -> Void, selectedDate: Date, onSelectTask: ((PlannerTask) -> Void)? = nil) {
+    init(weekDates: [Date], tasksProvider: @escaping (Date) -> [PlannerTask], assignmentsProvider: @escaping (Date) -> [PlannerTask], onSelectDay: @escaping (Date) -> Void, selectedDate: Date, onSelectTask: ((PlannerTask) -> Void)? = nil) {
         self.weekDates = weekDates
         self.tasksProvider = tasksProvider
+        self.assignmentsProvider = assignmentsProvider
         self.onSelectDay = onSelectDay
         self.selectedDate = selectedDate
         self.onSelectTask = onSelectTask
@@ -36,7 +38,7 @@ struct WeeklyOverviewView: View {
         return formatter
     }()
 
-    private let hours: [Int] = Array(6...23)
+    private let hours: [Int] = Array(6...22)
     private let columnWidth: CGFloat = 45
     private let rowHeight: CGFloat = 45
 
@@ -57,20 +59,21 @@ struct WeeklyOverviewView: View {
                         }
                         .padding(.top, rowHeight)
                         
-                        // Grid and tasks (offset to account for headers)
+                        // Grid, tasks, and assignments (offset to account for headers)
                         ZStack(alignment: .topLeading) {
                             drawGrid()
                             drawTasks()
+                            drawAssignmentsList()
                         }
                         .frame(
                             width: columnWidth * CGFloat(weekDates.count),
-                            height: rowHeight * CGFloat(hours.count)
+                            height: rowHeight * CGFloat(hours.count) + 120 // Extra space for assignment list
                         )
                         .offset(x: columnWidth, y: rowHeight * 2)
                     }
                     .frame(
                         width: columnWidth + (columnWidth * CGFloat(weekDates.count)),
-                        height: rowHeight + (rowHeight * CGFloat(hours.count)),
+                        height: rowHeight + (rowHeight * CGFloat(hours.count)) + 120, // Extra space for assignments list
                         alignment: .topLeading
                     )
                 }
@@ -164,13 +167,36 @@ struct WeeklyOverviewView: View {
             ForEach(weekDates.indices, id: \.self) { column in
                 let date = weekDates[column]
                 let tasks = tasksProvider(date)
-                TasksForDay(tasks: tasks, column: column, columnWidth: columnWidth, rowHeight: rowHeight, hours: hours, onSelectTask: onSelectTask)
+                // Only show non-assignment tasks (regular planner tasks)
+                let regularTasks = tasks.filter { !$0.id.hasPrefix("assignment-") }
+                TasksForDay(date: date, tasks: regularTasks, column: column, columnWidth: columnWidth, rowHeight: rowHeight, hours: hours, onSelectTask: onSelectTask)
+            }
+        }
+    }
+    
+    private func drawAssignmentsList() -> some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(weekDates.indices, id: \.self) { column in
+                let date = weekDates[column]
+                let assignments = assignmentsProvider(date)
+                
+                if !assignments.isEmpty {
+                    AssignmentsListForDay(
+                        assignments: assignments,
+                        column: column,
+                        columnWidth: columnWidth,
+                        rowHeight: rowHeight,
+                        hours: hours,
+                        onSelectTask: onSelectTask
+                    )
+                }
             }
         }
     }
 }
 
 private struct TasksForDay: View {
+    let date: Date
     let tasks: [PlannerTask]
     let column: Int
     let columnWidth: CGFloat
@@ -179,7 +205,7 @@ private struct TasksForDay: View {
     let onSelectTask: ((PlannerTask) -> Void)?
 
     private var dayStart: Date {
-        Calendar.current.startOfDay(for: tasks.first?.startDate ?? Date())
+        Calendar.current.startOfDay(for: date)
     }
     private var visibleStart: Date {
         Calendar.current.date(bySettingHour: hours.first ?? 6, minute: 0, second: 0, of: dayStart) ?? dayStart
@@ -191,35 +217,23 @@ private struct TasksForDay: View {
     var body: some View {
         ForEach(tasks) { task in
             let rect = rectForTask(task)
-            let isAssignment = task.id.hasPrefix("assignment-")
             Button {
                 onSelectTask?(task)
             } label: {
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(isAssignment ? task.color.opacity(0.9) : task.color.opacity(0.8))
+                    .fill(task.color.opacity(0.8))
                     .frame(width: columnWidth - 12, height: max(rect.height, 24), alignment: .leading)
                     .overlay(
                         VStack(alignment: .leading, spacing: 4) {
-                            HStack(spacing: 4) {
-                                if isAssignment {
-                                    Image(systemName: "doc.text.fill")
-                                        .font(.caption2)
-                                        .foregroundColor(.white.opacity(0.9))
-                                }
-                                Text(task.title)
-                                    .font(isAssignment ? .caption2.bold() : .caption2.bold())
-                                    .foregroundColor(.white)
-                                    .lineLimit(2)
-                                    .multilineTextAlignment(.leading)
-                            }
-                            .padding(.horizontal, 6)
-                            .padding(.top, 6)
+                            Text(task.title)
+                                .font(.caption2.bold())
+                                .foregroundColor(.white)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                                .padding(.horizontal, 6)
+                                .padding(.top, 6)
                             Spacer(minLength: 4)
                         }
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(isAssignment ? Color.white.opacity(0.4) : Color.clear, lineWidth: 1.5)
                     )
             }
             .buttonStyle(.plain)
@@ -243,12 +257,85 @@ private struct TasksForDay: View {
     }
 }
 
+private struct AssignmentsListForDay: View {
+    let assignments: [PlannerTask]
+    let column: Int
+    let columnWidth: CGFloat
+    let rowHeight: CGFloat
+    let hours: [Int]
+    let onSelectTask: ((PlannerTask) -> Void)?
+    
+    private var assignmentsListY: CGFloat {
+        // Position at the end of the day (after the last hour row)
+        return CGFloat(hours.count) * rowHeight + 8 // 8 points spacing after the grid
+    }
+    
+    private var listHeight: CGFloat {
+        // Calculate height based on number of assignments
+        // Header (16) + spacing (8) + assignments (20 each) + padding
+        let assignmentHeight: CGFloat = 20
+        let headerHeight: CGFloat = 16
+        let spacing: CGFloat = 8
+        return headerHeight + spacing + (CGFloat(assignments.count) * assignmentHeight) + CGFloat(max(0, assignments.count - 1) * 4)
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            // Header
+            Text("Assignments")
+                .font(.caption2)
+                .fontWeight(.semibold)
+                .foregroundColor(.hatchEdSecondaryText)
+                .padding(.horizontal, 4)
+                .padding(.bottom, 4)
+            
+            // Assignment list
+            ForEach(assignments) { assignment in
+                Button {
+                    onSelectTask?(assignment)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "doc.text.fill")
+                            .font(.caption2)
+                            .foregroundColor(assignment.color)
+                            .frame(width: 12)
+                        
+                        Text(assignment.title)
+                            .font(.caption2)
+                            .foregroundColor(.hatchEdText)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .frame(width: columnWidth - 12, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(assignment.color.opacity(0.15))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(assignment.color.opacity(0.3), lineWidth: 1)
+                            )
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(width: columnWidth - 12, height: listHeight, alignment: .topLeading)
+        .position(
+            x: CGFloat(column) * columnWidth + columnWidth / 2,
+            y: assignmentsListY + listHeight / 2
+        )
+    }
+}
+
 #Preview {
     let store = PlannerTaskStore()
     let dates = (0..<7).compactMap { Calendar.current.date(byAdding: .day, value: $0, to: Date()) }
     WeeklyOverviewView(
         weekDates: dates,
         tasksProvider: { _ in store.allTasks() },
+        assignmentsProvider: { _ in [] },
         onSelectDay: { _ in },
         selectedDate: Date(),
         onSelectTask: { _ in }

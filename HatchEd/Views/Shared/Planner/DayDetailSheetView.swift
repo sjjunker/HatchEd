@@ -12,6 +12,14 @@ struct DayDetailSheetView: View {
     let date: Date
     let tasks: [PlannerTask]
     let onDelete: (PlannerTask) -> Void
+    let onTaskSelected: ((PlannerTask) -> Void)?
+    
+    init(date: Date, tasks: [PlannerTask], onDelete: @escaping (PlannerTask) -> Void, onTaskSelected: ((PlannerTask) -> Void)? = nil) {
+        self.date = date
+        self.tasks = tasks
+        self.onDelete = onDelete
+        self.onTaskSelected = onTaskSelected
+    }
 
     private let formatter: DateFormatter = {
         let f = DateFormatter()
@@ -47,18 +55,23 @@ struct DayDetailSheetView: View {
                     ScrollView {
                         VStack(spacing: 16) {
                             ForEach(tasks) { task in
-                                PlannerTaskRow(task: task)
-                                    .padding(.horizontal)
-                                    .swipeActions {
-                                        // Only allow deletion of regular tasks, not assignments
-                                        if !task.id.hasPrefix("assignment-") {
-                                            Button(role: .destructive) {
-                                                onDelete(task)
-                                            } label: {
-                                                Label("Delete", systemImage: "trash")
-                                            }
+                                Button {
+                                    onTaskSelected?(task)
+                                } label: {
+                                    PlannerTaskRow(task: task)
+                                }
+                                .buttonStyle(.plain)
+                                .padding(.horizontal)
+                                .swipeActions {
+                                    // Only allow deletion of regular tasks, not assignments
+                                    if !task.id.hasPrefix("assignment-") {
+                                        Button(role: .destructive) {
+                                            onDelete(task)
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
                                         }
                                     }
+                                }
                             }
                         }
                         .padding(.vertical)

@@ -20,9 +20,8 @@ final class PlannerTaskStore: ObservableObject {
 
     init() {
         loadFromCache()
-        Task {
-            await loadFromServer()
-        }
+        // Don't load from server automatically - let the view control when to load
+        // This prevents race conditions and cancelled requests when onAppear also calls refresh()
     }
 
     func tasks(for date: Date) -> [PlannerTask] {
@@ -72,18 +71,24 @@ final class PlannerTaskStore: ObservableObject {
     private func loadFromServer() async {
         guard !isLoading else { return }
         isLoading = true
+        defer { isLoading = false }
         
         do {
             let serverTasks = try await api.fetchPlannerTasks()
             tasks = serverTasks
             tasks.sort { $0.startDate < $1.startDate }
             saveToCache()
+            print("Loaded \(tasks.count) planner tasks from server")
         } catch {
+            // Ignore cancelled requests (-999) as they're expected when requests are replaced
+            if let urlError = error as? URLError, urlError.code == .cancelled {
+                // Request was cancelled, likely replaced by a new one - this is fine
+                print("Planner tasks request was cancelled (this is expected)")
+                return
+            }
             print("Failed to load tasks from server: \(error)")
             // Keep cached tasks if server load fails
         }
-        
-        isLoading = false
     }
 
     private func saveToCache() {

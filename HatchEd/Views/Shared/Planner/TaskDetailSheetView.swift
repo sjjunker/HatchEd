@@ -53,9 +53,11 @@ struct TaskDetailSheetView: View {
         self.onAssignmentUpdated = onAssignmentUpdated
         self.onTaskDeleted = onTaskDeleted
         
-        // Initialize edit state from task
+        // Initialize edit state from task or assignment
         _editedTitle = State(initialValue: task.title)
-        _editedDate = State(initialValue: task.startDate)
+        // For assignments, use the assignment's dueDate; for tasks, use task.startDate
+        let initialDate = assignment?.dueDate ?? task.startDate
+        _editedDate = State(initialValue: initialDate)
         _editedDurationMinutes = State(initialValue: task.durationMinutes)
         _editedColorName = State(initialValue: task.colorName)
         
@@ -569,9 +571,10 @@ struct TaskDetailSheetView: View {
     
     private func startEditing() {
         isEditing = true
-        // Reset edit state to current task values
+        // Reset edit state to current task or assignment values
         editedTitle = task.title
-        editedDate = task.startDate
+        // For assignments, use the assignment's dueDate; for tasks, use task.startDate
+        editedDate = assignment?.dueDate ?? task.startDate
         editedDurationMinutes = task.durationMinutes
         editedColorName = task.colorName
         
@@ -606,7 +609,7 @@ struct TaskDetailSheetView: View {
         isEditing = false
         // Reset to original values
         editedTitle = task.title
-        editedDate = task.startDate
+        editedDate = assignment?.dueDate ?? task.startDate
         editedDurationMinutes = task.durationMinutes
         editedColorName = task.colorName
         

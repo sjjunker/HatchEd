@@ -14,6 +14,7 @@ struct Planner: View {
     @State private var selectedDate = Calendar.current.startOfDay(for: Date())
     @State private var showingDaySheet = false
     @State private var showingAddTask = false
+    @State private var showingAddAssignment = false
     @State private var selectedTask: PlannerTask?
     @State private var weekOffset: Int = 0
     @State private var assignments: [Assignment] = []
@@ -32,9 +33,12 @@ struct Planner: View {
                 WeeklyOverviewView(
                     weekDates: currentWeekDates,
                     tasksProvider: { date in
-                        let regularTasks = taskStore.tasks(for: date)
-                        let assignmentTasks = assignmentsToTasks(for: date)
-                        return regularTasks + assignmentTasks
+                        // Only regular planner tasks (not assignments)
+                        taskStore.tasks(for: date)
+                    },
+                    assignmentsProvider: { date in
+                        // Only assignments for this day
+                        assignmentsToTasks(for: date)
                     },
                     onSelectDay: { date in
                         selectedDate = date
@@ -45,6 +49,8 @@ struct Planner: View {
                         selectedTask = task
                     }
                 )
+                // Force re-render when data changes by using the data as part of the view identity
+                .id("planner-\(taskStore.tasks.count)-\(assignments.count)")
                 .gesture(
                     DragGesture(minimumDistance: 50)
                         .onEnded { value in
@@ -81,13 +87,28 @@ struct Planner: View {
                                 await taskStore.remove(task)
                             }
                         }
+                    },
+                    onTaskSelected: { task in
+                        // Close day sheet and open task detail sheet
+                        showingDaySheet = false
+                        selectedTask = task
                     }
                 )
                 .presentationDetents([.fraction(0.4), .large])
             }
 
-            Button {
-                showingAddTask = true
+            Menu {
+                Button {
+                    showingAddTask = true
+                } label: {
+                    Label("Add Task", systemImage: "checkmark.circle")
+                }
+                
+                Button {
+                    showingAddAssignment = true
+                } label: {
+                    Label("Add Assignment", systemImage: "doc.text")
+                }
             } label: {
                 Image(systemName: "plus")
                     .font(.title)
@@ -102,20 +123,18 @@ struct Planner: View {
         .sheet(isPresented: $showingAddTask) {
             AddTaskView(
                 initialDate: selectedDate,
-                assignments: assignments,
-                students: signInManager.students,
-                existingTaskIds: {
-                    // Get all assignment-based task IDs from all dates in the current week
-                    let allRegularTasks = taskStore.allTasks()
-                    let allWeekDates = currentWeekDates
-                    let allAssignmentTasks = allWeekDates.flatMap { assignmentsToTasks(for: $0) }
-                    return Set(allRegularTasks.map { $0.id } + allAssignmentTasks.map { $0.id })
-                }(),
                 onSaveTask: { task in
                     Task { @MainActor in
                         taskStore.add(task)
                     }
-                },
+                }
+            )
+            .presentationDetents([.fraction(0.65), .large])
+        }
+        .sheet(isPresented: $showingAddAssignment) {
+            AddAssignmentView(
+                initialDate: selectedDate,
+                students: signInManager.students,
                 onSaveAssignment: {
                     // Reload assignments when a new assignment is created
                     Task {
@@ -149,12 +168,11 @@ struct Planner: View {
             )
             .presentationDetents([.fraction(0.75), .large])
         }
-        .onAppear {
-            Task {
-                await loadAssignments()
-                await loadCourses()
-                await taskStore.refresh()
-            }
+        .task {
+            // Load data when view appears
+            await loadAssignments()
+            await loadCourses()
+            await taskStore.refresh()
         }
         .refreshable {
             await loadAssignments()
@@ -258,12 +276,14 @@ struct Planner: View {
     private func loadAssignments() async {
         guard !isLoadingAssignments else { return }
         isLoadingAssignments = true
+        defer { isLoadingAssignments = false }
+        
         do {
             assignments = try await api.fetchAssignments()
+            print("Loaded \(assignments.count) assignments")
         } catch {
             print("Failed to load assignments: \(error)")
         }
-        isLoadingAssignments = false
     }
     
     @MainActor
@@ -291,9 +311,9 @@ struct Planner: View {
                 return dueDateStart >= startOfDay && dueDateStart < endOfDay
             }
             .map { assignment in
-                // Use due date at end of day (22:30 = 10:30pm) instead of 3pm
-                let dueDate = assignment.dueDate ?? Date()
-                let taskDate = calendar.date(bySettingHour: 22, minute: 30, second: 0, of: dueDate) ?? calendar.startOfDay(for: dueDate)
+                // Use the filtered date's day at end of day (22:30 = 10:30pm) instead of 3pm
+                // This ensures the taskDate is on the correct day
+                let taskDate = calendar.date(bySettingHour: 22, minute: 30, second: 0, of: startOfDay) ?? startOfDay
                 
                 // Use orange as default color for assignments
                 let colorName = "Orange"

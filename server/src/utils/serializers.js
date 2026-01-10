@@ -83,6 +83,7 @@ export function serializeAssignment (assignment) {
     instructions: assignment.instructions ?? null,
     pointsPossible: assignment.pointsPossible ?? null,
     pointsAwarded: assignment.pointsAwarded ?? null,
+    courseId: assignment.courseId?.toString?.() ?? assignment.courseId ?? null,
     questions: assignment.questions ?? [],
     completed: assignment.completed ?? false, // Default to false if not set
     createdAt: assignment.createdAt,

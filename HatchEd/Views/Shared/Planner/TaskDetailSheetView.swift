@@ -588,8 +588,12 @@ struct TaskDetailSheetView: View {
         
         // If not found and this is an assignment, try to find the course from the assignment
         if courseToSet == nil, let assignment = assignment {
-            if let student = students.first(where: { $0.id == assignment.studentId }) {
-                // Find the course that contains this assignment
+            // First, try to find course by assignment's courseId if available
+            if let courseId = assignment.courseId {
+                courseToSet = courses.first { $0.id == courseId }
+            }
+            // Fallback: try to find course from assignments list
+            if courseToSet == nil, let student = students.first(where: { $0.id == assignment.studentId }) {
                 courseToSet = courses.first(where: { course in
                     course.student.id == student.id && course.assignments.contains { $0.id == assignment.id }
                 })
@@ -650,7 +654,8 @@ struct TaskDetailSheetView: View {
                     dueDate: editedDate,
                     instructions: nil,
                     pointsPossible: nil,
-                    pointsAwarded: nil
+                    pointsAwarded: nil,
+                    courseId: editedCourse?.id
                 )
                 onAssignmentUpdated()
                 dismiss()

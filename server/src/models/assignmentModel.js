@@ -41,7 +41,7 @@ export async function findAssignmentById (id) {
   return assignmentsCollection().findOne({ _id: new ObjectId(id) })
 }
 
-export async function updateAssignment (id, { title, dueDate, instructions, pointsPossible, pointsAwarded }) {
+export async function updateAssignment (id, { title, dueDate, instructions, pointsPossible, pointsAwarded, courseId }) {
   const update = {}
   if (title !== undefined) update.title = title
   if (dueDate !== undefined) update.dueDate = dueDate ? new Date(dueDate) : null
@@ -52,6 +52,7 @@ export async function updateAssignment (id, { title, dueDate, instructions, poin
     // Automatically mark as completed when points are awarded
     update.completed = pointsAwarded != null
   }
+  if (courseId !== undefined) update.courseId = courseId ? new ObjectId(courseId) : null
   update.updatedAt = new Date()
 
   const result = await assignmentsCollection().findOneAndUpdate(

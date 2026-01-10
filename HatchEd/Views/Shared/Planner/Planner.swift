@@ -9,6 +9,7 @@
 import SwiftUI
 
 struct Planner: View {
+    @EnvironmentObject private var signInManager: AppleSignInManager
     @StateObject private var taskStore = PlannerTaskStore()
     @State private var selectedDate = Calendar.current.startOfDay(for: Date())
     @State private var showingDaySheet = false
@@ -16,7 +17,9 @@ struct Planner: View {
     @State private var selectedTask: PlannerTask?
     @State private var weekOffset: Int = 0
     @State private var assignments: [Assignment] = []
+    @State private var courses: [Course] = []
     @State private var isLoadingAssignments = false
+    @State private var isLoadingCourses = false
 
     private let calendar = Calendar.current
     private let api = APIClient.shared
@@ -74,7 +77,9 @@ struct Planner: View {
                     onDelete: { task in
                         // Only allow deletion of regular tasks, not assignments
                         if !task.id.hasPrefix("assignment-") {
-                            taskStore.remove(task)
+                            Task {
+                                await taskStore.remove(task)
+                            }
                         }
                     }
                 )
@@ -98,6 +103,7 @@ struct Planner: View {
             AddTaskView(
                 initialDate: selectedDate,
                 assignments: assignments,
+                students: signInManager.students,
                 existingTaskIds: {
                     // Get all assignment-based task IDs from all dates in the current week
                     let allRegularTasks = taskStore.allTasks()
@@ -105,28 +111,55 @@ struct Planner: View {
                     let allAssignmentTasks = allWeekDates.flatMap { assignmentsToTasks(for: $0) }
                     return Set(allRegularTasks.map { $0.id } + allAssignmentTasks.map { $0.id })
                 }(),
-                onSave: { task in
+                onSaveTask: { task in
                     Task { @MainActor in
                         taskStore.add(task)
                     }
+                },
+                onSaveAssignment: {
+                    // Reload assignments when a new assignment is created
+                    Task {
+                        await loadAssignments()
+                    }
                 }
             )
-            .presentationDetents([.fraction(0.6), .large])
+            .presentationDetents([.fraction(0.75), .large])
         }
         .sheet(item: $selectedTask) { task in
             TaskDetailSheetView(
                 task: task,
-                assignment: assignmentForTask(task)
+                assignment: assignmentForTask(task),
+                students: signInManager.students,
+                courses: courses,
+                onTaskUpdated: {
+                    Task {
+                        await taskStore.refresh()
+                    }
+                },
+                onAssignmentUpdated: {
+                    Task {
+                        await loadAssignments()
+                    }
+                },
+                onTaskDeleted: {
+                    Task {
+                        await taskStore.refresh()
+                    }
+                }
             )
-            .presentationDetents([.fraction(0.7), .large])
+            .presentationDetents([.fraction(0.75), .large])
         }
         .onAppear {
             Task {
                 await loadAssignments()
+                await loadCourses()
+                await taskStore.refresh()
             }
         }
         .refreshable {
             await loadAssignments()
+            await loadCourses()
+            await taskStore.refresh()
         }
     }
 
@@ -233,6 +266,18 @@ struct Planner: View {
         isLoadingAssignments = false
     }
     
+    @MainActor
+    private func loadCourses() async {
+        guard !isLoadingCourses else { return }
+        isLoadingCourses = true
+        do {
+            courses = try await api.fetchCourses()
+        } catch {
+            print("Failed to load courses: \(error)")
+        }
+        isLoadingCourses = false
+    }
+    
     private func assignmentsToTasks(for date: Date) -> [PlannerTask] {
         let startOfDay = calendar.startOfDay(for: date)
         guard let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) else {
@@ -246,9 +291,9 @@ struct Planner: View {
                 return dueDateStart >= startOfDay && dueDateStart < endOfDay
             }
             .map { assignment in
-                // Use due date at 3 PM (15:00) as default time, or start of day if not available
+                // Use due date at end of day (22:30 = 10:30pm) instead of 3pm
                 let dueDate = assignment.dueDate ?? Date()
-                let taskDate = calendar.date(bySettingHour: 15, minute: 0, second: 0, of: dueDate) ?? calendar.startOfDay(for: dueDate)
+                let taskDate = calendar.date(bySettingHour: 22, minute: 30, second: 0, of: dueDate) ?? calendar.startOfDay(for: dueDate)
                 
                 // Use orange as default color for assignments
                 let colorName = "Orange"

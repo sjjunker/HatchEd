@@ -227,6 +227,64 @@ final class APIClient {
         )
     }
     
+    // Planner Tasks API methods
+    struct PlannerTasksResponse: Decodable {
+        let tasks: [PlannerTask]
+    }
+    
+    struct PlannerTaskResponse: Decodable {
+        let task: PlannerTask
+    }
+    
+    struct CreatePlannerTaskRequest: Encodable {
+        let title: String
+        let startDate: Date
+        let durationMinutes: Int
+        let colorName: String
+        let subject: String?
+    }
+    
+    struct UpdatePlannerTaskRequest: Encodable {
+        let title: String?
+        let startDate: Date?
+        let durationMinutes: Int?
+        let colorName: String?
+        let subject: String?
+    }
+    
+    func createPlannerTask(title: String, startDate: Date, durationMinutes: Int, colorName: String, subject: String?) async throws -> PlannerTask {
+        let body = CreatePlannerTaskRequest(title: title, startDate: startDate, durationMinutes: durationMinutes, colorName: colorName, subject: subject)
+        let response: PlannerTaskResponse = try await request(
+            Endpoint(path: "api/planner/tasks", method: .post, body: body),
+            responseType: PlannerTaskResponse.self
+        )
+        return response.task
+    }
+    
+    func fetchPlannerTasks() async throws -> [PlannerTask] {
+        let response: PlannerTasksResponse = try await request(
+            Endpoint(path: "api/planner/tasks"),
+            responseType: PlannerTasksResponse.self
+        )
+        return response.tasks
+    }
+    
+    func updatePlannerTask(id: String, title: String?, startDate: Date?, durationMinutes: Int?, colorName: String?, subject: String?) async throws -> PlannerTask {
+        let body = UpdatePlannerTaskRequest(title: title, startDate: startDate, durationMinutes: durationMinutes, colorName: colorName, subject: subject)
+        let response: PlannerTaskResponse = try await request(
+            Endpoint(path: "api/planner/tasks/\(id)", method: .patch, body: body),
+            responseType: PlannerTaskResponse.self
+        )
+        return response.task
+    }
+    
+    func deletePlannerTask(id: String) async throws {
+        _ = try await request(
+            Endpoint(path: "api/planner/tasks/\(id)", method: .delete),
+            responseType: SuccessResponse.self
+        )
+    }
+    
     // Portfolio API methods
     struct PortfoliosResponse: Decodable {
         let portfolios: [Portfolio]

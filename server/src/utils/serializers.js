@@ -123,3 +123,17 @@ export function serializeStudentWorkFile (file) {
   }
 }
 
+export function serializePlannerTask (task) {
+  if (!task) return null
+  return {
+    id: task._id?.toString?.() ?? task._id,
+    title: task.title,
+    startDate: task.startDate,
+    durationMinutes: task.durationMinutes,
+    colorName: task.colorName,
+    subject: task.subject ?? null,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt
+  }
+}
+

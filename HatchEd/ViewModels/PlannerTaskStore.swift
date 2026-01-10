@@ -11,13 +11,18 @@ import Foundation
 @MainActor
 final class PlannerTaskStore: ObservableObject {
     @Published private(set) var tasks: [PlannerTask] = []
+    @Published private(set) var isLoading: Bool = false
 
     private let cache = OfflineCache.shared
     private let cacheFile = "plannerTasks.json"
     private let calendar = Calendar.current
+    private let api = APIClient.shared
 
     init() {
-        load()
+        loadFromCache()
+        Task {
+            await loadFromServer()
+        }
     }
 
     func tasks(for date: Date) -> [PlannerTask] {
@@ -30,27 +35,58 @@ final class PlannerTaskStore: ObservableObject {
     }
 
     func add(_ task: PlannerTask) {
+        // Task is already created on server, just add to local store
         tasks.append(task)
         tasks.sort { $0.startDate < $1.startDate }
-        save()
+        saveToCache()
     }
-
-    func remove(_ task: PlannerTask) {
-        tasks.removeAll { $0.id == task.id }
-        save()
+    
+    func remove(_ task: PlannerTask) async {
+        // Delete from server first
+        do {
+            try await api.deletePlannerTask(id: task.id)
+            tasks.removeAll { $0.id == task.id }
+            saveToCache()
+        } catch {
+            print("Failed to delete task from server: \(error)")
+            // Still remove locally if server deletion fails
+            tasks.removeAll { $0.id == task.id }
+            saveToCache()
+        }
     }
 
     func allTasks() -> [PlannerTask] {
         tasks
     }
+    
+    func refresh() async {
+        await loadFromServer()
+    }
 
-    private func load() {
+    private func loadFromCache() {
         if let stored: [PlannerTask] = cache.load([PlannerTask].self, from: cacheFile) {
             tasks = stored
         }
     }
+    
+    private func loadFromServer() async {
+        guard !isLoading else { return }
+        isLoading = true
+        
+        do {
+            let serverTasks = try await api.fetchPlannerTasks()
+            tasks = serverTasks
+            tasks.sort { $0.startDate < $1.startDate }
+            saveToCache()
+        } catch {
+            print("Failed to load tasks from server: \(error)")
+            // Keep cached tasks if server load fails
+        }
+        
+        isLoading = false
+    }
 
-    private func save() {
+    private func saveToCache() {
         cache.save(tasks, as: cacheFile)
     }
 }

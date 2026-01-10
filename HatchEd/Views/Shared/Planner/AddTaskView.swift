@@ -13,8 +13,10 @@ struct AddTaskView: View {
 
     let initialDate: Date
     let assignments: [Assignment]
+    let students: [User]
     let existingTaskIds: Set<String>
-    let onSave: (PlannerTask) -> Void
+    let onSaveTask: (PlannerTask) -> Void
+    let onSaveAssignment: () -> Void
 
     @State private var title: String = ""
     @State private var date: Date
@@ -22,17 +24,26 @@ struct AddTaskView: View {
     @State private var selectedColorName: String = PlannerTask.colorOptions.first?.name ?? "Blue"
     @State private var selectedAssignment: Assignment?
     @State private var taskMode: TaskMode = .new
+    @State private var selectedCourse: Course? = nil
+    @State private var selectedStudent: User? = nil
+    @State private var courses: [Course] = []
+    @State private var isLoadingCourses: Bool = false
+    @State private var isSaving: Bool = false
+    @State private var errorMessage: String? = nil
 
     enum TaskMode {
         case new
         case fromAssignment
     }
+    
 
-    init(initialDate: Date, assignments: [Assignment] = [], existingTaskIds: Set<String> = [], onSave: @escaping (PlannerTask) -> Void) {
+    init(initialDate: Date, assignments: [Assignment] = [], students: [User] = [], existingTaskIds: Set<String> = [], onSaveTask: @escaping (PlannerTask) -> Void, onSaveAssignment: @escaping () -> Void) {
         self.initialDate = initialDate
         self.assignments = assignments
+        self.students = students
         self.existingTaskIds = existingTaskIds
-        self.onSave = onSave
+        self.onSaveTask = onSaveTask
+        self.onSaveAssignment = onSaveAssignment
         _date = State(initialValue: initialDate)
     }
     
@@ -91,9 +102,44 @@ struct AddTaskView: View {
                         Text("Duration: \(formattedDuration)")
                     }
                 }
+                
+                // Show student selection first
+                Section(header: Text("Student")) {
+                    if !students.isEmpty {
+                        Picker("Select Student", selection: $selectedStudent) {
+                            Text("None").tag(nil as User?)
+                            ForEach(students) { student in
+                                Text(student.name ?? "Student").tag(student as User?)
+                            }
+                        }
+                        .onChange(of: selectedStudent) { newStudent in
+                            // Clear course selection when student changes
+                            selectedCourse = nil
+                        }
+                    } else {
+                        Text("No students available")
+                            .foregroundColor(.secondary)
+                            .font(.subheadline)
+                    }
+                }
+                
+                // Show course selection when student is selected
+                if selectedStudent != nil {
+                    Section(header: Text("Course")) {
+                        courseSelection
+                    }
+                }
 
                 Section(header: Text("Color")) {
                     colorSelection
+                }
+                
+                if let errorMessage = errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .foregroundColor(.red)
+                            .font(.caption)
+                    }
                 }
             }
             .navigationTitle("New Task")
@@ -104,15 +150,65 @@ struct AddTaskView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        saveTask()
+                        Task {
+                            await saveTask()
+                        }
                     }
                     .fontWeight(.semibold)
                     .foregroundColor(.hatchEdAccent)
-                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving || (selectedCourse != nil && selectedStudent == nil))
                 }
             }
         }
-        .presentationDetents([.fraction(0.55), .large])
+        .presentationDetents([.fraction(0.65), .large])
+        .onAppear {
+            Task {
+                await loadCourses()
+            }
+        }
+    }
+    
+    private var courseSelection: some View {
+        VStack(spacing: 12) {
+            if let student = selectedStudent {
+                // Show courses for the selected student
+                let studentCourses = courses.filter { $0.student.id == student.id }
+                
+                if !studentCourses.isEmpty {
+                    Picker("Course", selection: $selectedCourse) {
+                        Text("None").tag(nil as Course?)
+                        ForEach(studentCourses) { course in
+                            Text(course.name).tag(course as Course?)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                } else {
+                    Text("No courses available for this student")
+                        .foregroundColor(.secondary)
+                        .font(.subheadline)
+                }
+            } else {
+                Text("Select a student first to choose a course")
+                    .foregroundColor(.secondary)
+                    .font(.subheadline)
+            }
+        }
+    }
+    
+    private var hasCourse: Bool {
+        return selectedCourse != nil
+    }
+    
+    @MainActor
+    private func loadCourses() async {
+        guard !isLoadingCourses else { return }
+        isLoadingCourses = true
+        do {
+            courses = try await APIClient.shared.fetchCourses()
+        } catch {
+            print("Failed to load courses for subject selection: \(error)")
+        }
+        isLoadingCourses = false
     }
 
     private var colorSelection: some View {
@@ -149,22 +245,58 @@ struct AddTaskView: View {
         return "\(minutes) min"
     }
 
-    private func saveTask() {
+    @MainActor
+    private func saveTask() async {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { return }
-
-        let task = PlannerTask(
-            id: UUID().uuidString,
-            title: trimmedTitle,
-            startDate: date,
-            durationMinutes: durationMinutes,
-            colorName: selectedColorName
-        )
-        onSave(task)
-        dismiss()
+        
+        // If course is provided, save as assignment
+        if let course = selectedCourse {
+            // Use selectedStudent if available, otherwise use the course's student
+            let student = selectedStudent ?? course.student
+            
+            isSaving = true
+            errorMessage = nil
+            
+            do {
+                _ = try await APIClient.shared.createAssignment(
+                    title: trimmedTitle,
+                    studentId: student.id,
+                    dueDate: date,
+                    instructions: nil,
+                    pointsPossible: nil,
+                    pointsAwarded: nil,
+                    courseId: course.id
+                )
+                onSaveAssignment()
+                dismiss()
+            } catch {
+                errorMessage = "Failed to create assignment: \(error.localizedDescription)"
+                isSaving = false
+            }
+        } else {
+            // No course - save as planner task
+            isSaving = true
+            errorMessage = nil
+            
+            do {
+                let task = try await APIClient.shared.createPlannerTask(
+                    title: trimmedTitle,
+                    startDate: date,
+                    durationMinutes: durationMinutes,
+                    colorName: selectedColorName,
+                    subject: nil
+                )
+                onSaveTask(task)
+                dismiss()
+            } catch {
+                errorMessage = "Failed to create task: \(error.localizedDescription)"
+                isSaving = false
+            }
+        }
     }
 }
 
 #Preview {
-    AddTaskView(initialDate: Date(), assignments: [], existingTaskIds: []) { _ in }
+    AddTaskView(initialDate: Date(), assignments: [], students: [], existingTaskIds: [], onSaveTask: { _ in }, onSaveAssignment: {})
 }

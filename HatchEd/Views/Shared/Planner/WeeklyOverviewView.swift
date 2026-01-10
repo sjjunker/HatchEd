@@ -36,7 +36,7 @@ struct WeeklyOverviewView: View {
         return formatter
     }()
 
-    private let hours: [Int] = Array(6...22)
+    private let hours: [Int] = Array(6...23)
     private let columnWidth: CGFloat = 45
     private let rowHeight: CGFloat = 45
 
@@ -191,23 +191,35 @@ private struct TasksForDay: View {
     var body: some View {
         ForEach(tasks) { task in
             let rect = rectForTask(task)
+            let isAssignment = task.id.hasPrefix("assignment-")
             Button {
                 onSelectTask?(task)
             } label: {
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(task.color.opacity(0.8))
+                    .fill(isAssignment ? task.color.opacity(0.9) : task.color.opacity(0.8))
                     .frame(width: columnWidth - 12, height: max(rect.height, 24), alignment: .leading)
                     .overlay(
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(task.title)
-                                .font(.caption2.bold())
-                                .foregroundColor(.white)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
-                                .padding(.horizontal, 6)
-                                .padding(.top, 6)
+                            HStack(spacing: 4) {
+                                if isAssignment {
+                                    Image(systemName: "doc.text.fill")
+                                        .font(.caption2)
+                                        .foregroundColor(.white.opacity(0.9))
+                                }
+                                Text(task.title)
+                                    .font(isAssignment ? .caption2.bold() : .caption2.bold())
+                                    .foregroundColor(.white)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.leading)
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.top, 6)
                             Spacer(minLength: 4)
                         }
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(isAssignment ? Color.white.opacity(0.4) : Color.clear, lineWidth: 1.5)
                     )
             }
             .buttonStyle(.plain)

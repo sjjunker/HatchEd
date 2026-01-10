@@ -16,6 +16,7 @@ import notificationRoutes from './routes/notifications.js'
 import attendanceRoutes from './routes/attendance.js'
 import curriculumRoutes from './routes/curriculum.js'
 import portfolioRoutes from './routes/portfolios.js'
+import plannerRoutes from './routes/planner.js'
 import { errorHandler } from './middleware/errorHandler.js'
 import { notFoundHandler } from './middleware/notFoundHandler.js'
 
@@ -97,6 +98,7 @@ app.use('/api/notifications', notificationRoutes)
 app.use('/api/attendance', attendanceRoutes)
 app.use('/api/curriculum', curriculumRoutes)
 app.use('/api/portfolios', portfolioRoutes)
+app.use('/api/planner', plannerRoutes)
 
 // Serve uploaded files
 app.use('/uploads', express.static('uploads'))

@@ -15,6 +15,16 @@ struct PlannerTask: Identifiable, Codable, Equatable {
     var startDate: Date
     var durationMinutes: Int
     var colorName: String
+    var subject: String?
+
+    init(id: String = UUID().uuidString, title: String, startDate: Date, durationMinutes: Int, colorName: String, subject: String? = nil) {
+        self.id = id
+        self.title = title
+        self.startDate = startDate
+        self.durationMinutes = durationMinutes
+        self.colorName = colorName
+        self.subject = subject
+    }
 
     var color: Color {
         PlannerTask.color(for: colorName)

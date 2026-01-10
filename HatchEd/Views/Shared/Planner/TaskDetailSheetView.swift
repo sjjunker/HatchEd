@@ -61,8 +61,16 @@ struct TaskDetailSheetView: View {
         _editedDurationMinutes = State(initialValue: task.durationMinutes)
         _editedColorName = State(initialValue: task.colorName)
         
-        // Initialize course - will be set in startEditing() when courses are loaded
-        _editedCourse = State(initialValue: nil)
+        // Initialize course - try to find from assignment's courseId, task.subject, or courses array
+        var initialCourse: Course? = nil
+        if let subject = task.subject {
+            // Will be set in onAppear or startEditing when courses are loaded
+            initialCourse = nil // Courses may not be loaded yet in init
+        } else if let assignment = assignment, let courseId = assignment.courseId {
+            // Will try to find course by courseId when courses are loaded
+            initialCourse = nil // Courses may not be loaded yet in init
+        }
+        _editedCourse = State(initialValue: initialCourse)
         
         // If this is an assignment, get the student from the assignment
         if let assignment = assignment {
@@ -83,7 +91,7 @@ struct TaskDetailSheetView: View {
                     }
                 }
             }
-            .navigationTitle(isEditing ? "Edit Task" : "Task Details")
+            .navigationTitle(isEditing ? (assignment != nil ? "Edit Assignment" : "Edit Task") : (assignment != nil ? "Assignment Details" : "Task Details"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if isEditing {
@@ -127,6 +135,29 @@ struct TaskDetailSheetView: View {
             } message: {
                 if let errorMessage = errorMessage {
                     Text(errorMessage)
+                }
+            }
+            .onAppear {
+                // Initialize or refresh editedCourse when view appears based on assignment's courseId
+                // This ensures the course is displayed correctly even after updates
+                var courseToSet: Course? = nil
+                
+                if let subject = task.subject {
+                    courseToSet = courses.first { $0.name == subject }
+                } else if let assignment = assignment, let courseId = assignment.courseId {
+                    // Prioritize courseId from assignment - this will be updated after save
+                    courseToSet = courses.first { $0.id == courseId }
+                }
+                
+                // Only update if we found a course, or if editedCourse is nil
+                if let course = courseToSet {
+                    editedCourse = course
+                } else if editedCourse == nil, let assignment = assignment,
+                          let student = students.first(where: { $0.id == assignment.studentId }) {
+                    // Fallback: find course from assignments list
+                    editedCourse = courses.first { course in
+                        course.student.id == student.id && course.assignments.contains { $0.id == assignment.id }
+                    }
                 }
             }
         }
@@ -490,11 +521,18 @@ struct TaskDetailSheetView: View {
             return courses.first { $0.name == subject }
         }
         
-        // For assignments, try to find the course that contains this assignment
-        if let assignment = assignment,
-           let student = students.first(where: { $0.id == assignment.studentId }) {
-            return courses.first { course in
-                course.student.id == student.id && course.assignments.contains { $0.id == assignment.id }
+        // For assignments, first try to find course by assignment's courseId if available
+        if let assignment = assignment {
+            if let courseId = assignment.courseId {
+                if let course = courses.first(where: { $0.id == courseId }) {
+                    return course
+                }
+            }
+            // Fallback: try to find the course that contains this assignment in its assignments list
+            if let student = students.first(where: { $0.id == assignment.studentId }) {
+                return courses.first { course in
+                    course.student.id == student.id && course.assignments.contains { $0.id == assignment.id }
+                }
             }
         }
         

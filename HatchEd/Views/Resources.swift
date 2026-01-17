@@ -53,8 +53,9 @@ struct Resources: View {
             maxSelectionCount: 10,
             matching: .images
         )
-        .onChange(of: selectedPhotoItems) { _, newValue in
-            if !newValue.isEmpty {
+        .onChange(of: selectedPhotoItems) { oldValue, newValue in
+            // Only process if we have new items and the picker was just shown
+            if !newValue.isEmpty && newValue.count != oldValue.count {
                 Task {
                     await handlePhotoSelection(newValue)
                 }
@@ -194,26 +195,38 @@ struct Resources: View {
     @MainActor
     private func handlePhotoSelection(_ items: [PhotosPickerItem], for student: User? = nil) async {
         let targetStudent = student ?? selectedStudent ?? signInManager.students.first
-        guard let student = targetStudent else { return }
+        guard let student = targetStudent else {
+            print("[Resources] No student available for photo upload")
+            return
+        }
         
-        for item in items {
+        print("[Resources] Starting photo upload for student: \(student.name ?? student.id), items: \(items.count)")
+        
+        var successCount = 0
+        var failureCount = 0
+        
+        for (index, item) in items.enumerated() {
             do {
+                print("[Resources] Loading photo \(index + 1) of \(items.count)...")
+                
                 // Load the image data from the PhotosPickerItem
                 guard let data = try await item.loadTransferable(type: Data.self) else {
-                    print("[Resources] Failed to load photo data")
+                    print("[Resources] Failed to load photo data for item \(index + 1)")
+                    failureCount += 1
                     continue
                 }
                 
-                // Try to get the original filename, or generate one
-                var fileName = item.identifier ?? UUID().uuidString
-                if !fileName.contains(".") {
-                    // Determine file extension from data
-                    let imageType = getImageType(from: data)
-                    fileName = "\(fileName).\(imageType.extension)"
-                }
+                print("[Resources] Photo data loaded: \(data.count) bytes")
                 
-                // Determine MIME type
-                let fileType = getMimeType(for: fileName.pathExtension.lowercased())
+                // Determine image type from data
+                let imageType = getImageType(from: data)
+                
+                // Generate filename with timestamp and index
+                let timestamp = Int(Date().timeIntervalSince1970)
+                let fileName = "photo_\(timestamp)_\(index + 1).\(imageType.extension)"
+                
+                // Use the MIME type from image detection
+                let fileType = imageType.mimeType
                 
                 print("[Resources] Uploading photo - name: \(fileName), type: \(fileType), size: \(data.count) bytes")
                 
@@ -225,17 +238,26 @@ struct Resources: View {
                 )
                 
                 print("[Resources] Photo uploaded successfully: \(uploadedFile.fileName)")
+                successCount += 1
             } catch {
-                print("[Resources] Failed to upload photo: \(error.localizedDescription)")
+                print("[Resources] Failed to upload photo \(index + 1): \(error.localizedDescription)")
                 errorMessage = "Failed to upload photo: \(error.localizedDescription)"
+                failureCount += 1
             }
         }
+        
+        print("[Resources] Photo upload complete - Success: \(successCount), Failed: \(failureCount)")
         
         // Clear selection after upload
         selectedPhotoItems = []
         
-        // Refresh files after uploads
+        // Refresh files after uploads - add a small delay to ensure server has processed
+        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second delay
         await loadStudentWorkFiles()
+        
+        if successCount > 0 {
+            print("[Resources] Files refreshed after photo upload")
+        }
     }
     
     private func getImageType(from data: Data) -> (extension: String, mimeType: String) {
@@ -332,10 +354,11 @@ private struct StudentWorkFilesList: View {
                     maxSelectionCount: 10,
                     matching: .images
                 )
-                .onChange(of: selectedPhotoItems) { _, newValue in
-                    if !newValue.isEmpty {
+                .onChange(of: selectedPhotoItems) { oldValue, newValue in
+                    // Only process if we have new items and the picker was just shown
+                    if !newValue.isEmpty && newValue.count != oldValue.count {
                         onPhotoUpload(newValue)
-                        selectedPhotoItems = [] // Clear selection
+                        // Don't clear here - let the parent handle it after upload
                     }
                 }
             }

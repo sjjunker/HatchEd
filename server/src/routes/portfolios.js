@@ -10,7 +10,8 @@ import {
   deletePortfolioHandler,
   getStudentWorkFilesHandler,
   uploadStudentWorkFileHandler,
-  upload
+  upload,
+  handleMulterError
 } from '../controllers/portfolioController.js'
 
 const router = express.Router()
@@ -26,7 +27,7 @@ router.delete('/:id', asyncHandler(deletePortfolioHandler))
 
 // Student Work Files
 router.get('/student-work/:studentId', asyncHandler(getStudentWorkFilesHandler))
-router.post('/student-work/upload', upload.single('file'), asyncHandler(uploadStudentWorkFileHandler))
+router.post('/student-work/upload', upload.single('file'), handleMulterError, asyncHandler(uploadStudentWorkFileHandler))
 
 export default router
 

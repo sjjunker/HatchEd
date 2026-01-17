@@ -83,6 +83,26 @@ app.use((req, res, next) => {
   next()
 })
 
+app.get('/', (_req, res) => {
+  res.json({ 
+    message: 'HatchEd API Server',
+    version: '1.0.0',
+    status: 'running',
+    timestamp: new Date().toISOString(),
+    endpoints: {
+      health: '/health',
+      auth: '/api/auth',
+      users: '/api/users',
+      families: '/api/families',
+      notifications: '/api/notifications',
+      attendance: '/api/attendance',
+      curriculum: '/api/curriculum',
+      portfolios: '/api/portfolios',
+      planner: '/api/planner'
+    }
+  })
+})
+
 app.get('/health', (_req, res) => {
   res.json({ 
     status: 'ok',

@@ -18,7 +18,37 @@ const upload = multer({
   dest: 'uploads/',
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
   // No fileFilter - accepts all file types
+  fileFilter: (req, file, cb) => {
+    console.log('[Multer] File filter called', {
+      fieldname: file.fieldname,
+      originalname: file.originalname,
+      mimetype: file.mimetype
+    })
+    cb(null, true) // Accept all files
+  }
 })
+
+// Error handling middleware for multer
+export const handleMulterError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    console.error('[Multer] Multer error', {
+      code: err.code,
+      message: err.message,
+      field: err.field
+    })
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: { message: 'File too large. Maximum size is 50MB.' } })
+    }
+    return res.status(400).json({ error: { message: `Upload error: ${err.message}` } })
+  } else if (err) {
+    console.error('[Multer] Unknown error', {
+      message: err.message,
+      stack: err.stack
+    })
+    return res.status(500).json({ error: { message: 'File upload failed' } })
+  }
+  next()
+}
 
 export async function getPortfoliosHandler (req, res) {
   const user = await findUserById(req.user.userId)
@@ -208,45 +238,99 @@ export async function getStudentWorkFilesHandler (req, res) {
 }
 
 export async function uploadStudentWorkFileHandler (req, res) {
-  const user = await findUserById(req.user.userId)
-  if (!user || !user.familyId) {
-    return res.status(400).json({ error: { message: 'User must belong to a family' } })
+  try {
+    console.log('[Upload] Starting file upload handler', {
+      userId: req.user?.userId,
+      hasFile: !!req.file,
+      body: req.body,
+      timestamp: new Date().toISOString()
+    })
+
+    const user = await findUserById(req.user.userId)
+    if (!user || !user.familyId) {
+      console.error('[Upload] User validation failed', { userId: req.user?.userId })
+      return res.status(400).json({ error: { message: 'User must belong to a family' } })
+    }
+
+    const { studentId } = req.body
+    if (!studentId) {
+      console.error('[Upload] Student ID missing', { body: req.body })
+      return res.status(400).json({ error: { message: 'Student ID is required' } })
+    }
+
+    // Verify student belongs to the same family
+    const student = await findUserById(studentId)
+    if (!student || student.familyId?.toString() !== user.familyId.toString()) {
+      console.error('[Upload] Student authorization failed', {
+        studentId,
+        studentFamilyId: student?.familyId?.toString(),
+        userFamilyId: user.familyId?.toString()
+      })
+      return res.status(403).json({ error: { message: 'Not authorized' } })
+    }
+
+    if (!req.file) {
+      console.error('[Upload] No file in request', {
+        files: req.files,
+        body: req.body,
+        headers: req.headers['content-type']
+      })
+      return res.status(400).json({ error: { message: 'No file uploaded' } })
+    }
+
+    console.log('[Upload] File received', {
+      filename: req.file.filename,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      path: req.file.path
+    })
+
+    // In production, you'd want to upload to cloud storage (S3, etc.)
+    // For now, we'll store the file path
+    const fileUrl = `/uploads/${req.file.filename}`
+    const fileSize = req.file.size
+    const fileName = req.file.originalname || req.file.filename
+    const fileType = req.file.mimetype || 'application/octet-stream'
+
+    console.log('[Upload] Creating student work file record', {
+      studentId,
+      fileName,
+      fileType,
+      fileSize,
+      fileUrl
+    })
+
+    const file = await createStudentWorkFile({
+      familyId: user.familyId,
+      studentId,
+      fileName,
+      fileUrl,
+      fileType,
+      fileSize
+    })
+
+    if (!file) {
+      console.error('[Upload] Failed to create file record in database')
+      return res.status(500).json({ error: { message: 'Failed to save file record' } })
+    }
+
+    console.log('[Upload] File uploaded successfully', {
+      fileId: file._id?.toString(),
+      fileName: file.fileName
+    })
+
+    res.status(201).json({ file: serializeStudentWorkFile(file) })
+  } catch (error) {
+    console.error('[Upload] Error in upload handler', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    })
+    res.status(500).json({ error: { message: error.message || 'Internal server error' } })
   }
-
-  const { studentId } = req.body
-  if (!studentId) {
-    return res.status(400).json({ error: { message: 'Student ID is required' } })
-  }
-
-  // Verify student belongs to the same family
-  const student = await findUserById(studentId)
-  if (!student || student.familyId?.toString() !== user.familyId.toString()) {
-    return res.status(403).json({ error: { message: 'Not authorized' } })
-  }
-
-  if (!req.file) {
-    return res.status(400).json({ error: { message: 'No file uploaded' } })
-  }
-
-  // In production, you'd want to upload to cloud storage (S3, etc.)
-  // For now, we'll store the file path
-  const fileUrl = `/uploads/${req.file.filename}`
-  const fileSize = req.file.size
-  const fileName = req.file.originalname || req.file.filename
-  const fileType = req.file.mimetype || 'application/octet-stream'
-
-  const file = await createStudentWorkFile({
-    familyId: user.familyId,
-    studentId,
-    fileName,
-    fileUrl,
-    fileType,
-    fileSize
-  })
-
-  res.status(201).json({ file: serializeStudentWorkFile(file) })
 }
 
 // Export multer middleware
-export { upload }
+export { upload, handleMulterError }
 

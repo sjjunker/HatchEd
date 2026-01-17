@@ -16,6 +16,7 @@ struct CurriculumView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var selectedAssignmentForEdit: Assignment? = nil
+    @State private var selectedCourseForEdit: Course? = nil
     
     private let api = APIClient.shared
     
@@ -131,6 +132,20 @@ struct CurriculumView: View {
                 onTaskDeleted: {}
             )
         }
+        .sheet(item: $selectedCourseForEdit) { course in
+            NavigationView {
+                EditCourseView(
+                    course: course,
+                    students: signInManager.students,
+                    onCourseUpdated: {
+                        Task {
+                            await loadCurriculum()
+                        }
+                    },
+                    errorMessage: $errorMessage
+                )
+            }
+        }
     }
     
     @MainActor
@@ -204,7 +219,9 @@ struct CurriculumView: View {
                     .background(RoundedRectangle(cornerRadius: 12).fill(Color.hatchEdSecondaryBackground))
             } else {
                 ForEach(courses) { course in
-                    CourseRow(course: course)
+                    CourseRow(course: course) {
+                        selectedCourseForEdit = course
+                    }
                 }
             }
         }
@@ -284,9 +301,11 @@ struct CurriculumView: View {
 
 private struct CourseRow: View {
     let course: Course
+    let onTap: () -> Void
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Image(systemName: "book.fill")
                     .foregroundColor(.hatchEdWhite)
@@ -312,13 +331,15 @@ private struct CourseRow: View {
             Text(course.student.name ?? "Student")
                 .font(.caption)
                 .foregroundColor(.hatchEdSecondaryText)
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.hatchEdCardBackground)
+                    .shadow(color: Color.hatchEdSuccess.opacity(0.15), radius: 4, x: 0, y: 2)
+            )
         }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.hatchEdCardBackground)
-                .shadow(color: Color.hatchEdSuccess.opacity(0.15), radius: 4, x: 0, y: 2)
-        )
+        .buttonStyle(.plain)
     }
 }
 
@@ -534,6 +555,132 @@ private struct AddItemView: View {
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct EditCourseView: View {
+    let course: Course
+    let students: [User]
+    let onCourseUpdated: () -> Void
+    @Binding var errorMessage: String?
+    @Environment(\.dismiss) private var dismiss
+    
+    @State private var courseName: String
+    @State private var grade: String
+    @State private var isSaving = false
+    
+    private let api = APIClient.shared
+    
+    init(course: Course, students: [User], onCourseUpdated: @escaping () -> Void, errorMessage: Binding<String?>) {
+        self.course = course
+        self.students = students
+        self.onCourseUpdated = onCourseUpdated
+        self._errorMessage = errorMessage
+        _courseName = State(initialValue: course.name)
+        if let grade = course.grade {
+            _grade = State(initialValue: String(format: "%.1f", grade))
+        } else {
+            _grade = State(initialValue: "")
+        }
+    }
+    
+    var body: some View {
+        Form {
+            Section(header: Text("Course Details")) {
+                TextField("Course name", text: $courseName)
+                
+                TextField("Grade (%)", text: $grade)
+                    .keyboardType(.decimalPad)
+                
+                // Show student as read-only since it can't be changed
+                HStack {
+                    Text("Student")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(course.student.name ?? "Student")
+                        .foregroundColor(.hatchEdText)
+                }
+            }
+        }
+        .navigationTitle("Edit Course")
+        .navigationBarTitleDisplayMode(.inline)
+        .alert("Error", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("OK") {
+                errorMessage = nil
+            }
+        } message: {
+            if let errorMessage = errorMessage {
+                Text(errorMessage)
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") {
+                    dismiss()
+                }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save") {
+                    Task {
+                        await saveCourse()
+                    }
+                }
+                .fontWeight(.semibold)
+                .foregroundColor(.hatchEdAccent)
+                .disabled(isSaving || courseName.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+    }
+    
+    @MainActor
+    private func saveCourse() async {
+        isSaving = true
+        errorMessage = nil
+        
+        let trimmedName = courseName.trimmingCharacters(in: .whitespaces)
+        guard !trimmedName.isEmpty else {
+            errorMessage = "Course name is required"
+            isSaving = false
+            return
+        }
+        
+        // Parse grade if provided - handle empty strings and invalid values
+        let gradeValue: Double? = nil
+        let trimmedGrade = grade.trimmingCharacters(in: .whitespaces)
+        if !trimmedGrade.isEmpty {
+            if let parsedGrade = Double(trimmedGrade) {
+                gradeValue = parsedGrade
+            } else {
+                errorMessage = "Invalid grade value. Please enter a number."
+                isSaving = false
+                return
+            }
+        }
+        
+        do {
+            _ = try await api.updateCourse(
+                id: course.id,
+                name: trimmedName,
+                grade: gradeValue
+            )
+            onCourseUpdated()
+            dismiss()
+        } catch let error as APIError {
+            // Extract the actual server error message
+            switch error {
+            case .server(let message, _, _):
+                errorMessage = message
+            default:
+                errorMessage = "Failed to update course: \(error.localizedDescription)"
+            }
+            isSaving = false
+        } catch {
+            errorMessage = "Failed to update course: \(error.localizedDescription)"
+            isSaving = false
         }
     }
 }

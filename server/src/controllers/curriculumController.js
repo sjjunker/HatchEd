@@ -59,31 +59,69 @@ export async function getCoursesHandler (req, res) {
 }
 
 export async function updateCourseHandler (req, res) {
-  const { id } = req.params
-  const { name, grade } = req.body
+  try {
+    const { id } = req.params
+    let { name, grade } = req.body
 
-  const user = await findUserById(req.user.userId)
-  if (!user || !user.familyId) {
-    return res.status(400).json({ error: { message: 'User must belong to a family' } })
+    // Normalize grade: convert empty string, null, or undefined to null
+    if (grade === '' || grade === null || grade === undefined) {
+      grade = null
+    } else if (typeof grade === 'string') {
+      // If grade is a string, try to parse it
+      const parsed = parseFloat(grade)
+      grade = isNaN(parsed) ? null : parsed
+    }
+
+    const user = await findUserById(req.user.userId)
+    if (!user || !user.familyId) {
+      return res.status(400).json({ error: { message: 'User must belong to a family' } })
+    }
+
+    const course = await findCourseById(id)
+    if (!course) {
+      return res.status(404).json({ error: { message: 'Course not found' } })
+    }
+
+    if (course.familyId.toString() !== user.familyId.toString()) {
+      return res.status(403).json({ error: { message: 'Not authorized' } })
+    }
+
+    const updated = await updateCourse(id, { name, grade })
+    if (!updated || updated === null) {
+      console.error('updateCourse returned null/undefined for course:', id)
+      return res.status(500).json({ error: { message: 'Failed to update course' } })
+    }
+
+    // Use the original course's studentUserId if updated doesn't have it
+    // This handles cases where the update might not return all fields
+    const studentUserId = (updated && updated.studentUserId) ? updated.studentUserId : course.studentUserId
+    if (!studentUserId) {
+      console.error('Course missing studentUserId. Course:', course, 'Updated:', updated)
+      return res.status(500).json({ error: { message: 'Course missing studentUserId' } })
+    }
+
+    const student = await findUserById(studentUserId)
+    if (!student) {
+      return res.status(500).json({ error: { message: 'Student not found for course' } })
+    }
+
+    // Fetch assignments for this course
+    let assignments = []
+    try {
+      assignments = await findAssignmentsByCourseId(id)
+    } catch (assignmentsError) {
+      console.error('Error fetching assignments for course:', assignmentsError)
+      // Continue without assignments rather than failing the entire request
+    }
+    const serializedAssignments = assignments.map(assignment => serializeAssignment(assignment))
+    // Add assignments to course before serializing
+    const courseWithAssignments = { ...updated, assignments: serializedAssignments }
+    res.json({ course: serializeCourse(courseWithAssignments, student) })
+  } catch (error) {
+    console.error('Error updating course:', error)
+    console.error('Error stack:', error.stack)
+    res.status(500).json({ error: { message: error.message || 'Internal server error', code: 'UPDATE_COURSE_ERROR' } })
   }
-
-  const course = await findCourseById(id)
-  if (!course) {
-    return res.status(404).json({ error: { message: 'Course not found' } })
-  }
-
-  if (course.familyId.toString() !== user.familyId.toString()) {
-    return res.status(403).json({ error: { message: 'Not authorized' } })
-  }
-
-  const updated = await updateCourse(id, { name, grade })
-  const student = await findUserById(updated.studentUserId)
-  // Fetch assignments for this course
-  const assignments = await findAssignmentsByCourseId(id)
-  const serializedAssignments = assignments.map(assignment => serializeAssignment(assignment))
-  // Add assignments to course before serializing
-  const courseWithAssignments = { ...updated, assignments: serializedAssignments }
-  res.json({ course: serializeCourse(courseWithAssignments, student) })
 }
 
 export async function deleteCourseHandler (req, res) {

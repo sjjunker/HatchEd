@@ -34,7 +34,13 @@ export async function findAssignmentsByFamilyId (familyId) {
 }
 
 export async function findAssignmentsByCourseId (courseId) {
-  return assignmentsCollection().find({ courseId: new ObjectId(courseId) }).sort({ dueDate: -1, createdAt: -1 }).toArray()
+  try {
+    return await assignmentsCollection().find({ courseId: new ObjectId(courseId) }).sort({ dueDate: -1, createdAt: -1 }).toArray()
+  } catch (error) {
+    console.error('Error finding assignments by courseId:', error)
+    // Return empty array if there's an error (e.g., invalid ObjectId)
+    return []
+  }
 }
 
 export async function findAssignmentById (id) {

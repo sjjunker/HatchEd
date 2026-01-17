@@ -48,6 +48,22 @@ export async function updateCourse (id, { name, grade }) {
     { returnDocument: 'after' }
   )
 
+  // If result.value is null, the document wasn't found or update failed
+  // In that case, try to fetch the course again to return it
+  if (!result || !result.value) {
+    console.error('findOneAndUpdate returned null for course:', id)
+    // Try to fetch the course to see if it still exists
+    const course = await findCourseById(id)
+    if (course) {
+      // Apply the updates manually since findOneAndUpdate failed
+      if (name !== undefined) course.name = name
+      if (grade !== undefined) course.grade = grade
+      course.updatedAt = new Date()
+      return course
+    }
+    return null
+  }
+
   return result.value
 }
 

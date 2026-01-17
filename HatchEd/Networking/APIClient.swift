@@ -46,8 +46,9 @@ final class APIClient {
         }
         self.baseURL = url
         let configuration = URLSessionConfiguration.default
-        configuration.timeoutIntervalForRequest = 30
-        configuration.timeoutIntervalForResource = 60
+        configuration.timeoutIntervalForRequest = 60  // Increased from 30 to 60 seconds
+        configuration.timeoutIntervalForResource = 120  // Increased from 60 to 120 seconds
+        configuration.waitsForConnectivity = true  // Wait for network connectivity
         self.session = URLSession(configuration: configuration)
     }
     

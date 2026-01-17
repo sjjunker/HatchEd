@@ -312,6 +312,7 @@ final class APIClient {
         let studentRemarks: String?
         let instructorRemarks: String?
         let reportCardSnapshot: String?
+        let sectionData: PortfolioSectionData?
     }
     
     func fetchPortfolios() async throws -> [Portfolio] {
@@ -329,7 +330,8 @@ final class APIClient {
         studentWorkFileIds: [String],
         studentRemarks: String?,
         instructorRemarks: String?,
-        reportCardSnapshot: String?
+        reportCardSnapshot: String?,
+        sectionData: PortfolioSectionData?
     ) async throws -> Portfolio {
         let body = CreatePortfolioRequest(
             studentId: studentId,
@@ -338,7 +340,8 @@ final class APIClient {
             studentWorkFileIds: studentWorkFileIds,
             studentRemarks: studentRemarks,
             instructorRemarks: instructorRemarks,
-            reportCardSnapshot: reportCardSnapshot
+            reportCardSnapshot: reportCardSnapshot,
+            sectionData: sectionData
         )
         let response: PortfolioResponse = try await request(
             Endpoint(path: "api/portfolios", method: .post, body: body),

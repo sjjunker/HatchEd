@@ -7,6 +7,7 @@
 //
 import SwiftUI
 import UniformTypeIdentifiers
+import PhotosUI
 
 struct Resources: View {
     @EnvironmentObject private var signInManager: AppleSignInManager
@@ -15,6 +16,8 @@ struct Resources: View {
     @State private var errorMessage: String?
     @State private var selectedStudent: User?
     @State private var showingFilePicker = false
+    @State private var selectedPhotoItems: [PhotosPickerItem] = []
+    @State private var showingPhotoPicker = false
     
     private let api = APIClient.shared
     
@@ -44,6 +47,19 @@ struct Resources: View {
                 await handleFileSelection(result)
             }
         }
+        .photosPicker(
+            isPresented: $showingPhotoPicker,
+            selection: $selectedPhotoItems,
+            maxSelectionCount: 10,
+            matching: .images
+        )
+        .onChange(of: selectedPhotoItems) { _, newValue in
+            if !newValue.isEmpty {
+                Task {
+                    await handlePhotoSelection(newValue)
+                }
+            }
+        }
     }
     
     private var studentWorkSection: some View {
@@ -55,8 +71,19 @@ struct Resources: View {
                     .font(.headline)
                     .foregroundColor(.hatchEdText)
                 Spacer()
-                Button {
-                    showingFilePicker = true
+                Menu {
+                    Button {
+                        selectedStudent = nil // Will use first student if none selected
+                        showingPhotoPicker = true
+                    } label: {
+                        Label("Add Photos", systemImage: "photo")
+                    }
+                    Button {
+                        selectedStudent = nil // Will use first student if none selected
+                        showingFilePicker = true
+                    } label: {
+                        Label("Add Files", systemImage: "doc")
+                    }
                 } label: {
                     Image(systemName: "plus.circle.fill")
                         .foregroundColor(.hatchEdAccent)
@@ -77,6 +104,11 @@ struct Resources: View {
                         onUpload: {
                             selectedStudent = student
                             showingFilePicker = true
+                        },
+                        onPhotoUpload: { items in
+                            Task {
+                                await handlePhotoSelection(items, for: student)
+                            }
                         }
                     )
                 }
@@ -159,6 +191,78 @@ struct Resources: View {
         }
     }
     
+    @MainActor
+    private func handlePhotoSelection(_ items: [PhotosPickerItem], for student: User? = nil) async {
+        let targetStudent = student ?? selectedStudent ?? signInManager.students.first
+        guard let student = targetStudent else { return }
+        
+        for item in items {
+            do {
+                // Load the image data from the PhotosPickerItem
+                guard let data = try await item.loadTransferable(type: Data.self) else {
+                    print("[Resources] Failed to load photo data")
+                    continue
+                }
+                
+                // Try to get the original filename, or generate one
+                var fileName = item.identifier ?? UUID().uuidString
+                if !fileName.contains(".") {
+                    // Determine file extension from data
+                    let imageType = getImageType(from: data)
+                    fileName = "\(fileName).\(imageType.extension)"
+                }
+                
+                // Determine MIME type
+                let fileType = getMimeType(for: fileName.pathExtension.lowercased())
+                
+                print("[Resources] Uploading photo - name: \(fileName), type: \(fileType), size: \(data.count) bytes")
+                
+                let uploadedFile = try await api.uploadStudentWorkFile(
+                    studentId: student.id,
+                    fileName: fileName,
+                    fileData: data,
+                    fileType: fileType
+                )
+                
+                print("[Resources] Photo uploaded successfully: \(uploadedFile.fileName)")
+            } catch {
+                print("[Resources] Failed to upload photo: \(error.localizedDescription)")
+                errorMessage = "Failed to upload photo: \(error.localizedDescription)"
+            }
+        }
+        
+        // Clear selection after upload
+        selectedPhotoItems = []
+        
+        // Refresh files after uploads
+        await loadStudentWorkFiles()
+    }
+    
+    private func getImageType(from data: Data) -> (extension: String, mimeType: String) {
+        // Check for common image formats
+        if data.count >= 4 {
+            let bytes = [UInt8](data.prefix(4))
+            
+            // PNG signature: 89 50 4E 47
+            if bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47 {
+                return ("png", "image/png")
+            }
+            
+            // JPEG signature: FF D8 FF
+            if bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF {
+                return ("jpg", "image/jpeg")
+            }
+            
+            // GIF signature: 47 49 46 38
+            if bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x38 {
+                return ("gif", "image/gif")
+            }
+        }
+        
+        // Default to JPEG
+        return ("jpg", "image/jpeg")
+    }
+    
     private func getMimeType(for fileExtension: String) -> String {
         let mimeTypes: [String: String] = [
             "pdf": "application/pdf",
@@ -195,6 +299,9 @@ private struct StudentWorkFilesList: View {
     let student: User
     let files: [StudentWorkFile]
     let onUpload: () -> Void
+    let onPhotoUpload: ([PhotosPickerItem]) -> Void
+    @State private var showingPhotoPicker = false
+    @State private var selectedPhotoItems: [PhotosPickerItem] = []
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -204,9 +311,32 @@ private struct StudentWorkFilesList: View {
                     .fontWeight(.semibold)
                     .foregroundColor(.hatchEdText)
                 Spacer()
-                Button(action: onUpload) {
+                Menu {
+                    Button {
+                        showingPhotoPicker = true
+                    } label: {
+                        Label("Add Photos", systemImage: "photo")
+                    }
+                    Button {
+                        onUpload()
+                    } label: {
+                        Label("Add Files", systemImage: "doc")
+                    }
+                } label: {
                     Image(systemName: "plus.circle")
                         .foregroundColor(.hatchEdAccent)
+                }
+                .photosPicker(
+                    isPresented: $showingPhotoPicker,
+                    selection: $selectedPhotoItems,
+                    maxSelectionCount: 10,
+                    matching: .images
+                )
+                .onChange(of: selectedPhotoItems) { _, newValue in
+                    if !newValue.isEmpty {
+                        onPhotoUpload(newValue)
+                        selectedPhotoItems = [] // Clear selection
+                    }
                 }
             }
             

@@ -9,7 +9,7 @@ function portfoliosCollection () {
   return getCollection(PORTFOLIOS_COLLECTION)
 }
 
-export async function createPortfolio ({ familyId, studentId, studentName, designPattern, studentWorkFileIds, studentRemarks, instructorRemarks, reportCardSnapshot, compiledContent, snippet, generatedImages }) {
+export async function createPortfolio ({ familyId, studentId, studentName, designPattern, studentWorkFileIds, studentRemarks, instructorRemarks, reportCardSnapshot, sectionData, compiledContent, snippet, generatedImages }) {
   const portfolio = {
     familyId: new ObjectId(familyId),
     studentId: new ObjectId(studentId),
@@ -19,6 +19,7 @@ export async function createPortfolio ({ familyId, studentId, studentName, desig
     studentRemarks: studentRemarks ?? null,
     instructorRemarks: instructorRemarks ?? null,
     reportCardSnapshot: reportCardSnapshot ?? null,
+    sectionData: sectionData ?? null,
     compiledContent: compiledContent ?? '',
     snippet: snippet ?? '',
     generatedImages: generatedImages ?? [],

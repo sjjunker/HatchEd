@@ -32,7 +32,7 @@ export async function getPortfoliosHandler (req, res) {
 }
 
 export async function createPortfolioHandler (req, res) {
-  const { studentId, studentName, designPattern, studentWorkFileIds, studentRemarks, instructorRemarks, reportCardSnapshot } = req.body
+  const { studentId, studentName, designPattern, studentWorkFileIds, studentRemarks, instructorRemarks, reportCardSnapshot, sectionData } = req.body
 
   if (!studentId || !studentName || !designPattern) {
     return res.status(400).json({ error: { message: 'Student ID, name, and design pattern are required' } })
@@ -115,7 +115,8 @@ export async function createPortfolioHandler (req, res) {
       instructorRemarks,
       reportCardSnapshot,
       attendanceSummary,
-      courses: coursesWithDetails
+      courses: coursesWithDetails,
+      sectionData
     })
     compiledContent = compilationResult.content
     snippet = compilationResult.snippet
@@ -136,6 +137,7 @@ export async function createPortfolioHandler (req, res) {
     studentRemarks,
     instructorRemarks,
     reportCardSnapshot,
+    sectionData: sectionData || null,
     compiledContent,
     snippet,
     generatedImages

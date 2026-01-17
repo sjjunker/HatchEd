@@ -88,20 +88,69 @@ function getWorkSummaries (studentWorkFiles) {
  * @param {Object} params - Portfolio parameters
  * @returns {string} Formatted prompt
  */
-function buildPortfolioPrompt ({ studentName, designPattern, studentRemarks, instructorRemarks, reportCardSnapshot, studentWorkSummaries, attendanceSummary, courses }) {
+function buildPortfolioPrompt ({ studentName, designPattern, studentRemarks, instructorRemarks, reportCardSnapshot, studentWorkSummaries, attendanceSummary, courses, sectionData }) {
   const promptParts = []
 
   promptParts.push(`Create a comprehensive, visually rich academic portfolio for ${studentName}.`)
   promptParts.push(`\nDesign Pattern: ${designPattern}`)
-  promptParts.push(`\n\nIMPORTANT: The portfolio must include ALL of the following sections with engaging, detailed content:`)
-  promptParts.push(`\n1. About Me - A personal introduction highlighting the student's interests, goals, and personality`)
-  promptParts.push(`\n2. Achievements and Awards - List and describe all academic achievements, awards, recognitions, and honors`)
-  promptParts.push(`\n3. Attendance - Summary of attendance record and commitment to learning`)
-  promptParts.push(`\n4. Yearly Accomplishments by Subject - Detailed accomplishments for each course/subject taken`)
-  promptParts.push(`\n5. Extracurricular Activities - All extracurricular activities, clubs, sports, and interests`)
-  promptParts.push(`\n6. Report Card - Academic performance summary`)
-  promptParts.push(`\n7. Service Log - Community service, volunteer work, and service learning activities`)
-  promptParts.push(`\n\nFor each section, include engaging descriptions and note where images should be placed (use [IMAGE: description] as placeholders for images).`)
+  promptParts.push(`\n\nIMPORTANT: The portfolio must include ALL of the following sections. Use the provided information where available, and enhance it with engaging descriptions. Note where images should be placed (use [IMAGE: description] as placeholders for images).`)
+  
+  // About Me section
+  if (sectionData?.aboutMe) {
+    promptParts.push(`\n\n## About Me Section`)
+    promptParts.push(`Use this provided information and enhance it professionally:`)
+    promptParts.push(`${sectionData.aboutMe}`)
+  } else {
+    promptParts.push(`\n\n## About Me Section`)
+    promptParts.push(`Create a personal introduction highlighting the student's interests, goals, and personality.`)
+  }
+  
+  // Achievements and Awards section
+  if (sectionData?.achievementsAndAwards) {
+    promptParts.push(`\n\n## Achievements and Awards Section`)
+    promptParts.push(`Use this provided information and enhance it professionally:`)
+    promptParts.push(`${sectionData.achievementsAndAwards}`)
+  } else {
+    promptParts.push(`\n\n## Achievements and Awards Section`)
+    promptParts.push(`List and describe all academic achievements, awards, recognitions, and honors.`)
+  }
+  
+  // Attendance section
+  promptParts.push(`\n\n## Attendance Section`)
+  if (sectionData?.attendanceNotes) {
+    promptParts.push(`Include these notes: ${sectionData.attendanceNotes}`)
+  }
+  if (attendanceSummary) {
+    promptParts.push(`Include the attendance statistics: ${attendanceSummary.classesAttended} classes attended, ${attendanceSummary.classesMissed} missed, ${(attendanceSummary.average * 100).toFixed(1)}% attendance rate.`)
+  }
+  
+  // Yearly Accomplishments by Subject
+  promptParts.push(`\n\n## Yearly Accomplishments by Subject Section`)
+  promptParts.push(`Create detailed accomplishments for each course/subject taken.`)
+  
+  // Extracurricular Activities section
+  if (sectionData?.extracurricularActivities) {
+    promptParts.push(`\n\n## Extracurricular Activities Section`)
+    promptParts.push(`Use this provided information and enhance it professionally:`)
+    promptParts.push(`${sectionData.extracurricularActivities}`)
+  } else {
+    promptParts.push(`\n\n## Extracurricular Activities Section`)
+    promptParts.push(`List all extracurricular activities, clubs, sports, and interests.`)
+  }
+  
+  // Report Card section
+  promptParts.push(`\n\n## Report Card Section`)
+  promptParts.push(`Include the academic performance summary.`)
+  
+  // Service Log section
+  if (sectionData?.serviceLog) {
+    promptParts.push(`\n\n## Service Log Section`)
+    promptParts.push(`Use this provided information and enhance it professionally:`)
+    promptParts.push(`${sectionData.serviceLog}`)
+  } else {
+    promptParts.push(`\n\n## Service Log Section`)
+    promptParts.push(`Document community service, volunteer work, and service learning activities.`)
+  }
 
   if (studentRemarks) {
     promptParts.push(`\n\nStudent Remarks:\n${studentRemarks}`)
@@ -171,7 +220,7 @@ function buildPortfolioPrompt ({ studentName, designPattern, studentRemarks, ins
  * @param {Object} params - Portfolio compilation parameters
  * @returns {Promise<{content: string, snippet: string}>}
  */
-export async function compilePortfolioWithChatGPT ({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot, attendanceSummary, courses }) {
+export async function compilePortfolioWithChatGPT ({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot, attendanceSummary, courses, sectionData }) {
   const startTime = Date.now()
 
   try {
@@ -199,7 +248,8 @@ export async function compilePortfolioWithChatGPT ({ studentName, designPattern,
       reportCardSnapshot,
       studentWorkSummaries: workSummaries.join('\n\n'),
       attendanceSummary,
-      courses
+      courses,
+      sectionData
     })
 
     console.log('[ChatGPT Service] Sending request to OpenAI...', {
@@ -279,7 +329,7 @@ export async function compilePortfolioWithChatGPT ({ studentName, designPattern,
 
     // Fallback to basic compilation if OpenAI fails
     console.log('[ChatGPT Service] Falling back to basic compilation')
-    return getFallbackCompilation({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot, attendanceSummary, courses })
+    return getFallbackCompilation({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot, attendanceSummary, courses, sectionData })
   }
 }
 
@@ -288,7 +338,7 @@ export async function compilePortfolioWithChatGPT ({ studentName, designPattern,
  * @param {Object} params - Portfolio parameters
  * @returns {{content: string, snippet: string}}
  */
-function getFallbackCompilation ({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot, attendanceSummary, courses }) {
+function getFallbackCompilation ({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot, attendanceSummary, courses, sectionData }) {
   const portfolioSections = []
 
   // Introduction
@@ -298,7 +348,11 @@ function getFallbackCompilation ({ studentName, designPattern, studentWorkFiles,
   // About Me
   portfolioSections.push(`## About Me\n\n`)
   portfolioSections.push(`[IMAGE: Student photo or illustration]\n\n`)
-  portfolioSections.push(`${studentName} is a dedicated student committed to academic excellence and personal growth. This portfolio represents their journey, achievements, and progress throughout the academic year.\n\n`)
+  if (sectionData?.aboutMe) {
+    portfolioSections.push(`${sectionData.aboutMe}\n\n`)
+  } else {
+    portfolioSections.push(`${studentName} is a dedicated student committed to academic excellence and personal growth. This portfolio represents their journey, achievements, and progress throughout the academic year.\n\n`)
+  }
 
   // Student Remarks
   if (studentRemarks) {
@@ -313,20 +367,27 @@ function getFallbackCompilation ({ studentName, designPattern, studentWorkFiles,
   // Achievements and Awards
   portfolioSections.push(`## Achievements and Awards\n\n`)
   portfolioSections.push(`[IMAGE: Awards or certificates]\n\n`)
-  portfolioSections.push(`This section highlights the student's notable achievements and recognitions.\n\n`)
+  if (sectionData?.achievementsAndAwards) {
+    portfolioSections.push(`${sectionData.achievementsAndAwards}\n\n`)
+  } else {
+    portfolioSections.push(`This section highlights the student's notable achievements and recognitions.\n\n`)
+  }
 
   // Attendance
+  portfolioSections.push(`## Attendance\n\n`)
+  portfolioSections.push(`[IMAGE: Attendance chart or calendar]\n\n`)
   if (attendanceSummary) {
-    portfolioSections.push(`## Attendance\n\n`)
-    portfolioSections.push(`[IMAGE: Attendance chart or calendar]\n\n`)
     portfolioSections.push(`- Classes Attended: ${attendanceSummary.classesAttended}\n`)
     portfolioSections.push(`- Classes Missed: ${attendanceSummary.classesMissed}\n`)
     portfolioSections.push(`- Attendance Rate: ${(attendanceSummary.average * 100).toFixed(1)}%\n`)
     if (attendanceSummary.streakDays > 0) {
       portfolioSections.push(`- Current Attendance Streak: ${attendanceSummary.streakDays} days\n`)
     }
-    portfolioSections.push(`\n`)
   }
+  if (sectionData?.attendanceNotes) {
+    portfolioSections.push(`\n${sectionData.attendanceNotes}\n`)
+  }
+  portfolioSections.push(`\n`)
 
   // Yearly Accomplishments by Subject
   if (courses && courses.length > 0) {
@@ -347,7 +408,11 @@ function getFallbackCompilation ({ studentName, designPattern, studentWorkFiles,
   // Extracurricular Activities
   portfolioSections.push(`## Extracurricular Activities\n\n`)
   portfolioSections.push(`[IMAGE: Extracurricular activities]\n\n`)
-  portfolioSections.push(`This section showcases the student's involvement in activities outside of academics.\n\n`)
+  if (sectionData?.extracurricularActivities) {
+    portfolioSections.push(`${sectionData.extracurricularActivities}\n\n`)
+  } else {
+    portfolioSections.push(`This section showcases the student's involvement in activities outside of academics.\n\n`)
+  }
 
   // Report Card
   if (reportCardSnapshot) {
@@ -371,7 +436,11 @@ function getFallbackCompilation ({ studentName, designPattern, studentWorkFiles,
   // Service Log
   portfolioSections.push(`## Service Log\n\n`)
   portfolioSections.push(`[IMAGE: Community service activities]\n\n`)
-  portfolioSections.push(`This section documents the student's community service and volunteer work.\n\n`)
+  if (sectionData?.serviceLog) {
+    portfolioSections.push(`${sectionData.serviceLog}\n\n`)
+  } else {
+    portfolioSections.push(`This section documents the student's community service and volunteer work.\n\n`)
+  }
 
   // Student Work
   if (studentWorkFiles && studentWorkFiles.length > 0) {

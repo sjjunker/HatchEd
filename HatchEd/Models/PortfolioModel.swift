@@ -29,6 +29,26 @@ struct PortfolioImage: Identifiable, Codable, Equatable {
     }
 }
 
+struct PortfolioSectionData: Codable, Equatable {
+    var aboutMe: String?
+    var achievementsAndAwards: String?
+    var attendanceNotes: String?
+    var extracurricularActivities: String?
+    var serviceLog: String?
+    
+    init(aboutMe: String? = nil,
+         achievementsAndAwards: String? = nil,
+         attendanceNotes: String? = nil,
+         extracurricularActivities: String? = nil,
+         serviceLog: String? = nil) {
+        self.aboutMe = aboutMe
+        self.achievementsAndAwards = achievementsAndAwards
+        self.attendanceNotes = attendanceNotes
+        self.extracurricularActivities = extracurricularActivities
+        self.serviceLog = serviceLog
+    }
+}
+
 struct Portfolio: Identifiable, Codable, Equatable {
     let id: String
     var studentId: String
@@ -38,6 +58,7 @@ struct Portfolio: Identifiable, Codable, Equatable {
     var studentRemarks: String?
     var instructorRemarks: String?
     var reportCardSnapshot: String? // JSON string of report card at time of creation
+    var sectionData: PortfolioSectionData? // User-provided section data
     var compiledContent: String // Content compiled by ChatGPT
     var snippet: String // Short preview snippet
     var generatedImages: [PortfolioImage] // AI-generated images
@@ -52,6 +73,7 @@ struct Portfolio: Identifiable, Codable, Equatable {
          studentRemarks: String? = nil,
          instructorRemarks: String? = nil,
          reportCardSnapshot: String? = nil,
+         sectionData: PortfolioSectionData? = nil,
          compiledContent: String = "",
          snippet: String = "",
          generatedImages: [PortfolioImage] = [],
@@ -65,6 +87,7 @@ struct Portfolio: Identifiable, Codable, Equatable {
         self.studentRemarks = studentRemarks
         self.instructorRemarks = instructorRemarks
         self.reportCardSnapshot = reportCardSnapshot
+        self.sectionData = sectionData
         self.compiledContent = compiledContent
         self.snippet = snippet
         self.generatedImages = generatedImages

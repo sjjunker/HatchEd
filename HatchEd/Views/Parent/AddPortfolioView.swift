@@ -7,6 +7,29 @@
 
 import SwiftUI
 
+struct TextEditorPlaceholder: ViewModifier {
+    var placeholder: String
+    @Binding var text: String
+    
+    func body(content: Content) -> some View {
+        ZStack(alignment: .topLeading) {
+            if text.isEmpty {
+                Text(placeholder)
+                    .foregroundColor(.hatchEdSecondaryText)
+                    .padding(.top, 8)
+                    .padding(.leading, 4)
+            }
+            content
+        }
+    }
+}
+
+extension View {
+    func placeholder(_ placeholder: String, when text: Binding<String>) -> some View {
+        self.modifier(TextEditorPlaceholder(placeholder: placeholder, text: text))
+    }
+}
+
 struct AddPortfolioView: View {
     let students: [User]
     let onSave: (Portfolio) -> Void
@@ -19,6 +42,11 @@ struct AddPortfolioView: View {
     @State private var selectedWorkFiles: Set<StudentWorkFile> = []
     @State private var studentRemarks: String = ""
     @State private var instructorRemarks: String = ""
+    @State private var aboutMe: String = ""
+    @State private var achievementsAndAwards: String = ""
+    @State private var attendanceNotes: String = ""
+    @State private var extracurricularActivities: String = ""
+    @State private var serviceLog: String = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var availableWorkFiles: [StudentWorkFile] = []
@@ -101,7 +129,37 @@ struct AddPortfolioView: View {
                         .frame(minHeight: 100)
                 }
                 
-                Section(footer: Text("A copy of the current report card will be automatically included.")) {
+                Section(header: Text("About Me")) {
+                    TextEditor(text: $aboutMe)
+                        .frame(minHeight: 100)
+                        .placeholder("Enter information about the student's interests, goals, and personality...", when: $aboutMe)
+                }
+                
+                Section(header: Text("Achievements and Awards")) {
+                    TextEditor(text: $achievementsAndAwards)
+                        .frame(minHeight: 100)
+                        .placeholder("List academic achievements, awards, recognitions, and honors...", when: $achievementsAndAwards)
+                }
+                
+                Section(header: Text("Attendance Notes")) {
+                    TextEditor(text: $attendanceNotes)
+                        .frame(minHeight: 80)
+                        .placeholder("Add any notes about attendance or commitment to learning...", when: $attendanceNotes)
+                }
+                
+                Section(header: Text("Extracurricular Activities")) {
+                    TextEditor(text: $extracurricularActivities)
+                        .frame(minHeight: 100)
+                        .placeholder("List extracurricular activities, clubs, sports, and interests...", when: $extracurricularActivities)
+                }
+                
+                Section(header: Text("Service Log")) {
+                    TextEditor(text: $serviceLog)
+                        .frame(minHeight: 100)
+                        .placeholder("Document community service, volunteer work, and service learning activities...", when: $serviceLog)
+                }
+                
+                Section(footer: Text("A copy of the current report card will be automatically included. Yearly accomplishments by subject will be generated from course data.")) {
                     EmptyView()
                 }
             }
@@ -141,7 +199,7 @@ struct AddPortfolioView: View {
     }
     
     private var isValid: Bool {
-        selectedStudent != nil && !selectedWorkFiles.isEmpty
+        selectedStudent != nil
     }
     
     private func fileIcon(for fileType: String) -> String {
@@ -194,6 +252,15 @@ struct AddPortfolioView: View {
             let reportCardData = try? JSONEncoder().encode(studentCourses)
             let reportCardSnapshot = reportCardData.flatMap { String(data: $0, encoding: .utf8) }
             
+            // Create section data
+            let sectionData = PortfolioSectionData(
+                aboutMe: aboutMe.isEmpty ? nil : aboutMe,
+                achievementsAndAwards: achievementsAndAwards.isEmpty ? nil : achievementsAndAwards,
+                attendanceNotes: attendanceNotes.isEmpty ? nil : attendanceNotes,
+                extracurricularActivities: extracurricularActivities.isEmpty ? nil : extracurricularActivities,
+                serviceLog: serviceLog.isEmpty ? nil : serviceLog
+            )
+            
             // Create portfolio
             let portfolio = try await api.createPortfolio(
                 studentId: student.id,
@@ -202,7 +269,8 @@ struct AddPortfolioView: View {
                 studentWorkFileIds: Array(selectedWorkFiles.map { $0.id }),
                 studentRemarks: studentRemarks.isEmpty ? nil : studentRemarks,
                 instructorRemarks: instructorRemarks.isEmpty ? nil : instructorRemarks,
-                reportCardSnapshot: reportCardSnapshot
+                reportCardSnapshot: reportCardSnapshot,
+                sectionData: sectionData
             )
             
             onSave(portfolio)

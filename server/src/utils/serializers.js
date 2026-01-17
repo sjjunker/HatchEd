@@ -102,6 +102,7 @@ export function serializePortfolio (portfolio) {
     studentRemarks: portfolio.studentRemarks ?? null,
     instructorRemarks: portfolio.instructorRemarks ?? null,
     reportCardSnapshot: portfolio.reportCardSnapshot ?? null,
+    sectionData: portfolio.sectionData ?? null,
     compiledContent: portfolio.compiledContent ?? '',
     snippet: portfolio.snippet ?? '',
     generatedImages: portfolio.generatedImages ?? [],

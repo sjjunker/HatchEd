@@ -15,6 +15,7 @@ struct CurriculumView: View {
     @State private var addSheetType: AddType? = nil
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var selectedAssignmentForEdit: Assignment? = nil
     
     private let api = APIClient.shared
     
@@ -115,6 +116,21 @@ struct CurriculumView: View {
                 )
             }
         }
+        .sheet(item: $selectedAssignmentForEdit) { assignment in
+            TaskDetailSheetView(
+                task: createPlannerTaskFromAssignment(assignment),
+                assignment: assignment,
+                students: signInManager.students,
+                courses: courses,
+                onTaskUpdated: {},
+                onAssignmentUpdated: {
+                    Task {
+                        await loadCurriculum()
+                    }
+                },
+                onTaskDeleted: {}
+            )
+        }
     }
     
     @MainActor
@@ -131,6 +147,25 @@ struct CurriculumView: View {
             errorMessage = error.localizedDescription
         }
         isLoading = false
+    }
+    
+    // Helper function to create a dummy PlannerTask from an assignment for TaskDetailSheetView
+    private func createPlannerTaskFromAssignment(_ assignment: Assignment) -> PlannerTask {
+        // Use dueDate as startDate, or current date if no dueDate
+        let startDate = assignment.dueDate ?? Date()
+        // Get course name if available
+        let courseName = assignment.courseId.flatMap { courseId in
+            courses.first { $0.id == courseId }?.name
+        }
+        
+        return PlannerTask(
+            id: assignment.id,
+            title: assignment.title,
+            startDate: startDate,
+            durationMinutes: 60, // Default duration
+            colorName: "Blue", // Default color
+            subject: courseName
+        )
     }
     
     private var emptyStateView: some View {
@@ -206,7 +241,9 @@ struct CurriculumView: View {
                         
                         // Assignments for this course
                         ForEach(group.assignments) { assignment in
-                            AssignmentRow(assignment: assignment)
+                            AssignmentRow(assignment: assignment) {
+                                selectedAssignmentForEdit = assignment
+                            }
                         }
                     }
                 }
@@ -298,6 +335,7 @@ private struct AssignmentGroup: Identifiable {
 
 private struct AssignmentRow: View {
     let assignment: Assignment
+    let onTap: () -> Void
     
     private func calculatePercentage(pointsAwarded: Double, pointsPossible: Double) -> Double? {
         guard pointsPossible > 0 else { return nil }
@@ -305,7 +343,8 @@ private struct AssignmentRow: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Image(systemName: "doc.text.fill")
                     .foregroundColor(.hatchEdWhite)
@@ -347,13 +386,15 @@ private struct AssignmentRow: View {
                         .foregroundColor(.hatchEdSecondaryText)
                 }
             }
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.hatchEdCardBackground)
+                    .shadow(color: Color.hatchEdWarning.opacity(0.15), radius: 4, x: 0, y: 2)
+            )
         }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.hatchEdCardBackground)
-                .shadow(color: Color.hatchEdWarning.opacity(0.15), radius: 4, x: 0, y: 2)
-        )
+        .buttonStyle(.plain)
     }
 }
 

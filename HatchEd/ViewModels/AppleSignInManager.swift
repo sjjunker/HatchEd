@@ -43,17 +43,17 @@ class AppleSignInManager: NSObject, ObservableObject {
     var dashboardView: some View {
         // Trust signInState - if we're signed in, we should have a role
         if signInState == .signedIn {
-            if let role = userRole {
-                switch role {
-                case "parent":
-                    ParentDashboard()
-                case "student":
-                    if studentRequiresFamily {
-                        StudentJoinFamilyView()
-                    } else {
-                        StudentDashboard()
-                    }
-                default:
+        if let role = userRole {
+            switch role {
+            case "parent":
+                ParentDashboard()
+            case "student":
+                if studentRequiresFamily {
+                    StudentJoinFamilyView()
+                } else {
+                    StudentDashboard()
+                }
+            default:
                     // Unknown role - show role selection
                     if let userID = currentUser?.id {
                         RoleSelectionView(userID: userID)
@@ -69,7 +69,7 @@ class AppleSignInManager: NSObject, ObservableObject {
                             print("[Dashboard] WARNING: signInState is signedIn but userRole is nil")
                         }
                 } else {
-                    SignInView()
+                SignInView()
                         .onAppear {
                             print("[Dashboard] WARNING: signInState is signedIn but userRole is nil and no userID")
                         }

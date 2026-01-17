@@ -24,8 +24,8 @@ async function fetchAppleKeys () {
         'User-Agent': 'HatchEd-Server/1.0'
       }
     })
-    cachedKeys = data.keys
-    cacheExpiry = now + (60 * 60 * 1000)
+  cachedKeys = data.keys
+  cacheExpiry = now + (60 * 60 * 1000)
     console.log('[Apple Auth] Apple public keys fetched and cached', {
       keyCount: cachedKeys.length,
       cacheExpiry: new Date(cacheExpiry).toISOString()
@@ -40,7 +40,7 @@ async function fetchAppleKeys () {
     // If we have cached keys, use them even if expired
     if (cachedKeys) {
       console.log('[Apple Auth] Using expired cached keys due to fetch failure')
-      return cachedKeys
+  return cachedKeys
     }
     throw new Error(`Failed to fetch Apple public keys: ${error.message}`)
   }
@@ -83,11 +83,11 @@ export async function verifyAppleIdentityToken (identityToken, audience) {
   const publicKey = jwkToPem(key)
 
   try {
-    const verified = jwt.verify(identityToken, publicKey, {
-      algorithms: ['RS256'],
-      audience,
-      issuer: 'https://appleid.apple.com'
-    })
+  const verified = jwt.verify(identityToken, publicKey, {
+    algorithms: ['RS256'],
+    audience,
+    issuer: 'https://appleid.apple.com'
+  })
 
     console.log('[Apple Auth] Token verified successfully', {
       appleId: verified.sub,
@@ -96,7 +96,7 @@ export async function verifyAppleIdentityToken (identityToken, audience) {
       expiresAt: verified.exp ? new Date(verified.exp * 1000).toISOString() : null
     })
 
-    return verified
+  return verified
   } catch (verifyError) {
     console.error('[Apple Auth] Token verification failed', {
       error: verifyError.message,

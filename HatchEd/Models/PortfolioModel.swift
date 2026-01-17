@@ -17,6 +17,18 @@ enum PortfolioDesignPattern: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+struct PortfolioImage: Identifiable, Codable, Equatable {
+    let id: String
+    var description: String
+    var url: String
+    
+    init(id: String = UUID().uuidString, description: String, url: String) {
+        self.id = id
+        self.description = description
+        self.url = url
+    }
+}
+
 struct Portfolio: Identifiable, Codable, Equatable {
     let id: String
     var studentId: String
@@ -28,6 +40,7 @@ struct Portfolio: Identifiable, Codable, Equatable {
     var reportCardSnapshot: String? // JSON string of report card at time of creation
     var compiledContent: String // Content compiled by ChatGPT
     var snippet: String // Short preview snippet
+    var generatedImages: [PortfolioImage] // AI-generated images
     var createdAt: Date?
     var updatedAt: Date?
     
@@ -41,6 +54,7 @@ struct Portfolio: Identifiable, Codable, Equatable {
          reportCardSnapshot: String? = nil,
          compiledContent: String = "",
          snippet: String = "",
+         generatedImages: [PortfolioImage] = [],
          createdAt: Date? = nil,
          updatedAt: Date? = nil) {
         self.id = id
@@ -53,6 +67,7 @@ struct Portfolio: Identifiable, Codable, Equatable {
         self.reportCardSnapshot = reportCardSnapshot
         self.compiledContent = compiledContent
         self.snippet = snippet
+        self.generatedImages = generatedImages
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

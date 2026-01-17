@@ -104,6 +104,7 @@ export function serializePortfolio (portfolio) {
     reportCardSnapshot: portfolio.reportCardSnapshot ?? null,
     compiledContent: portfolio.compiledContent ?? '',
     snippet: portfolio.snippet ?? '',
+    generatedImages: portfolio.generatedImages ?? [],
     createdAt: portfolio.createdAt,
     updatedAt: portfolio.updatedAt
   }

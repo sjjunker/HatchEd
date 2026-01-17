@@ -4,7 +4,9 @@ import { ObjectId } from 'mongodb'
 import { findUserById } from '../models/userModel.js'
 import { createPortfolio, findPortfoliosByFamilyId, findPortfolioById, updatePortfolio, deletePortfolio } from '../models/portfolioModel.js'
 import { findStudentWorkFilesByStudentId, createStudentWorkFile, findStudentWorkFileById } from '../models/studentWorkFileModel.js'
-import { serializePortfolio, serializeStudentWorkFile } from '../utils/serializers.js'
+import { findCoursesByStudentId } from '../models/courseModel.js'
+import { findAttendanceForStudent } from '../models/attendanceModel.js'
+import { serializePortfolio, serializeStudentWorkFile, serializeCourse } from '../utils/serializers.js'
 import { compilePortfolioWithChatGPT } from '../services/chatgptService.js'
 import multer from 'multer'
 import path from 'path'
@@ -54,9 +56,56 @@ export async function createPortfolioHandler (req, res) {
     })
   )
 
+  // Fetch courses for the student
+  const courses = await findCoursesByStudentId(studentId)
+  const coursesWithDetails = await Promise.all(
+    courses.map(async (course) => {
+      const student = await findUserById(course.studentUserId)
+      return serializeCourse(course, student)
+    })
+  )
+
+  // Fetch attendance records for the student
+  let attendanceSummary = null
+  try {
+    const attendanceRecords = await findAttendanceForStudent({
+      familyId: user.familyId,
+      studentUserId: studentId,
+      limit: 365 // Last year
+    })
+    
+    if (attendanceRecords && attendanceRecords.length > 0) {
+      const attended = attendanceRecords.filter(r => r.isPresent).length
+      const missed = attendanceRecords.filter(r => !r.isPresent).length
+      const total = attended + missed
+      const average = total > 0 ? attended / total : 0
+      
+      // Calculate streak
+      const sortedRecords = attendanceRecords.sort((a, b) => new Date(b.date) - new Date(a.date))
+      let streak = 0
+      for (const record of sortedRecords) {
+        if (record.isPresent) {
+          streak++
+        } else {
+          break
+        }
+      }
+      
+      attendanceSummary = {
+        classesAttended: attended,
+        classesMissed: missed,
+        average: average,
+        streakDays: streak
+      }
+    }
+  } catch (error) {
+    console.warn('Error fetching attendance for portfolio:', error)
+  }
+
   // Compile portfolio with ChatGPT
   let compiledContent = ''
   let snippet = ''
+  let generatedImages = []
   try {
     const compilationResult = await compilePortfolioWithChatGPT({
       studentName,
@@ -64,10 +113,13 @@ export async function createPortfolioHandler (req, res) {
       studentWorkFiles: studentWorkFiles.filter(Boolean),
       studentRemarks,
       instructorRemarks,
-      reportCardSnapshot
+      reportCardSnapshot,
+      attendanceSummary,
+      courses: coursesWithDetails
     })
     compiledContent = compilationResult.content
     snippet = compilationResult.snippet
+    generatedImages = compilationResult.images || []
   } catch (error) {
     console.error('Error compiling portfolio with ChatGPT:', error)
     // Continue with empty content - portfolio will be created but not compiled
@@ -85,7 +137,8 @@ export async function createPortfolioHandler (req, res) {
     instructorRemarks,
     reportCardSnapshot,
     compiledContent,
-    snippet
+    snippet,
+    generatedImages
   })
 
   res.status(201).json({ portfolio: serializePortfolio(portfolio) })

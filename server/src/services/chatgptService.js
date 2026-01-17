@@ -9,6 +9,57 @@ const openai = new OpenAI({
 })
 
 /**
+ * Extract image descriptions from portfolio content
+ * @param {string} content - Portfolio content with [IMAGE: description] placeholders
+ * @returns {Array<string>} Array of image descriptions
+ */
+function extractImageDescriptions (content) {
+  const descriptions = []
+  const imageRegex = /\[IMAGE:\s*([^\]]+)\]/g
+  let match
+  
+  while ((match = imageRegex.exec(content)) !== null) {
+    descriptions.push(match[1].trim())
+  }
+  
+  return descriptions
+}
+
+/**
+ * Generate an image using DALL-E based on description
+ * @param {string} description - Image description
+ * @param {string} designPattern - Portfolio design pattern for style consistency
+ * @returns {Promise<string|null>} Image URL or null if generation fails
+ */
+async function generateImage (description, designPattern) {
+  try {
+    // Enhance prompt with design pattern context
+    const enhancedPrompt = `Create a professional, academic portfolio illustration: ${description}. Style: ${designPattern.toLowerCase()}, clean and appropriate for an educational portfolio.`
+    
+    console.log('[ChatGPT Service] Generating image:', enhancedPrompt.substring(0, 100))
+    
+    const response = await openai.images.generate({
+      model: 'dall-e-3',
+      prompt: enhancedPrompt,
+      size: '1024x1024',
+      quality: 'standard',
+      n: 1
+    })
+    
+    const imageUrl = response.data[0]?.url
+    if (imageUrl) {
+      console.log('[ChatGPT Service] Image generated successfully')
+      return imageUrl
+    }
+    
+    return null
+  } catch (error) {
+    console.error('[ChatGPT Service] Error generating image:', error.message)
+    return null
+  }
+}
+
+/**
  * Get work summaries from student work file IDs
  * @param {Array} studentWorkFiles - Array of student work file objects
  * @returns {Array<string>} Array of work summaries
@@ -37,11 +88,20 @@ function getWorkSummaries (studentWorkFiles) {
  * @param {Object} params - Portfolio parameters
  * @returns {string} Formatted prompt
  */
-function buildPortfolioPrompt ({ studentName, designPattern, studentRemarks, instructorRemarks, reportCardSnapshot, studentWorkSummaries }) {
+function buildPortfolioPrompt ({ studentName, designPattern, studentRemarks, instructorRemarks, reportCardSnapshot, studentWorkSummaries, attendanceSummary, courses }) {
   const promptParts = []
 
-  promptParts.push(`Create a comprehensive academic portfolio for ${studentName}.`)
+  promptParts.push(`Create a comprehensive, visually rich academic portfolio for ${studentName}.`)
   promptParts.push(`\nDesign Pattern: ${designPattern}`)
+  promptParts.push(`\n\nIMPORTANT: The portfolio must include ALL of the following sections with engaging, detailed content:`)
+  promptParts.push(`\n1. About Me - A personal introduction highlighting the student's interests, goals, and personality`)
+  promptParts.push(`\n2. Achievements and Awards - List and describe all academic achievements, awards, recognitions, and honors`)
+  promptParts.push(`\n3. Attendance - Summary of attendance record and commitment to learning`)
+  promptParts.push(`\n4. Yearly Accomplishments by Subject - Detailed accomplishments for each course/subject taken`)
+  promptParts.push(`\n5. Extracurricular Activities - All extracurricular activities, clubs, sports, and interests`)
+  promptParts.push(`\n6. Report Card - Academic performance summary`)
+  promptParts.push(`\n7. Service Log - Community service, volunteer work, and service learning activities`)
+  promptParts.push(`\n\nFor each section, include engaging descriptions and note where images should be placed (use [IMAGE: description] as placeholders for images).`)
 
   if (studentRemarks) {
     promptParts.push(`\n\nStudent Remarks:\n${studentRemarks}`)
@@ -59,10 +119,14 @@ function buildPortfolioPrompt ({ studentName, designPattern, studentRemarks, ins
     try {
       const reportCard = JSON.parse(reportCardSnapshot)
       if (reportCard && Array.isArray(reportCard) && reportCard.length > 0) {
-        promptParts.push(`\n\nAcademic Performance:`)
+        promptParts.push(`\n\nAcademic Performance (Report Card):`)
         reportCard.forEach(course => {
           if (course.name && course.grade != null) {
             promptParts.push(`- ${course.name}: ${course.grade.toFixed(1)}%`)
+            if (course.assignments && course.assignments.length > 0) {
+              const completedAssignments = course.assignments.filter(a => a.completed || a.pointsAwarded != null).length
+              promptParts.push(`  (${completedAssignments} completed assignments)`)
+            }
           }
         })
       }
@@ -71,7 +135,33 @@ function buildPortfolioPrompt ({ studentName, designPattern, studentRemarks, ins
     }
   }
 
-  promptParts.push(`\n\nPlease create a well-structured, professional portfolio that highlights the student's achievements, growth, and academic progress. Use markdown formatting with appropriate headings, sections, and formatting.`)
+  if (attendanceSummary) {
+    promptParts.push(`\n\nAttendance Summary:`)
+    promptParts.push(`- Classes Attended: ${attendanceSummary.classesAttended}`)
+    promptParts.push(`- Classes Missed: ${attendanceSummary.classesMissed}`)
+    promptParts.push(`- Attendance Rate: ${(attendanceSummary.average * 100).toFixed(1)}%`)
+    if (attendanceSummary.streakDays > 0) {
+      promptParts.push(`- Current Attendance Streak: ${attendanceSummary.streakDays} days`)
+    }
+  }
+
+  if (courses && courses.length > 0) {
+    promptParts.push(`\n\nCourse Details for Yearly Accomplishments:`)
+    courses.forEach(course => {
+      promptParts.push(`- ${course.name}`)
+      if (course.grade != null) {
+        promptParts.push(`  Grade: ${course.grade.toFixed(1)}%`)
+      }
+      if (course.assignments && course.assignments.length > 0) {
+        const gradedAssignments = course.assignments.filter(a => a.pointsAwarded != null && a.pointsPossible != null)
+        if (gradedAssignments.length > 0) {
+          promptParts.push(`  Notable Assignments: ${gradedAssignments.length} graded assignments`)
+        }
+      }
+    })
+  }
+
+  promptParts.push(`\n\nPlease create a comprehensive, engaging portfolio with all required sections. Use markdown formatting with clear headings (## for section titles). Include [IMAGE: description] placeholders throughout to indicate where images would enhance the content. Make the content detailed, positive, and reflective of the student's growth and achievements.`)
 
   return promptParts.join('\n')
 }
@@ -81,7 +171,7 @@ function buildPortfolioPrompt ({ studentName, designPattern, studentRemarks, ins
  * @param {Object} params - Portfolio compilation parameters
  * @returns {Promise<{content: string, snippet: string}>}
  */
-export async function compilePortfolioWithChatGPT ({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot }) {
+export async function compilePortfolioWithChatGPT ({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot, attendanceSummary, courses }) {
   const startTime = Date.now()
 
   try {
@@ -107,7 +197,9 @@ export async function compilePortfolioWithChatGPT ({ studentName, designPattern,
       studentRemarks,
       instructorRemarks,
       reportCardSnapshot,
-      studentWorkSummaries: workSummaries.join('\n\n')
+      studentWorkSummaries: workSummaries.join('\n\n'),
+      attendanceSummary,
+      courses
     })
 
     console.log('[ChatGPT Service] Sending request to OpenAI...', {
@@ -121,7 +213,7 @@ export async function compilePortfolioWithChatGPT ({ studentName, designPattern,
       messages: [
         {
           role: 'system',
-          content: 'You are an expert portfolio generator. Create professional, well-structured academic portfolios that highlight student achievements, growth, and progress. Use markdown formatting with clear sections and appropriate headings.'
+          content: 'You are an expert portfolio generator. Create comprehensive, engaging academic portfolios that highlight student achievements, growth, and progress. Use markdown formatting with clear sections (## for section titles). Include [IMAGE: description] placeholders throughout to indicate where images would enhance the content. Make the content detailed, positive, and reflective of the student\'s journey.'
         },
         {
           role: 'user',
@@ -129,7 +221,7 @@ export async function compilePortfolioWithChatGPT ({ studentName, designPattern,
         }
       ],
       temperature: 0.7,
-      max_tokens: 2000
+      max_tokens: 4000
     })
 
     const portfolioText = openaiResponse.choices[0]?.message?.content
@@ -145,12 +237,36 @@ export async function compilePortfolioWithChatGPT ({ studentName, designPattern,
       tokensUsed: openaiResponse.usage?.total_tokens
     })
 
+    // Extract image descriptions and generate images
+    const imageDescriptions = extractImageDescriptions(portfolioText)
+    console.log('[ChatGPT Service] Found image placeholders:', imageDescriptions.length)
+    
+    const generatedImages = []
+    if (imageDescriptions.length > 0) {
+      try {
+        for (const description of imageDescriptions) {
+          const imageUrl = await generateImage(description, designPattern)
+          if (imageUrl) {
+            generatedImages.push({
+              description,
+              url: imageUrl
+            })
+          }
+        }
+        console.log('[ChatGPT Service] Generated images:', generatedImages.length)
+      } catch (error) {
+        console.error('[ChatGPT Service] Error generating images:', error)
+        // Continue without images if generation fails
+      }
+    }
+
     // Generate snippet (first 200 characters)
     const snippet = portfolioText.substring(0, 200) + (portfolioText.length > 200 ? '...' : '')
 
     return {
       content: portfolioText,
-      snippet
+      snippet,
+      images: generatedImages
     }
   } catch (error) {
     const duration = Date.now() - startTime
@@ -163,7 +279,7 @@ export async function compilePortfolioWithChatGPT ({ studentName, designPattern,
 
     // Fallback to basic compilation if OpenAI fails
     console.log('[ChatGPT Service] Falling back to basic compilation')
-    return getFallbackCompilation({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot })
+    return getFallbackCompilation({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot, attendanceSummary, courses })
   }
 }
 
@@ -172,12 +288,17 @@ export async function compilePortfolioWithChatGPT ({ studentName, designPattern,
  * @param {Object} params - Portfolio parameters
  * @returns {{content: string, snippet: string}}
  */
-function getFallbackCompilation ({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot }) {
+function getFallbackCompilation ({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot, attendanceSummary, courses }) {
   const portfolioSections = []
 
   // Introduction
   portfolioSections.push(`# ${studentName} - ${designPattern} Portfolio\n\n`)
   portfolioSections.push(`This portfolio showcases the academic achievements and work of ${studentName}.\n\n`)
+
+  // About Me
+  portfolioSections.push(`## About Me\n\n`)
+  portfolioSections.push(`[IMAGE: Student photo or illustration]\n\n`)
+  portfolioSections.push(`${studentName} is a dedicated student committed to academic excellence and personal growth. This portfolio represents their journey, achievements, and progress throughout the academic year.\n\n`)
 
   // Student Remarks
   if (studentRemarks) {
@@ -189,21 +310,52 @@ function getFallbackCompilation ({ studentName, designPattern, studentWorkFiles,
     portfolioSections.push(`## Instructor Remarks\n\n${instructorRemarks}\n\n`)
   }
 
-  // Student Work
-  if (studentWorkFiles && studentWorkFiles.length > 0) {
-    portfolioSections.push(`## Student Work Samples\n\n`)
-    studentWorkFiles.forEach((file, index) => {
-      portfolioSections.push(`${index + 1}. ${file.fileName}\n`)
-    })
+  // Achievements and Awards
+  portfolioSections.push(`## Achievements and Awards\n\n`)
+  portfolioSections.push(`[IMAGE: Awards or certificates]\n\n`)
+  portfolioSections.push(`This section highlights the student's notable achievements and recognitions.\n\n`)
+
+  // Attendance
+  if (attendanceSummary) {
+    portfolioSections.push(`## Attendance\n\n`)
+    portfolioSections.push(`[IMAGE: Attendance chart or calendar]\n\n`)
+    portfolioSections.push(`- Classes Attended: ${attendanceSummary.classesAttended}\n`)
+    portfolioSections.push(`- Classes Missed: ${attendanceSummary.classesMissed}\n`)
+    portfolioSections.push(`- Attendance Rate: ${(attendanceSummary.average * 100).toFixed(1)}%\n`)
+    if (attendanceSummary.streakDays > 0) {
+      portfolioSections.push(`- Current Attendance Streak: ${attendanceSummary.streakDays} days\n`)
+    }
     portfolioSections.push(`\n`)
   }
+
+  // Yearly Accomplishments by Subject
+  if (courses && courses.length > 0) {
+    portfolioSections.push(`## Yearly Accomplishments by Subject\n\n`)
+    courses.forEach(course => {
+      portfolioSections.push(`### ${course.name}\n\n`)
+      portfolioSections.push(`[IMAGE: Work sample from ${course.name}]\n\n`)
+      if (course.grade != null) {
+        portfolioSections.push(`Grade: ${course.grade.toFixed(1)}%\n\n`)
+      }
+      if (course.assignments && course.assignments.length > 0) {
+        const completedAssignments = course.assignments.filter(a => a.completed || a.pointsAwarded != null)
+        portfolioSections.push(`Completed ${completedAssignments.length} assignments in this course.\n\n`)
+      }
+    })
+  }
+
+  // Extracurricular Activities
+  portfolioSections.push(`## Extracurricular Activities\n\n`)
+  portfolioSections.push(`[IMAGE: Extracurricular activities]\n\n`)
+  portfolioSections.push(`This section showcases the student's involvement in activities outside of academics.\n\n`)
 
   // Report Card
   if (reportCardSnapshot) {
     try {
       const reportCard = JSON.parse(reportCardSnapshot)
-      if (reportCard && reportCard.length > 0) {
-        portfolioSections.push(`## Academic Performance\n\n`)
+      if (reportCard && Array.isArray(reportCard) && reportCard.length > 0) {
+        portfolioSections.push(`## Report Card\n\n`)
+        portfolioSections.push(`[IMAGE: Report card visualization]\n\n`)
         reportCard.forEach(course => {
           if (course.grade != null) {
             portfolioSections.push(`- ${course.name}: ${course.grade.toFixed(1)}%\n`)
@@ -214,6 +366,20 @@ function getFallbackCompilation ({ studentName, designPattern, studentWorkFiles,
     } catch (error) {
       console.error('Error parsing report card snapshot:', error)
     }
+  }
+
+  // Service Log
+  portfolioSections.push(`## Service Log\n\n`)
+  portfolioSections.push(`[IMAGE: Community service activities]\n\n`)
+  portfolioSections.push(`This section documents the student's community service and volunteer work.\n\n`)
+
+  // Student Work
+  if (studentWorkFiles && studentWorkFiles.length > 0) {
+    portfolioSections.push(`## Student Work Samples\n\n`)
+    studentWorkFiles.forEach((file, index) => {
+      portfolioSections.push(`[IMAGE: ${file.fileName}]\n\n`)
+      portfolioSections.push(`${index + 1}. ${file.fileName}\n\n`)
+    })
   }
 
   // Conclusion

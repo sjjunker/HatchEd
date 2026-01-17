@@ -29,7 +29,7 @@ const upload = multer({
 })
 
 // Error handling middleware for multer
-export const handleMulterError = (err, req, res, next) => {
+const handleMulterError = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     console.error('[Multer] Multer error', {
       code: err.code,

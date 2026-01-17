@@ -19,6 +19,14 @@ struct ReportCard: View {
     @State private var pdfURL: URL?
     @State private var showingShareSheet = false
     @State private var showingPrintSheet = false
+    @State private var showingStudentSelection = false
+    @State private var selectedStudentIds: Set<String> = []
+    @State private var pendingAction: PendingAction? = nil
+    
+    enum PendingAction {
+        case generatePDF
+        case print
+    }
     
     private let api = APIClient.shared
     
@@ -69,17 +77,15 @@ struct ReportCard: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
                     Button {
-                        Task {
-                            await generatePDF()
-                        }
+                        pendingAction = .generatePDF
+                        showingStudentSelection = true
                     } label: {
                         Label("Download PDF", systemImage: "square.and.arrow.down")
                     }
                     
                     Button {
-                        Task {
-                            await printReportCard()
-                        }
+                        pendingAction = .print
+                        showingStudentSelection = true
                     } label: {
                         Label("Print", systemImage: "printer")
                     }
@@ -87,6 +93,36 @@ struct ReportCard: View {
                     Image(systemName: "square.and.arrow.up")
                 }
             }
+        }
+        .sheet(isPresented: $showingStudentSelection, onDismiss: {
+            // When sheet is dismissed, execute the pending action if it exists
+            if let action = pendingAction {
+                // Use a small delay to ensure the sheet is fully dismissed before presenting print sheet
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    Task { @MainActor in
+                        switch action {
+                        case .generatePDF:
+                            await generatePDF()
+                        case .print:
+                            await printReportCard()
+                        }
+                        pendingAction = nil
+                    }
+                }
+            }
+        }) {
+            StudentSelectionSheet(
+                students: signInManager.students,
+                courses: courses,
+                selectedStudentIds: $selectedStudentIds,
+                onConfirm: {
+                    showingStudentSelection = false
+                },
+                onCancel: {
+                    showingStudentSelection = false
+                    pendingAction = nil
+                }
+            )
         }
         .onAppear {
             Task {
@@ -216,10 +252,20 @@ struct ReportCard: View {
     
     @MainActor
     private func generatePDF() async {
+        // Filter to only selected students (or all if none selected)
+        let studentsToInclude = selectedStudentIds.isEmpty 
+            ? signInManager.students 
+            : signInManager.students.filter { selectedStudentIds.contains($0.id) }
+        
+        guard !studentsToInclude.isEmpty else {
+            errorMessage = "Please select at least one student"
+            return
+        }
+        
         let pdfCreator = ReportCardPDFCreator()
         // Create PDF optimized for digital viewing (smaller margins, uses more of the page)
         let data = pdfCreator.createPDF(
-            students: signInManager.students,
+            students: studentsToInclude,
             courses: courses,
             attendanceRecords: attendanceRecords,
             forPrinting: false
@@ -239,10 +285,20 @@ struct ReportCard: View {
     
     @MainActor
     private func printReportCard() async {
+        // Filter to only selected students (or all if none selected)
+        let studentsToInclude = selectedStudentIds.isEmpty 
+            ? signInManager.students 
+            : signInManager.students.filter { selectedStudentIds.contains($0.id) }
+        
+        guard !studentsToInclude.isEmpty else {
+            errorMessage = "Please select at least one student"
+            return
+        }
+        
         let pdfCreator = ReportCardPDFCreator()
         // Create PDF optimized for printing (larger margins, printer-safe)
         let pdfData = pdfCreator.createPDF(
-            students: signInManager.students,
+            students: studentsToInclude,
             courses: courses,
             attendanceRecords: attendanceRecords,
             forPrinting: true
@@ -270,22 +326,37 @@ struct ReportCard: View {
         // Use PDF data directly for printing (more reliable than file URL)
         printController.printingItem = pdfData
         
-        // For iPad support, we need to set the popover presentation
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first,
-           let rootViewController = window.rootViewController {
-            printController.present(animated: true, completionHandler: { (controller, completed, error) in
-                if let error = error {
-                    errorMessage = "Print failed: \(error.localizedDescription)"
+        // Present print controller - find the topmost view controller
+        // This ensures it's presented even after a sheet is dismissed
+        DispatchQueue.main.async {
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let window = windowScene.windows.first(where: { $0.isKeyWindow }),
+               let rootViewController = window.rootViewController {
+                // Find the topmost presented view controller
+                var topViewController = rootViewController
+                while let presented = topViewController.presentedViewController {
+                    topViewController = presented
                 }
-            })
-        } else {
-            // Fallback presentation
-            printController.present(animated: true, completionHandler: { (controller, completed, error) in
-                if let error = error {
-                    errorMessage = "Print failed: \(error.localizedDescription)"
-                }
-            })
+                
+                // Present from the center of the view for iPad popover support
+                let rect = CGRect(x: topViewController.view.bounds.midX, y: topViewController.view.bounds.midY, width: 0, height: 0)
+                printController.present(from: rect, in: topViewController.view, animated: true, completionHandler: { (controller, completed, error) in
+                    if let error = error {
+                        Task { @MainActor in
+                            errorMessage = "Print failed: \(error.localizedDescription)"
+                        }
+                    }
+                })
+            } else {
+                // Fallback presentation
+                printController.present(animated: true, completionHandler: { (controller, completed, error) in
+                    if let error = error {
+                        Task { @MainActor in
+                            errorMessage = "Print failed: \(error.localizedDescription)"
+                        }
+                    }
+                })
+            }
         }
     }
 }
@@ -727,6 +798,90 @@ private extension NumberFormatter {
         formatter.minimumFractionDigits = 0
         return formatter
     }()
+}
+
+// Student Selection Sheet for Report Cards
+private struct StudentSelectionSheet: View {
+    let students: [User]
+    let courses: [Course]
+    @Binding var selectedStudentIds: Set<String>
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+    
+    @Environment(\.dismiss) private var dismiss
+    
+    // Group courses by student to show which students have courses
+    private var studentsWithCourses: [User] {
+        let coursesByStudent = Dictionary(grouping: courses) { $0.student.id }
+        return students.filter { student in
+            guard let studentCourses = coursesByStudent[student.id] else { return false }
+            return !studentCourses.isEmpty
+        }
+    }
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Select Students")) {
+                    if studentsWithCourses.isEmpty {
+                        Text("No students with courses available")
+                            .font(.subheadline)
+                            .foregroundColor(.hatchEdSecondaryText)
+                    } else {
+                        ForEach(studentsWithCourses) { student in
+                            Button {
+                                if selectedStudentIds.contains(student.id) {
+                                    selectedStudentIds.remove(student.id)
+                                } else {
+                                    selectedStudentIds.insert(student.id)
+                                }
+                            } label: {
+                                HStack {
+                                    Text(student.name ?? "Student")
+                                        .foregroundColor(.hatchEdText)
+                                    Spacer()
+                                    if selectedStudentIds.contains(student.id) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(.hatchEdAccent)
+                                    } else {
+                                        Image(systemName: "circle")
+                                            .foregroundColor(.hatchEdSecondaryText)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                Section(footer: Text("Select the students whose report cards you want to print or download. Each student will print on a new page.")) {
+                    EmptyView()
+                }
+            }
+            .navigationTitle("Select Students")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        onCancel()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Continue") {
+                        onConfirm()
+                    }
+                    .fontWeight(.semibold)
+                    .foregroundColor(.hatchEdAccent)
+                    .disabled(selectedStudentIds.isEmpty)
+                }
+            }
+        }
+        .onAppear {
+            // Initialize with all students selected by default
+            if selectedStudentIds.isEmpty {
+                selectedStudentIds = Set(studentsWithCourses.map { $0.id })
+            }
+        }
+    }
 }
 
 private struct CourseGradeRow: View {

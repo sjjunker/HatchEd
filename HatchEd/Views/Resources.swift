@@ -209,9 +209,36 @@ struct Resources: View {
             do {
                 print("[Resources] Loading photo \(index + 1) of \(items.count)...")
                 
-                // Load the image data from the PhotosPickerItem
-                guard let data = try await item.loadTransferable(type: Data.self) else {
+                // Try loading as Data - this will automatically download iCloud photos if needed
+                // The key is to catch errors and provide helpful feedback
+                var imageData: Data?
+                
+                do {
+                    // Try loading as Data - Photos framework will handle iCloud download automatically
+                    if let data = try await item.loadTransferable(type: Data.self) {
+                        imageData = data
+                        print("[Resources] Loaded photo as Data")
+                    }
+                } catch {
+                    // If loading fails, it's likely an iCloud photo that needs to be downloaded
+                    print("[Resources] Error loading photo data: \(error.localizedDescription)")
+                    print("[Resources] This may be an iCloud photo. Retrying with longer wait...")
+                    
+                    // Wait a bit and try again (gives iCloud time to download)
+                    try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                    
+                    // Try one more time
+                    if let data = try? await item.loadTransferable(type: Data.self) {
+                        imageData = data
+                        print("[Resources] Successfully loaded photo on retry")
+                    } else {
+                        throw error // Re-throw if still fails
+                    }
+                }
+                
+                guard let data = imageData else {
                     print("[Resources] Failed to load photo data for item \(index + 1)")
+                    errorMessage = "Failed to load photo \(index + 1). Please try selecting a different photo or ensure iCloud photos are downloaded."
                     failureCount += 1
                     continue
                 }

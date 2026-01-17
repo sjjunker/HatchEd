@@ -320,7 +320,14 @@ export async function uploadStudentWorkFileHandler (req, res) {
       fileName: file.fileName
     })
 
-    res.status(201).json({ file: serializeStudentWorkFile(file) })
+    // Ensure response is properly formatted
+    const response = { file: serializeStudentWorkFile(file) }
+    res.status(201).json(response)
+    
+    console.log('[Upload] Response sent', {
+      fileId: file._id?.toString(),
+      responseSize: JSON.stringify(response).length
+    })
   } catch (error) {
     console.error('[Upload] Error in upload handler', {
       error: error.message,

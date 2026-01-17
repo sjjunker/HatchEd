@@ -193,11 +193,55 @@ struct CurriculumView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 12).fill(Color.hatchEdSecondaryBackground))
             } else {
-                ForEach(assignments) { assignment in
-                    AssignmentRow(assignment: assignment)
+                // Group assignments by course and sort by course name
+                ForEach(sortedAssignmentsByCourse) { group in
+                    VStack(alignment: .leading, spacing: 8) {
+                        // Course header
+                        Text(group.courseName)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.hatchEdSecondaryText)
+                            .padding(.horizontal, 4)
+                            .padding(.top, 8)
+                        
+                        // Assignments for this course
+                        ForEach(group.assignments) { assignment in
+                            AssignmentRow(assignment: assignment)
+                        }
+                    }
                 }
             }
         }
+    }
+    
+    // Computed property to group and sort assignments by course
+    private var sortedAssignmentsByCourse: [AssignmentGroup] {
+        // Group assignments by courseId
+        let grouped = Dictionary(grouping: assignments) { assignment in
+            assignment.courseId
+        }
+        
+        // Create AssignmentGroup objects
+        var groups: [AssignmentGroup] = []
+        
+        for (courseId, assignments) in grouped {
+            let courseName: String
+            if let courseId = courseId,
+               let course = courses.first(where: { $0.id == courseId }) {
+                courseName = course.name
+            } else {
+                courseName = "Unassigned"
+            }
+            
+            groups.append(AssignmentGroup(
+                courseId: courseId,
+                courseName: courseName,
+                assignments: assignments.sorted { $0.title < $1.title }
+            ))
+        }
+        
+        // Sort groups by course name
+        return groups.sorted { $0.courseName < $1.courseName }
     }
 }
 
@@ -238,6 +282,17 @@ private struct CourseRow: View {
                 .fill(Color.hatchEdCardBackground)
                 .shadow(color: Color.hatchEdSuccess.opacity(0.15), radius: 4, x: 0, y: 2)
         )
+    }
+}
+
+// Helper struct to group assignments by course
+private struct AssignmentGroup: Identifiable {
+    let courseId: String?
+    let courseName: String
+    let assignments: [Assignment]
+    
+    var id: String {
+        courseId ?? "unassigned"
     }
 }
 

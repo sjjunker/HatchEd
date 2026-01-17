@@ -375,15 +375,16 @@ class ReportCardPDFCreator {
                     .font: titleFont,
                     .foregroundColor: UIColor.black
                 ]
-                // Calculate actual text height using boundingRect
+                // Calculate actual text height using boundingRect with proper padding for font metrics
                 let titleBoundingRect = NSString(string: studentName).boundingRect(
                     with: CGSize(width: contentWidth, height: CGFloat.greatestFiniteMagnitude),
                     options: [.usesLineFragmentOrigin, .usesFontLeading],
                     attributes: titleAttributes,
                     context: nil
                 )
-                let titleHeight = ceil(titleBoundingRect.height)
-                let titleRect = CGRect(x: sideMargin, y: yPosition, width: contentWidth, height: titleHeight + 4)
+                // Add extra padding to account for font descenders and line spacing
+                let titleHeight = ceil(titleBoundingRect.height) + titleFont.descender.magnitude + 4
+                let titleRect = CGRect(x: sideMargin, y: yPosition, width: contentWidth, height: titleHeight)
                 let titleAttributedString = NSAttributedString(string: studentName, attributes: titleAttributes)
                 titleAttributedString.draw(in: titleRect)
                 yPosition += titleHeight + 10
@@ -397,15 +398,16 @@ class ReportCardPDFCreator {
                     .font: dateFont,
                     .foregroundColor: UIColor.darkGray
                 ]
-                // Calculate actual text height using boundingRect
+                // Calculate actual text height using boundingRect with proper padding
                 let dateBoundingRect = NSString(string: dateString).boundingRect(
                     with: CGSize(width: contentWidth, height: CGFloat.greatestFiniteMagnitude),
                     options: [.usesLineFragmentOrigin, .usesFontLeading],
                     attributes: dateAttributes,
                     context: nil
                 )
-                let dateHeight = ceil(dateBoundingRect.height)
-                let dateRect = CGRect(x: sideMargin, y: yPosition, width: contentWidth, height: dateHeight + 4)
+                // Add extra padding to account for font descenders and line spacing
+                let dateHeight = ceil(dateBoundingRect.height) + dateFont.descender.magnitude + 4
+                let dateRect = CGRect(x: sideMargin, y: yPosition, width: contentWidth, height: dateHeight)
                 let dateAttributedString = NSAttributedString(string: dateString, attributes: dateAttributes)
                 dateAttributedString.draw(in: dateRect)
                 yPosition += dateHeight + 15
@@ -427,15 +429,16 @@ class ReportCardPDFCreator {
                     .font: coursesTitleFont,
                     .foregroundColor: UIColor.black
                 ]
-                // Calculate actual text height using boundingRect
+                // Calculate actual text height using boundingRect with proper padding
                 let coursesTitleBoundingRect = NSString(string: coursesTitle).boundingRect(
                     with: CGSize(width: contentWidth, height: CGFloat.greatestFiniteMagnitude),
                     options: [.usesLineFragmentOrigin, .usesFontLeading],
                     attributes: coursesTitleAttributes,
                     context: nil
                 )
-                let coursesTitleHeight = ceil(coursesTitleBoundingRect.height)
-                let coursesTitleRect = CGRect(x: sideMargin, y: yPosition, width: contentWidth, height: coursesTitleHeight + 4)
+                // Add extra padding to account for font descenders and line spacing
+                let coursesTitleHeight = ceil(coursesTitleBoundingRect.height) + coursesTitleFont.descender.magnitude + 4
+                let coursesTitleRect = CGRect(x: sideMargin, y: yPosition, width: contentWidth, height: coursesTitleHeight)
                 let coursesTitleAttributedString = NSAttributedString(string: coursesTitle, attributes: coursesTitleAttributes)
                 coursesTitleAttributedString.draw(in: coursesTitleRect)
                 // Move down by the title's actual height plus spacing
@@ -464,7 +467,8 @@ class ReportCardPDFCreator {
                         attributes: courseNameAttributes,
                         context: nil
                     )
-                    let nameHeight = ceil(nameBoundingRect.height)
+                    // Add extra padding to account for font descenders and line spacing
+                    let nameHeight = ceil(nameBoundingRect.height) + courseNameFont.descender.magnitude + 6
                     
                     // Check if we need a new page before drawing this course
                     // Use actual calculated nameHeight instead of fixed rowHeight
@@ -478,8 +482,8 @@ class ReportCardPDFCreator {
                             attributes: coursesTitleAttributes,
                             context: nil
                         )
-                        let coursesTitleHeight = ceil(coursesTitleBoundingRect.height)
-                        let coursesTitleRect = CGRect(x: sideMargin, y: yPosition, width: contentWidth, height: coursesTitleHeight + 4)
+                        let coursesTitleHeight = ceil(coursesTitleBoundingRect.height) + coursesTitleFont.descender.magnitude + 4
+                        let coursesTitleRect = CGRect(x: sideMargin, y: yPosition, width: contentWidth, height: coursesTitleHeight)
                         let coursesTitleAttributedString = NSAttributedString(string: coursesTitle, attributes: coursesTitleAttributes)
                         coursesTitleAttributedString.draw(in: coursesTitleRect)
                         yPosition += coursesTitleHeight + 15
@@ -488,16 +492,16 @@ class ReportCardPDFCreator {
                     // Store current yPosition for this course to ensure proper spacing
                     let currentCourseY = yPosition
                     
-                    // Draw course name using rect with actual calculated height
+                    // Draw course name using rect with actual calculated height (no extra padding needed, already included)
                     let courseNameRect = CGRect(
                         x: sideMargin,
                         y: currentCourseY,
                         width: maxNameWidth,
-                        height: nameHeight + 4
+                        height: nameHeight
                     )
                     courseName.draw(in: courseNameRect, withAttributes: courseNameAttributes)
                     
-                    // Draw grade on the right side - calculate actual height
+                    // Draw grade on the right side - calculate actual height with proper padding
                     if let grade = course.grade {
                         let gradeString = String(format: "%.1f%%", grade)
                         let gradeFont = UIFont.boldSystemFont(ofSize: 14)
@@ -511,8 +515,9 @@ class ReportCardPDFCreator {
                             attributes: gradeAttributes,
                             context: nil
                         )
-                        let gradeHeight = ceil(gradeBoundingRect.height)
-                        let gradeRect = CGRect(x: pageWidth - sideMargin - 80, y: currentCourseY, width: 80, height: gradeHeight + 4)
+                        // Add extra padding to account for font descenders
+                        let gradeHeight = ceil(gradeBoundingRect.height) + gradeFont.descender.magnitude + 4
+                        let gradeRect = CGRect(x: pageWidth - sideMargin - 80, y: currentCourseY, width: 80, height: gradeHeight)
                         gradeString.draw(in: gradeRect, withAttributes: gradeAttributes)
                     } else {
                         let noGradeString = "No Grade"
@@ -527,8 +532,9 @@ class ReportCardPDFCreator {
                             attributes: noGradeAttributes,
                             context: nil
                         )
-                        let noGradeHeight = ceil(noGradeBoundingRect.height)
-                        let noGradeRect = CGRect(x: pageWidth - sideMargin - 80, y: currentCourseY, width: 80, height: noGradeHeight + 4)
+                        // Add extra padding to account for font descenders
+                        let noGradeHeight = ceil(noGradeBoundingRect.height) + noGradeFont.descender.magnitude + 4
+                        let noGradeRect = CGRect(x: pageWidth - sideMargin - 80, y: currentCourseY, width: 80, height: noGradeHeight)
                         noGradeString.draw(in: noGradeRect, withAttributes: noGradeAttributes)
                     }
                     
@@ -560,15 +566,16 @@ class ReportCardPDFCreator {
                         .font: attendanceTitleFont,
                         .foregroundColor: UIColor.black
                     ]
-                    // Calculate actual text height for attendance title using boundingRect
+                    // Calculate actual text height for attendance title using boundingRect with proper padding
                     let attendanceTitleBoundingRect = NSString(string: attendanceTitle).boundingRect(
                         with: CGSize(width: contentWidth, height: CGFloat.greatestFiniteMagnitude),
                         options: [.usesLineFragmentOrigin, .usesFontLeading],
                         attributes: attendanceTitleAttributes,
                         context: nil
                     )
-                    let attendanceTitleHeight = ceil(attendanceTitleBoundingRect.height)
-                    let attendanceTitleRect = CGRect(x: sideMargin, y: yPosition, width: contentWidth, height: attendanceTitleHeight + 4)
+                    // Add extra padding to account for font descenders and line spacing
+                    let attendanceTitleHeight = ceil(attendanceTitleBoundingRect.height) + attendanceTitleFont.descender.magnitude + 4
+                    let attendanceTitleRect = CGRect(x: sideMargin, y: yPosition, width: contentWidth, height: attendanceTitleHeight)
                     let attendanceTitleAttributedString = NSAttributedString(string: attendanceTitle, attributes: attendanceTitleAttributes)
                     attendanceTitleAttributedString.draw(in: attendanceTitleRect)
                     // Move down by actual height plus spacing
@@ -582,15 +589,16 @@ class ReportCardPDFCreator {
                     } else {
                         finalAttendanceText = attendanceText
                     }
-                    // Calculate actual text height for attendance text using boundingRect
+                    // Calculate actual text height for attendance text using boundingRect with proper padding
                     let attendanceTextBoundingRect = NSString(string: finalAttendanceText).boundingRect(
                         with: CGSize(width: contentWidth, height: CGFloat.greatestFiniteMagnitude),
                         options: [.usesLineFragmentOrigin, .usesFontLeading],
                         attributes: dateAttributes,
                         context: nil
                     )
-                    let attendanceTextHeight = ceil(attendanceTextBoundingRect.height)
-                    let attendanceTextRect = CGRect(x: sideMargin, y: yPosition, width: contentWidth, height: attendanceTextHeight + 4)
+                    // Add extra padding to account for font descenders and line spacing
+                    let attendanceTextHeight = ceil(attendanceTextBoundingRect.height) + attendanceTextFont.descender.magnitude + 4
+                    let attendanceTextRect = CGRect(x: sideMargin, y: yPosition, width: contentWidth, height: attendanceTextHeight)
                     let attendanceTextAttributedString = NSAttributedString(string: finalAttendanceText, attributes: dateAttributes)
                     attendanceTextAttributedString.draw(in: attendanceTextRect)
                     // Move down by actual height plus spacing

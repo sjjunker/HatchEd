@@ -649,7 +649,7 @@ private struct EditCourseView: View {
         }
         
         // Parse grade if provided - handle empty strings and invalid values
-        let gradeValue: Double? = nil
+        var gradeValue: Double? = nil
         let trimmedGrade = grade.trimmingCharacters(in: .whitespaces)
         if !trimmedGrade.isEmpty {
             if let parsedGrade = Double(trimmedGrade) {

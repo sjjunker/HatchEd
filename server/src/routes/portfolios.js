@@ -16,29 +16,38 @@ import {
 
 const router = express.Router()
 
-// Portfolio Images - serve stored images (public route, no auth required for images)
+// Portfolio Images - serve stored images from database (public route, no auth required for images)
 // This must be BEFORE the requireAuth middleware
-import path from 'path'
-router.get('/images/:filename', asyncHandler(async (req, res) => {
-  const { filename } = req.params
-  const { getImagePath, imageExists } = await import('../utils/imageStorage.js')
+router.get('/images/:imageId', asyncHandler(async (req, res) => {
+  const { imageId } = req.params
   
-  // Security: prevent directory traversal
-  if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
-    return res.status(400).json({ error: { message: 'Invalid filename' } })
+  // Security: validate ObjectId format
+  if (!imageId || imageId.length !== 24 || !/^[0-9a-fA-F]{24}$/.test(imageId)) {
+    return res.status(400).json({ error: { message: 'Invalid image ID' } })
   }
   
-  const imagePath = getImagePath(filename)
-  
-  // Check if image exists
-  if (!(await imageExists(filename))) {
-    return res.status(404).json({ error: { message: 'Image not found' } })
+  try {
+    const { findImageById } = await import('../models/portfolioImageModel.js')
+    const image = await findImageById(imageId)
+    
+    if (!image || !image.imageData) {
+      return res.status(404).json({ error: { message: 'Image not found' } })
+    }
+    
+    // Decode base64 image data
+    const imageBuffer = Buffer.from(image.imageData, 'base64')
+    
+    // Set headers
+    res.setHeader('Content-Type', image.contentType || 'image/png')
+    res.setHeader('Content-Length', imageBuffer.length)
+    res.setHeader('Cache-Control', 'public, max-age=31536000') // Cache for 1 year
+    
+    // Send the image
+    res.send(imageBuffer)
+  } catch (error) {
+    console.error('[Portfolio Routes] Error serving image:', error)
+    res.status(500).json({ error: { message: 'Failed to serve image' } })
   }
-  
-  // Send the image file with proper headers
-  res.setHeader('Content-Type', 'image/png')
-  res.setHeader('Cache-Control', 'public, max-age=31536000') // Cache for 1 year
-  res.sendFile(path.resolve(imagePath))
 }))
 
 // All other routes require authentication

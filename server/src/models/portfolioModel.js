@@ -5,7 +5,7 @@ import { getCollection } from '../lib/mongo.js'
 
 const PORTFOLIOS_COLLECTION = 'portfolios'
 
-function portfoliosCollection () {
+export function portfoliosCollection () {
   return getCollection(PORTFOLIOS_COLLECTION)
 }
 

@@ -2,7 +2,7 @@
 
 import { ObjectId } from 'mongodb'
 import { findUserById } from '../models/userModel.js'
-import { createPortfolio, findPortfoliosByFamilyId, findPortfolioById, updatePortfolio, deletePortfolio } from '../models/portfolioModel.js'
+import { createPortfolio, findPortfoliosByFamilyId, findPortfolioById, updatePortfolio, deletePortfolio, portfoliosCollection } from '../models/portfolioModel.js'
 import { findStudentWorkFilesByStudentId, createStudentWorkFile, findStudentWorkFileById } from '../models/studentWorkFileModel.js'
 import { findCoursesByStudentId } from '../models/courseModel.js'
 import { findAttendanceForStudent } from '../models/attendanceModel.js'
@@ -169,26 +169,6 @@ export async function createPortfolioHandler (req, res) {
     snippet = compilationResult.snippet || ''
     generatedImages = compilationResult.images || []
     console.log('[Portfolio Controller] Portfolio compilation completed successfully')
-    
-    // Download and store images on the server
-    if (generatedImages.length > 0) {
-      try {
-        console.log('[Portfolio Controller] Downloading and storing', generatedImages.length, 'images...')
-        const { downloadAndStoreImages } = await import('../utils/imageStorage.js')
-        
-        // Get base URL from request
-        const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'
-        const host = req.headers.host || 'localhost:4000'
-        const baseUrl = `${protocol}://${host}`
-        
-        generatedImages = await downloadAndStoreImages(generatedImages, baseUrl)
-        console.log('[Portfolio Controller] Images stored successfully')
-      } catch (error) {
-        console.error('[Portfolio Controller] Error storing images:', error)
-        // Continue with original URLs if storage fails
-        console.warn('[Portfolio Controller] Using original image URLs as fallback')
-      }
-    }
   } catch (error) {
     console.error('[Portfolio Controller] Error compiling portfolio with ChatGPT:', error)
     compilationWarnings.push(`Compilation warning: ${error.message}`)
@@ -200,6 +180,7 @@ export async function createPortfolioHandler (req, res) {
 
   try {
     console.log('[Portfolio Controller] Creating portfolio in database...')
+    // Create portfolio first with temporary image URLs
     const portfolio = await createPortfolio({
       familyId: user.familyId,
       studentId,
@@ -212,10 +193,59 @@ export async function createPortfolioHandler (req, res) {
       sectionData: sectionData || null,
       compiledContent,
       snippet,
-      generatedImages
+      generatedImages: [] // Will be updated after storing images
     })
     
     console.log('[Portfolio Controller] Portfolio created successfully:', portfolio._id)
+    
+    // Download and store images in the database
+    if (generatedImages.length > 0) {
+      try {
+        console.log('[Portfolio Controller] Downloading and storing', generatedImages.length, 'images in database...')
+        const { downloadAndStoreImages } = await import('../utils/imageStorage.js')
+        
+        // Get base URL from request
+        const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'
+        const host = req.headers.host || 'localhost:4000'
+        const baseUrl = `${protocol}://${host}`
+        
+        // Store images in database and get updated image objects with IDs
+        const storedImages = await downloadAndStoreImages(generatedImages, portfolio._id.toString(), baseUrl)
+        
+        // Update portfolio with stored images
+        await updatePortfolio(portfolio._id.toString(), {
+          compiledContent,
+          snippet
+        })
+        
+        // Update the portfolio's generatedImages array
+        await portfoliosCollection().updateOne(
+          { _id: portfolio._id },
+          { $set: { generatedImages: storedImages } }
+        )
+        
+        portfolio.generatedImages = storedImages
+        console.log('[Portfolio Controller] Images stored in database successfully')
+      } catch (error) {
+        console.error('[Portfolio Controller] Error storing images in database:', error)
+        // Continue with original URLs if storage fails
+        console.warn('[Portfolio Controller] Using original image URLs as fallback')
+        // Update portfolio with original images
+        await portfoliosCollection().updateOne(
+          { _id: portfolio._id },
+          { $set: { generatedImages: generatedImages.map((img, idx) => ({
+            id: `fallback-${idx}`,
+            description: img.description || '',
+            url: img.url
+          })) } }
+        )
+        portfolio.generatedImages = generatedImages.map((img, idx) => ({
+          id: `fallback-${idx}`,
+          description: img.description || '',
+          url: img.url
+        }))
+      }
+    }
     
     // Always send a successful response even if there were compilation warnings
     res.status(201).json({ 
@@ -261,12 +291,27 @@ export async function deletePortfolioHandler (req, res) {
     return res.status(404).json({ error: { message: 'Portfolio not found' } })
   }
 
+  // Verify portfolio belongs to user's family
   if (portfolio.familyId.toString() !== user.familyId.toString()) {
-    return res.status(403).json({ error: { message: 'Not authorized' } })
+    return res.status(403).json({ error: { message: 'Access denied' } })
   }
 
-  await deletePortfolio(id)
-  res.json({ success: true })
+  // Delete associated images from database
+  try {
+    const { deleteImagesByPortfolioId } = await import('../models/portfolioImageModel.js')
+    const deletedCount = await deleteImagesByPortfolioId(id)
+    console.log('[Portfolio Controller] Deleted', deletedCount, 'images for portfolio', id)
+  } catch (error) {
+    console.error('[Portfolio Controller] Error deleting portfolio images:', error)
+    // Continue with portfolio deletion even if image deletion fails
+  }
+
+  const deleted = await deletePortfolio(id)
+  if (!deleted) {
+    return res.status(404).json({ error: { message: 'Portfolio not found' } })
+  }
+
+  res.json({ success: true, message: 'Portfolio deleted' })
 }
 
 // Student Work Files

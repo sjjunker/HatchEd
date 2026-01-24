@@ -1,40 +1,14 @@
-// Image storage utility for downloading and storing DALL-E generated images
-import fs from 'fs/promises'
-import { createWriteStream } from 'fs'
-import path from 'path'
-import { fileURLToPath } from 'url'
+// Image storage utility for downloading and storing DALL-E generated images in the database
 import https from 'https'
 import http from 'http'
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-
-// Directory for storing portfolio images
-const PORTFOLIO_IMAGES_DIR = path.join(__dirname, '../../uploads/portfolio-images')
+import { createPortfolioImage } from '../models/portfolioImageModel.js'
 
 /**
- * Ensure the portfolio images directory exists
- */
-async function ensureImagesDirectory() {
-  try {
-    await fs.mkdir(PORTFOLIO_IMAGES_DIR, { recursive: true })
-  } catch (error) {
-    console.error('[Image Storage] Error creating images directory:', error)
-    throw error
-  }
-}
-
-/**
- * Download an image from a URL and save it to disk
+ * Download an image from a URL and convert to base64
  * @param {string} imageUrl - URL of the image to download
- * @param {string} filename - Filename to save the image as
- * @returns {Promise<string>} Path to the saved image file
+ * @returns {Promise<{data: string, contentType: string}>} Base64 image data and content type
  */
-async function downloadAndSaveImage(imageUrl, filename) {
-  await ensureImagesDirectory()
-  
-  const filePath = path.join(PORTFOLIO_IMAGES_DIR, filename)
-  
+async function downloadImageAsBase64(imageUrl) {
   return new Promise((resolve, reject) => {
     const protocol = imageUrl.startsWith('https:') ? https : http
     
@@ -46,25 +20,30 @@ async function downloadAndSaveImage(imageUrl, filename) {
       }
       
       // Check content type
-      const contentType = response.headers['content-type']
-      if (!contentType || !contentType.startsWith('image/')) {
+      const contentType = response.headers['content-type'] || 'image/png'
+      if (!contentType.startsWith('image/')) {
         reject(new Error(`Invalid content type: ${contentType}`))
         return
       }
       
-      // Create write stream
-      const fileStream = createWriteStream(filePath)
+      // Collect image data
+      const chunks = []
       
-      response.pipe(fileStream)
-      
-      fileStream.on('finish', () => {
-        fileStream.close()
-        console.log('[Image Storage] Image saved:', filename)
-        resolve(filePath)
+      response.on('data', (chunk) => {
+        chunks.push(chunk)
       })
       
-      fileStream.on('error', (error) => {
-        fs.unlink(filePath).catch(() => {}) // Delete the file on error
+      response.on('end', () => {
+        const buffer = Buffer.concat(chunks)
+        const base64Data = buffer.toString('base64')
+        console.log('[Image Storage] Image downloaded and converted to base64:', {
+          size: buffer.length,
+          contentType
+        })
+        resolve({ data: base64Data, contentType })
+      })
+      
+      response.on('error', (error) => {
         reject(error)
       })
     }).on('error', (error) => {
@@ -74,90 +53,62 @@ async function downloadAndSaveImage(imageUrl, filename) {
 }
 
 /**
- * Generate a unique filename for an image
- * @param {string} description - Image description
- * @param {number} index - Image index
- * @returns {string} Unique filename
- */
-function generateImageFilename(description, index) {
-  // Create a safe filename from description
-  const safeDescription = description
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .substring(0, 50) // Limit length
-  
-  const timestamp = Date.now()
-  const random = Math.random().toString(36).substring(2, 8)
-  
-  return `${timestamp}-${index}-${safeDescription}-${random}.png`
-}
-
-/**
- * Download and save multiple images
+ * Download and store multiple images in the database
  * @param {Array<{description: string, url: string}>} images - Array of image objects
+ * @param {string} portfolioId - Portfolio ID to associate images with
  * @param {string} baseUrl - Base URL for the server (e.g., 'http://localhost:4000')
- * @returns {Promise<Array<{description: string, url: string}>>} Array of images with updated URLs
+ * @returns {Promise<Array<{id: string, description: string, url: string}>>} Array of images with database IDs and server URLs
  */
-export async function downloadAndStoreImages(images, baseUrl = '') {
+export async function downloadAndStoreImages(images, portfolioId, baseUrl = '') {
   if (!images || images.length === 0) {
     return []
   }
   
-  console.log('[Image Storage] Downloading and storing', images.length, 'images...')
+  if (!portfolioId) {
+    throw new Error('Portfolio ID is required to store images')
+  }
+  
+  console.log('[Image Storage] Downloading and storing', images.length, 'images in database...')
   
   const storedImages = []
   
   for (let i = 0; i < images.length; i++) {
     const image = images[i]
     try {
-      const filename = generateImageFilename(image.description, i)
-      await downloadAndSaveImage(image.url, filename)
+      // Download image and convert to base64
+      const { data: imageData, contentType } = await downloadImageAsBase64(image.url)
+      
+      // Store in database
+      const imageRecord = await createPortfolioImage({
+        portfolioId,
+        description: image.description || '',
+        imageData,
+        contentType
+      })
       
       // Create server URL for the image
-      const serverUrl = `${baseUrl}/api/portfolios/images/${filename}`
+      const imageId = imageRecord._id.toString()
+      const serverUrl = `${baseUrl}/api/portfolios/images/${imageId}`
       
       storedImages.push({
-        description: image.description,
+        id: imageId,
+        description: image.description || '',
         url: serverUrl
       })
       
-      console.log(`[Image Storage] Image ${i + 1}/${images.length} stored: ${filename}`)
+      console.log(`[Image Storage] Image ${i + 1}/${images.length} stored in database: ${imageId}`)
     } catch (error) {
       console.error(`[Image Storage] Failed to store image ${i + 1}:`, error.message)
       // Continue with other images even if one fails
       // Use original URL as fallback
       storedImages.push({
-        description: image.description,
+        id: `fallback-${i}`,
+        description: image.description || '',
         url: image.url // Keep original URL as fallback
       })
     }
   }
   
-  console.log('[Image Storage] Completed storing images:', storedImages.length, 'of', images.length)
+  console.log('[Image Storage] Completed storing images in database:', storedImages.length, 'of', images.length)
   return storedImages
-}
-
-/**
- * Get the path to a stored image file
- * @param {string} filename - Image filename
- * @returns {string} Full path to the image file
- */
-export function getImagePath(filename) {
-  return path.join(PORTFOLIO_IMAGES_DIR, filename)
-}
-
-/**
- * Check if an image file exists
- * @param {string} filename - Image filename
- * @returns {Promise<boolean>} True if file exists
- */
-export async function imageExists(filename) {
-  try {
-    const filePath = getImagePath(filename)
-    await fs.access(filePath)
-    return true
-  } catch {
-    return false
-  }
 }

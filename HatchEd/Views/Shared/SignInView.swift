@@ -121,11 +121,13 @@ struct SignInView: View {
             let fullName = user.profile?.name
             let email = user.profile?.email
             
-            signInManager.handleGoogleSignIn(
-                idToken: idToken,
-                fullName: fullName,
-                email: email
-            )
+            Task { @MainActor in
+                signInManager.handleGoogleSignIn(
+                    idToken: idToken,
+                    fullName: fullName,
+                    email: email
+                )
+            }
         }
     }
 }

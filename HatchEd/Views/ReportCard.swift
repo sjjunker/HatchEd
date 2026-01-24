@@ -523,11 +523,10 @@ class ReportCardPDFCreator {
                     .font: courseNameFont,
                     .foregroundColor: UIColor.black
                 ]
-                let rowHeight = courseNameFont.lineHeight + 6 // Use actual line height plus spacing
                 let maxY = pageHeight - bottomMargin
                 
                 // Draw each course - ensure yPosition increments for each iteration
-                for (index, course) in sortedCourses.enumerated() {
+                for course in sortedCourses {
                     let courseName = course.name
                     let maxNameWidth = contentWidth - 100
                     

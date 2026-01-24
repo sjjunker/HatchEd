@@ -169,6 +169,26 @@ export async function createPortfolioHandler (req, res) {
     snippet = compilationResult.snippet || ''
     generatedImages = compilationResult.images || []
     console.log('[Portfolio Controller] Portfolio compilation completed successfully')
+    
+    // Download and store images on the server
+    if (generatedImages.length > 0) {
+      try {
+        console.log('[Portfolio Controller] Downloading and storing', generatedImages.length, 'images...')
+        const { downloadAndStoreImages } = await import('../utils/imageStorage.js')
+        
+        // Get base URL from request
+        const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'
+        const host = req.headers.host || 'localhost:4000'
+        const baseUrl = `${protocol}://${host}`
+        
+        generatedImages = await downloadAndStoreImages(generatedImages, baseUrl)
+        console.log('[Portfolio Controller] Images stored successfully')
+      } catch (error) {
+        console.error('[Portfolio Controller] Error storing images:', error)
+        // Continue with original URLs if storage fails
+        console.warn('[Portfolio Controller] Using original image URLs as fallback')
+      }
+    }
   } catch (error) {
     console.error('[Portfolio Controller] Error compiling portfolio with ChatGPT:', error)
     compilationWarnings.push(`Compilation warning: ${error.message}`)

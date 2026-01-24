@@ -320,3 +320,13 @@ export async function createUserWithPassword (userData) {
   }
 }
 
+export async function updateUserTwoFactor (userId, twoFactorData) {
+  const update = {
+    $set: {
+      ...twoFactorData,
+      updatedAt: new Date()
+    }
+  }
+  await usersCollection().updateOne({ _id: new ObjectId(userId) }, update)
+  return await findUserById(userId)
+}

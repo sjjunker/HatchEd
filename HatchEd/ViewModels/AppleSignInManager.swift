@@ -234,26 +234,36 @@ class AppleSignInManager: NSObject, ObservableObject {
         Task { await processGoogleSignIn(idToken: idToken, fullName: fullName, email: email) }
     }
     
-    func handleUsernamePasswordSignIn(username: String, password: String) async throws {
+    func handleUsernamePasswordSignIn(username: String, password: String, twoFactorCode: String? = nil) async throws {
         print("[Sign In] Starting username/password sign-in process...")
         
         do {
-            let body = UsernamePasswordSignInRequest(username: username, password: password)
+            let body = UsernamePasswordSignInRequest(username: username, password: password, twoFactorCode: twoFactorCode)
             let response: AuthResponse = try await api.request(
                 Endpoint(path: "api/auth/signin", method: .post, body: body)
             )
-            print("[Sign In] API response received - hasToken: \(!response.token.isEmpty), userId: \(response.user.id), userRole: \(response.user.role ?? "nil")")
             
-            api.setAuthToken(response.token)
-            if let userId = response.user.id as String? {
+            // Check if 2FA is required
+            if response.requiresTwoFactor == true {
+                throw TwoFactorRequiredError(userId: response.userId ?? "")
+            }
+            
+            guard let token = response.token, let user = response.user else {
+                throw NSError(domain: "AuthError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response from server"])
+            }
+            
+            print("[Sign In] API response received - hasToken: \(!token.isEmpty), userId: \(user.id), userRole: \(user.role ?? "nil")")
+            
+            api.setAuthToken(token)
+            if let userId = user.id as String? {
                 storeUserID(userId)
             }
             print("[Sign In] Token stored, applying user...")
-            applyUser(response.user)
+            applyUser(user)
             
             try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
             
-            cache.save(response.token, as: "token.json")
+            cache.save(token, as: "token.json")
             print("[Sign In] Fetching family and notifications...")
             await fetchFamilyIfNeeded()
             await fetchNotifications()
@@ -562,6 +572,13 @@ struct GoogleAuthRequest: Encodable {
 struct UsernamePasswordSignInRequest: Encodable {
     let username: String
     let password: String
+    let twoFactorCode: String?
+    
+    init(username: String, password: String, twoFactorCode: String? = nil) {
+        self.username = username
+        self.password = password
+        self.twoFactorCode = twoFactorCode
+    }
 }
 
 struct UsernamePasswordSignUpRequest: Encodable {
@@ -572,8 +589,19 @@ struct UsernamePasswordSignUpRequest: Encodable {
 }
 
 struct AuthResponse: Decodable {
-    let token: String
-    let user: User
+    let token: String?
+    let user: User?
+    let requiresTwoFactor: Bool?
+    let userId: String?
+    let message: String?
+    
+    init(token: String? = nil, user: User? = nil, requiresTwoFactor: Bool? = nil, userId: String? = nil, message: String? = nil) {
+        self.token = token
+        self.user = user
+        self.requiresTwoFactor = requiresTwoFactor
+        self.userId = userId
+        self.message = message
+    }
 }
 
 struct UserResponse: Decodable {
@@ -596,6 +624,13 @@ struct JoinFamilyRequest: Encodable {
 struct FamilyDetailResponse: Decodable {
     let family: Family
     let students: [User]
+}
+
+struct TwoFactorRequiredError: LocalizedError {
+    let userId: String
+    var errorDescription: String? {
+        return "Two-factor authentication code required"
+    }
 }
 
 struct CreateFamilyRequest: Encodable {

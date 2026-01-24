@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs'
 import { verifyAppleIdentityToken } from '../services/appleAuth.js'
 import { verifyGoogleIdToken } from '../services/googleAuth.js'
 import { upsertUserByAppleId, findUserByAppleId, upsertUserByGoogleId, findUserByGoogleId, findUserByUsername, createUserWithPassword } from '../models/userModel.js'
+import { verifyTwoFactorCode } from './twoFactorController.js'
 import { signToken } from '../utils/jwt.js'
 import { serializeUser } from '../utils/serializers.js'
 import { ObjectId } from 'mongodb'
@@ -419,8 +420,29 @@ export async function usernamePasswordSignIn (req, res, next) {
     console.log('[Sign In] User authenticated', {
       userId,
       username: user.username,
-      role: user.role
+      role: user.role,
+      has2FA: !!user.twoFactorEnabled
     })
+
+    // Check if 2FA is enabled
+    if (user.twoFactorEnabled) {
+      const { twoFactorCode } = req.body
+      
+      if (!twoFactorCode) {
+        // Return a response indicating 2FA is required
+        return res.status(200).json({
+          requiresTwoFactor: true,
+          userId: userId,
+          message: 'Two-factor authentication code required'
+        })
+      }
+      
+      // Verify 2FA code
+      const isCodeValid = await verifyTwoFactorCode(userId, twoFactorCode)
+      if (!isCodeValid) {
+        throw new ValidationError('Invalid two-factor authentication code')
+      }
+    }
 
     // Generate JWT token
     console.log('[Sign In] Generating JWT token...')

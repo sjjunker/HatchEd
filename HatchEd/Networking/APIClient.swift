@@ -408,6 +408,44 @@ final class APIClient {
             throw try APIError(from: data, statusCode: httpResponse.statusCode)
         }
     }
+    
+    // Two-Factor Authentication API methods
+    struct TwoFactorSetupResponse: Decodable {
+        let secret: String
+        let qrCode: String
+        let manualEntryKey: String
+    }
+    
+    struct TwoFactorVerifyResponse: Decodable {
+        let success: Bool
+        let message: String
+    }
+    
+    func setupTwoFactor() async throws -> TwoFactorSetupResponse {
+        return try await request(
+            Endpoint(path: "api/users/me/2fa/setup", method: .post),
+            responseType: TwoFactorSetupResponse.self
+        )
+    }
+    
+    func verifyTwoFactor(code: String) async throws -> TwoFactorVerifyResponse {
+        let body = ["code": code]
+        return try await request(
+            Endpoint(path: "api/users/me/2fa/verify", method: .post, body: body),
+            responseType: TwoFactorVerifyResponse.self
+        )
+    }
+    
+    func disableTwoFactor(code: String?) async throws -> TwoFactorVerifyResponse {
+        var body: [String: String] = [:]
+        if let code = code {
+            body["code"] = code
+        }
+        return try await request(
+            Endpoint(path: "api/users/me/2fa/disable", method: .post, body: body),
+            responseType: TwoFactorVerifyResponse.self
+        )
+    }
 }
 
 struct Endpoint {

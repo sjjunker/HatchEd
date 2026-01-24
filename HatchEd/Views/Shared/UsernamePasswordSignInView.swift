@@ -14,6 +14,9 @@ struct UsernamePasswordSignInView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showSignUp = false
+    @State private var requiresTwoFactor = false
+    @State private var twoFactorCode = ""
+    @State private var tempUserId: String?
     
     var body: some View {
         VStack(spacing: 24) {
@@ -41,13 +44,33 @@ struct UsernamePasswordSignInView: View {
             }
             
             VStack(spacing: 16) {
-                TextField("Username", text: $username)
-                    .textFieldStyle(.roundedBorder)
-                    .autocapitalization(.none)
-                    .autocorrectionDisabled()
-                
-                SecureField("Password", text: $password)
-                    .textFieldStyle(.roundedBorder)
+                if !requiresTwoFactor {
+                    TextField("Username", text: $username)
+                        .textFieldStyle(.roundedBorder)
+                        .autocapitalization(.none)
+                        .autocorrectionDisabled()
+                    
+                    SecureField("Password", text: $password)
+                        .textFieldStyle(.roundedBorder)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Enter your 6-digit verification code")
+                            .font(.subheadline)
+                            .foregroundColor(.hatchEdSecondaryText)
+                        
+                        TextField("000000", text: $twoFactorCode)
+                            .textFieldStyle(.roundedBorder)
+                            .keyboardType(.numberPad)
+                            .font(.title2)
+                            .multilineTextAlignment(.center)
+                            .onChange(of: twoFactorCode) { oldValue, newValue in
+                                // Limit to 6 digits
+                                if newValue.count > 6 {
+                                    twoFactorCode = String(newValue.prefix(6))
+                                }
+                            }
+                    }
+                }
                 
                 if let errorMessage = errorMessage {
                     Text(errorMessage)
@@ -67,7 +90,7 @@ struct UsernamePasswordSignInView: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: 50)
                     } else {
-                        Text("Sign In")
+                        Text(requiresTwoFactor ? "Verify" : "Sign In")
                             .font(.headline)
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
@@ -76,7 +99,19 @@ struct UsernamePasswordSignInView: View {
                 }
                 .background(Color.hatchEdAccent)
                 .cornerRadius(12)
-                .disabled(isLoading || username.isEmpty || password.isEmpty)
+                .disabled(isLoading || (requiresTwoFactor ? twoFactorCode.count != 6 : (username.isEmpty || password.isEmpty)))
+                
+                if requiresTwoFactor {
+                    Button(action: {
+                        requiresTwoFactor = false
+                        twoFactorCode = ""
+                        errorMessage = nil
+                    }) {
+                        Text("Back")
+                            .font(.subheadline)
+                            .foregroundColor(.hatchEdAccent)
+                    }
+                }
                 
                 Button(action: {
                     showSignUp = true
@@ -95,7 +130,22 @@ struct UsernamePasswordSignInView: View {
         errorMessage = nil
         
         do {
-            try await signInManager.handleUsernamePasswordSignIn(username: username, password: password)
+            if requiresTwoFactor {
+                try await signInManager.handleUsernamePasswordSignIn(
+                    username: username,
+                    password: password,
+                    twoFactorCode: twoFactorCode
+                )
+            } else {
+                try await signInManager.handleUsernamePasswordSignIn(
+                    username: username,
+                    password: password
+                )
+            }
+        } catch let error as TwoFactorRequiredError {
+            requiresTwoFactor = true
+            tempUserId = error.userId
+            errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }

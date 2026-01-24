@@ -202,10 +202,9 @@ class AppleSignInManager: NSObject, ObservableObject {
     private func applyUser(_ user: User) {
         print("[Sign In] Applying user - id: \(user.id), role: \(user.role ?? "nil"), name: \(user.name ?? "nil"), hasFamilyId: \(user.familyId != nil)")
         
-        // Create a mutable copy to ensure we preserve all fields
-        var userToApply = user
-        currentUser = userToApply
-        cache.save(userToApply, as: "user.json")
+        // Apply user directly
+        currentUser = user
+        cache.save(user, as: "user.json")
         
         // Force state update after a small delay to ensure UI updates
         updateSignInState()

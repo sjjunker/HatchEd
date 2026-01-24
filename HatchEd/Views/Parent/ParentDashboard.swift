@@ -151,8 +151,8 @@ struct ParentDashboard: View {
                 }
             )
         }
-        .onChange(of: signInManager.students) { newStudents in
-            initializeAttendanceStatusIfNeeded(with: newStudents)
+        .onChange(of: signInManager.students) { oldValue, newValue in
+            initializeAttendanceStatusIfNeeded(with: newValue)
         }
         .sheet(item: $selectedNotification) { notification in
             NotificationDetailView(notification: notification) { toDelete in

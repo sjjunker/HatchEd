@@ -54,7 +54,7 @@ struct AddAssignmentView: View {
                                 Text(student.name ?? "Student").tag(student as User?)
                             }
                         }
-                        .onChange(of: selectedStudent) { newStudent in
+                        .onChange(of: selectedStudent) { oldValue, newValue in
                             // Clear course selection when student changes
                             selectedCourse = nil
                         }

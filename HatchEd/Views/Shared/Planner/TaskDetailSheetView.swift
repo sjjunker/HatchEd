@@ -63,10 +63,10 @@ struct TaskDetailSheetView: View {
         
         // Initialize course - try to find from assignment's courseId, task.subject, or courses array
         var initialCourse: Course? = nil
-        if let subject = task.subject {
+        if task.subject != nil {
             // Will be set in onAppear or startEditing when courses are loaded
             initialCourse = nil // Courses may not be loaded yet in init
-        } else if let assignment = assignment, let courseId = assignment.courseId {
+        } else if let assignment = assignment, assignment.courseId != nil {
             // Will try to find course by courseId when courses are loaded
             initialCourse = nil // Courses may not be loaded yet in init
         }
@@ -444,7 +444,7 @@ struct TaskDetailSheetView: View {
                                     Text(student.name ?? "Student").tag(student as User?)
                                 }
                             }
-                            .onChange(of: editedStudent) { newStudent in
+                            .onChange(of: editedStudent) { oldValue, newValue in
                                 // Clear course selection when student changes
                                 editedCourse = nil
                             }

@@ -54,8 +54,12 @@ struct UsernamePasswordSignInView: View {
                         .textFieldStyle(.roundedBorder)
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Enter the 6-digit code sent to your phone")
+                        Text("Enter your 6-digit verification code")
                             .font(.subheadline)
+                            .foregroundColor(.hatchEdSecondaryText)
+                        
+                        Text("Open your authenticator app and enter the code")
+                            .font(.caption)
                             .foregroundColor(.hatchEdSecondaryText)
                         
                         TextField("000000", text: $twoFactorCode)

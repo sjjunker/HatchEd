@@ -190,6 +190,38 @@ struct AddPortfolioView: View {
                     Text(message)
                 }
             }
+            .overlay {
+                if isLoading {
+                    ZStack {
+                        Color.black.opacity(0.4)
+                            .ignoresSafeArea()
+                        
+                        VStack(spacing: 20) {
+                            ProgressView()
+                                .scaleEffect(1.5)
+                                .tint(.hatchEdAccent)
+                            
+                            Text("Generating Portfolio...")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                            
+                            Text("This may take a few minutes while we create your portfolio and generate images.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 40)
+                        }
+                        .padding(30)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Color(.systemBackground))
+                                .shadow(color: .black.opacity(0.2), radius: 20, x: 0, y: 10)
+                        )
+                        .padding(40)
+                    }
+                }
+            }
+            .disabled(isLoading)
         }
         .onAppear {
             Task {
@@ -273,10 +305,18 @@ struct AddPortfolioView: View {
                 sectionData: sectionData
             )
             
+            // Portfolio created successfully - refresh the list and dismiss
             onSave(portfolio)
             dismiss()
         } catch {
-            errorMessage = "Failed to create portfolio: \(error.localizedDescription)"
+            // Only show error if portfolio creation actually failed
+            // Don't show errors for compilation warnings since portfolio was still created
+            print("[AddPortfolio] Error creating portfolio: \(error)")
+            if let apiError = error as? APIError {
+                errorMessage = "Failed to create portfolio: \(apiError.localizedDescription)"
+            } else {
+                errorMessage = "Failed to create portfolio: \(error.localizedDescription)"
+            }
         }
         
         isLoading = false

@@ -71,11 +71,20 @@ struct PortfolioView: View {
             AddPortfolioView(
                 students: signInManager.students,
                 onSave: { portfolio in
-                    Task {
+                    // Portfolio was created - refresh the list
+                    Task { @MainActor in
                         await loadPortfolios()
                     }
                 }
             )
+        }
+        .onChange(of: showingAddPortfolio) { oldValue, newValue in
+            // Refresh when the sheet is dismissed (in case onSave wasn't called)
+            if oldValue == true && newValue == false {
+                Task {
+                    await loadPortfolios()
+                }
+            }
         }
         .sheet(item: $selectedPortfolio) { portfolio in
             PortfolioDetailView(portfolio: portfolio)
@@ -115,8 +124,14 @@ struct PortfolioView: View {
         isLoading = true
         errorMessage = nil
         do {
-            portfolios = try await api.fetchPortfolios()
+            let fetchedPortfolios = try await api.fetchPortfolios()
+            print("[PortfolioView] Loaded \(fetchedPortfolios.count) portfolios")
+            portfolios = fetchedPortfolios
         } catch {
+            print("[PortfolioView] Error loading portfolios: \(error)")
+            if let decodingError = error as? DecodingError {
+                print("[PortfolioView] Decoding error details: \(decodingError)")
+            }
             errorMessage = "Failed to load portfolios: \(error.localizedDescription)"
         }
         isLoading = false

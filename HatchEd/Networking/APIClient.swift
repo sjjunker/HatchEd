@@ -343,11 +343,34 @@ final class APIClient {
             reportCardSnapshot: reportCardSnapshot,
             sectionData: sectionData
         )
-        let response: PortfolioResponse = try await request(
-            Endpoint(path: "api/portfolios", method: .post, body: body),
-            responseType: PortfolioResponse.self
-        )
-        return response.portfolio
+        
+        // Use a longer timeout for portfolio creation (5 minutes)
+        let endpoint = Endpoint(path: "api/portfolios", method: .post, body: body)
+        var urlRequest = try endpoint.urlRequest(baseURL: baseURL)
+        if let token = tokenStore.token {
+            urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        // Create a session with longer timeout for portfolio creation
+        let longTimeoutConfig = URLSessionConfiguration.default
+        longTimeoutConfig.timeoutIntervalForRequest = 300  // 5 minutes
+        longTimeoutConfig.timeoutIntervalForResource = 300  // 5 minutes
+        longTimeoutConfig.waitsForConnectivity = true
+        let longTimeoutSession = URLSession(configuration: longTimeoutConfig)
+        
+        let (data, response) = try await longTimeoutSession.data(for: urlRequest)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        
+        switch httpResponse.statusCode {
+        case 200...299:
+            let decoder = JSONDecoder.api
+            let portfolioResponse = try decoder.decode(PortfolioResponse.self, from: data)
+            return portfolioResponse.portfolio
+        default:
+            throw try APIError(from: data, statusCode: httpResponse.statusCode)
+        }
     }
     
     func fetchStudentWorkFiles(studentId: String) async throws -> [StudentWorkFile] {

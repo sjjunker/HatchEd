@@ -69,8 +69,9 @@ app.use(cookieParser())
 
 // Request timeout middleware
 app.use((req, res, next) => {
-  // Set a timeout for all requests (30 seconds)
-  req.setTimeout(30000, () => {
+  // Set a longer timeout for portfolio creation (5 minutes), shorter for other requests (30 seconds)
+  const timeout = req.path.includes('/api/portfolios') && req.method === 'POST' ? 300000 : 30000
+  req.setTimeout(timeout, () => {
     if (!res.headersSent) {
       res.status(408).json({
         error: {
@@ -167,6 +168,15 @@ async function start () {
 
     app.locals.db = db
     console.log('[Server] Database instance attached to app.locals')
+
+    // Check OpenAI API key configuration
+    if (process.env.OPENAI_API_KEY) {
+      const keyPreview = process.env.OPENAI_API_KEY.substring(0, 7) + '...' + process.env.OPENAI_API_KEY.slice(-4)
+      console.log('[Server] OpenAI API key configured', { preview: keyPreview })
+    } else {
+      console.warn('[Server] WARNING: OPENAI_API_KEY not set! Portfolio AI generation will not work.')
+      console.warn('[Server] Set OPENAI_API_KEY in your .env file or environment variables.')
+    }
 
     console.log('[Server] Starting HTTP server...')
     // Listen on all interfaces (0.0.0.0) to allow network access

@@ -36,8 +36,7 @@ async function generateImage (description, designPattern) {
     // Enhance prompt with design pattern context
     const enhancedPrompt = `Create a professional, academic portfolio illustration: ${description}. Style: ${designPattern.toLowerCase()}, clean and appropriate for an educational portfolio.`
     
-    console.log('[ChatGPT Service] Generating image:', enhancedPrompt.substring(0, 100))
-    
+    const imageStartTime = Date.now()
     const response = await openai.images.generate({
       model: 'dall-e-3',
       prompt: enhancedPrompt,
@@ -46,15 +45,29 @@ async function generateImage (description, designPattern) {
       n: 1
     })
     
+    const imageDuration = Date.now() - imageStartTime
     const imageUrl = response.data[0]?.url
     if (imageUrl) {
-      console.log('[ChatGPT Service] Image generated successfully')
+      console.log('[ChatGPT Service] Image generated successfully', { duration: `${imageDuration}ms` })
       return imageUrl
+    } else {
+      console.warn('[ChatGPT Service] Image generation returned no URL in response')
+      return null
+    }
+  } catch (error) {
+    console.error('[ChatGPT Service] Error generating image:', {
+      message: error.message,
+      type: error.constructor?.name,
+      status: error.status,
+      code: error.code,
+      response: error.response?.data
+    })
+    
+    // If it's a rate limit error, log it specifically
+    if (error.status === 429) {
+      console.error('[ChatGPT Service] Rate limit exceeded - consider adding longer delays between image generations')
     }
     
-    return null
-  } catch (error) {
-    console.error('[ChatGPT Service] Error generating image:', error.message)
     return null
   }
 }
@@ -225,8 +238,16 @@ export async function compilePortfolioWithChatGPT ({ studentName, designPattern,
 
   try {
     if (!process.env.OPENAI_API_KEY) {
-      console.warn('[ChatGPT Service] OPENAI_API_KEY not set, using fallback compilation')
-      return getFallbackCompilation({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot })
+      console.error('[ChatGPT Service] OPENAI_API_KEY not set! Check your .env file or environment variables.')
+      console.error('[ChatGPT Service] Using fallback compilation (no AI generation)')
+      return getFallbackCompilation({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot, attendanceSummary, courses, sectionData })
+    }
+    
+    // Verify the API key format (should start with 'sk-')
+    if (!process.env.OPENAI_API_KEY.startsWith('sk-')) {
+      console.error('[ChatGPT Service] OPENAI_API_KEY appears to be invalid (should start with "sk-")')
+      console.error('[ChatGPT Service] Using fallback compilation (no AI generation)')
+      return getFallbackCompilation({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot, attendanceSummary, courses, sectionData })
     }
 
     console.log('[ChatGPT Service] Starting portfolio compilation with OpenAI', {
@@ -294,19 +315,36 @@ export async function compilePortfolioWithChatGPT ({ studentName, designPattern,
     const generatedImages = []
     if (imageDescriptions.length > 0) {
       try {
-        for (const description of imageDescriptions) {
+        console.log('[ChatGPT Service] Starting image generation for', imageDescriptions.length, 'images')
+        for (let i = 0; i < imageDescriptions.length; i++) {
+          const description = imageDescriptions[i]
+          console.log(`[ChatGPT Service] Generating image ${i + 1}/${imageDescriptions.length}:`, description.substring(0, 50))
+          
+          const imageStartTime = Date.now()
           const imageUrl = await generateImage(description, designPattern)
+          const imageDuration = Date.now() - imageStartTime
+          
           if (imageUrl) {
             generatedImages.push({
               description,
               url: imageUrl
             })
+            console.log(`[ChatGPT Service] Image ${i + 1} generated successfully (${imageDuration}ms)`)
+          } else {
+            console.warn(`[ChatGPT Service] Image ${i + 1} generation returned no URL`)
+          }
+          
+          // Add a small delay between image generations to avoid rate limiting
+          // DALL-E has rate limits, so we wait 2 seconds between requests
+          if (i < imageDescriptions.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 2000))
           }
         }
-        console.log('[ChatGPT Service] Generated images:', generatedImages.length)
+        console.log('[ChatGPT Service] Image generation complete:', generatedImages.length, 'of', imageDescriptions.length, 'images generated')
       } catch (error) {
-        console.error('[ChatGPT Service] Error generating images:', error)
-        // Continue without images if generation fails
+        console.error('[ChatGPT Service] Error during image generation loop:', error)
+        console.error('[ChatGPT Service] Continuing with', generatedImages.length, 'successfully generated images')
+        // Continue with whatever images we have - partial success is better than total failure
       }
     }
 
@@ -323,12 +361,24 @@ export async function compilePortfolioWithChatGPT ({ studentName, designPattern,
     console.error('[ChatGPT Service] Error compiling portfolio with OpenAI', {
       error: error.message,
       errorType: error.constructor?.name,
+      errorStack: error.stack,
       duration: `${duration}ms`,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      hasApiKey: !!process.env.OPENAI_API_KEY,
+      apiKeyPreview: process.env.OPENAI_API_KEY ? (process.env.OPENAI_API_KEY.substring(0, 7) + '...') : 'missing'
     })
 
+    // Check for specific OpenAI API errors
+    if (error.response) {
+      console.error('[ChatGPT Service] OpenAI API response error:', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data
+      })
+    }
+
     // Fallback to basic compilation if OpenAI fails
-    console.log('[ChatGPT Service] Falling back to basic compilation')
+    console.warn('[ChatGPT Service] Falling back to basic compilation (no AI generation)')
     return getFallbackCompilation({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot, attendanceSummary, courses, sectionData })
   }
 }

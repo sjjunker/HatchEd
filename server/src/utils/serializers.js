@@ -93,6 +93,19 @@ export function serializeAssignment (assignment) {
 
 export function serializePortfolio (portfolio) {
   if (!portfolio) return null
+  
+  // Ensure generatedImages have id field if missing
+  const generatedImages = (portfolio.generatedImages ?? []).map((img, index) => {
+    if (typeof img === 'object' && img !== null) {
+      return {
+        id: img.id || `img-${index}`,
+        description: img.description || '',
+        url: img.url || ''
+      }
+    }
+    return img
+  })
+  
   return {
     id: portfolio._id?.toString?.() ?? portfolio._id,
     studentId: portfolio.studentId?.toString?.() ?? portfolio.studentId,
@@ -105,7 +118,7 @@ export function serializePortfolio (portfolio) {
     sectionData: portfolio.sectionData ?? null,
     compiledContent: portfolio.compiledContent ?? '',
     snippet: portfolio.snippet ?? '',
-    generatedImages: portfolio.generatedImages ?? [],
+    generatedImages: generatedImages,
     createdAt: portfolio.createdAt,
     updatedAt: portfolio.updatedAt
   }

@@ -65,6 +65,66 @@ struct Portfolio: Identifiable, Codable, Equatable {
     var createdAt: Date?
     var updatedAt: Date?
     
+    enum CodingKeys: String, CodingKey {
+        case id
+        case studentId
+        case studentName
+        case designPattern
+        case studentWorkFileIds
+        case studentRemarks
+        case instructorRemarks
+        case reportCardSnapshot
+        case sectionData
+        case compiledContent
+        case snippet
+        case generatedImages
+        case createdAt
+        case updatedAt
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        studentId = try container.decode(String.self, forKey: .studentId)
+        studentName = try container.decode(String.self, forKey: .studentName)
+        designPattern = try container.decode(PortfolioDesignPattern.self, forKey: .designPattern)
+        studentWorkFileIds = try container.decodeIfPresent([String].self, forKey: .studentWorkFileIds) ?? []
+        studentRemarks = try container.decodeIfPresent(String.self, forKey: .studentRemarks)
+        instructorRemarks = try container.decodeIfPresent(String.self, forKey: .instructorRemarks)
+        reportCardSnapshot = try container.decodeIfPresent(String.self, forKey: .reportCardSnapshot)
+        sectionData = try container.decodeIfPresent(PortfolioSectionData.self, forKey: .sectionData)
+        compiledContent = try container.decodeIfPresent(String.self, forKey: .compiledContent) ?? ""
+        snippet = try container.decodeIfPresent(String.self, forKey: .snippet) ?? ""
+        
+        // Handle generatedImages with fallback for missing or invalid data
+        if let images = try? container.decode([PortfolioImage].self, forKey: .generatedImages) {
+            generatedImages = images
+        } else {
+            generatedImages = []
+        }
+        
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
+        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(studentId, forKey: .studentId)
+        try container.encode(studentName, forKey: .studentName)
+        try container.encode(designPattern, forKey: .designPattern)
+        try container.encode(studentWorkFileIds, forKey: .studentWorkFileIds)
+        try container.encodeIfPresent(studentRemarks, forKey: .studentRemarks)
+        try container.encodeIfPresent(instructorRemarks, forKey: .instructorRemarks)
+        try container.encodeIfPresent(reportCardSnapshot, forKey: .reportCardSnapshot)
+        try container.encodeIfPresent(sectionData, forKey: .sectionData)
+        try container.encode(compiledContent, forKey: .compiledContent)
+        try container.encode(snippet, forKey: .snippet)
+        try container.encode(generatedImages, forKey: .generatedImages)
+        try container.encodeIfPresent(createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(updatedAt, forKey: .updatedAt)
+    }
+    
     init(id: String = UUID().uuidString, 
          studentId: String,
          studentName: String,

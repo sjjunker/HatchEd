@@ -57,7 +57,21 @@ export async function getPortfoliosHandler (req, res) {
   }
 
   const portfolios = await findPortfoliosByFamilyId(user.familyId)
+  console.log('[Portfolio Controller] Found', portfolios.length, 'portfolios for family', user.familyId)
+  
   const portfoliosWithDetails = portfolios.map(portfolio => serializePortfolio(portfolio))
+  
+  // Log first portfolio structure for debugging
+  if (portfoliosWithDetails.length > 0) {
+    console.log('[Portfolio Controller] Sample portfolio structure:', {
+      id: portfoliosWithDetails[0].id,
+      studentName: portfoliosWithDetails[0].studentName,
+      designPattern: portfoliosWithDetails[0].designPattern,
+      hasGeneratedImages: Array.isArray(portfoliosWithDetails[0].generatedImages),
+      generatedImagesCount: portfoliosWithDetails[0].generatedImages?.length || 0
+    })
+  }
+  
   res.json({ portfolios: portfoliosWithDetails })
 }
 
@@ -136,7 +150,10 @@ export async function createPortfolioHandler (req, res) {
   let compiledContent = ''
   let snippet = ''
   let generatedImages = []
+  let compilationWarnings = []
+  
   try {
+    console.log('[Portfolio Controller] Starting portfolio compilation...')
     const compilationResult = await compilePortfolioWithChatGPT({
       studentName,
       designPattern,
@@ -148,32 +165,47 @@ export async function createPortfolioHandler (req, res) {
       courses: coursesWithDetails,
       sectionData
     })
-    compiledContent = compilationResult.content
-    snippet = compilationResult.snippet
+    compiledContent = compilationResult.content || ''
+    snippet = compilationResult.snippet || ''
     generatedImages = compilationResult.images || []
+    console.log('[Portfolio Controller] Portfolio compilation completed successfully')
   } catch (error) {
-    console.error('Error compiling portfolio with ChatGPT:', error)
-    // Continue with empty content - portfolio will be created but not compiled
+    console.error('[Portfolio Controller] Error compiling portfolio with ChatGPT:', error)
+    compilationWarnings.push(`Compilation warning: ${error.message}`)
+    // Continue with fallback content - portfolio will be created but not compiled
     compiledContent = 'Portfolio compilation pending. Please try again later.'
     snippet = 'Portfolio compilation in progress...'
+    generatedImages = []
   }
 
-  const portfolio = await createPortfolio({
-    familyId: user.familyId,
-    studentId,
-    studentName,
-    designPattern,
-    studentWorkFileIds,
-    studentRemarks,
-    instructorRemarks,
-    reportCardSnapshot,
-    sectionData: sectionData || null,
-    compiledContent,
-    snippet,
-    generatedImages
-  })
-
-  res.status(201).json({ portfolio: serializePortfolio(portfolio) })
+  try {
+    console.log('[Portfolio Controller] Creating portfolio in database...')
+    const portfolio = await createPortfolio({
+      familyId: user.familyId,
+      studentId,
+      studentName,
+      designPattern,
+      studentWorkFileIds,
+      studentRemarks,
+      instructorRemarks,
+      reportCardSnapshot,
+      sectionData: sectionData || null,
+      compiledContent,
+      snippet,
+      generatedImages
+    })
+    
+    console.log('[Portfolio Controller] Portfolio created successfully:', portfolio._id)
+    
+    // Always send a successful response even if there were compilation warnings
+    res.status(201).json({ 
+      portfolio: serializePortfolio(portfolio),
+      warnings: compilationWarnings.length > 0 ? compilationWarnings : undefined
+    })
+  } catch (error) {
+    console.error('[Portfolio Controller] Error creating portfolio:', error)
+    throw error // Let asyncHandler catch this
+  }
 }
 
 export async function getPortfolioHandler (req, res) {

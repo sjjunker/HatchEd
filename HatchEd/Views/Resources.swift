@@ -18,15 +18,33 @@ struct Resources: View {
     @State private var showingFilePicker = false
     @State private var selectedPhotoItems: [PhotosPickerItem] = []
     @State private var showingPhotoPicker = false
+    @State private var searchText = ""
     
     private let api = APIClient.shared
     
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                studentWorkSection
+        VStack(spacing: 0) {
+            // Search Bar
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.hatchEdSecondaryText)
+                TextField("Search files...", text: $searchText)
+                    .textFieldStyle(.plain)
             }
             .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.hatchEdCardBackground)
+            )
+            .padding(.horizontal)
+            .padding(.top, 8)
+            
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    studentWorkSection
+                }
+                .padding()
+            }
         }
         .navigationTitle("Resources")
         .navigationBarTitleDisplayMode(.inline)
@@ -98,20 +116,37 @@ struct Resources: View {
                     .foregroundColor(.hatchEdSecondaryText)
                     .padding()
             } else {
-                ForEach(signInManager.students) { student in
-                    StudentWorkFilesList(
-                        student: student,
-                        files: studentWorkFiles[student.id] ?? [],
-                        onUpload: {
-                            selectedStudent = student
-                            showingFilePicker = true
-                        },
-                        onPhotoUpload: { items in
-                            Task {
-                                await handlePhotoSelection(items, for: student)
-                            }
+                let hasResults = signInManager.students.contains { student in
+                    !filteredFiles(for: student).isEmpty
+                }
+                
+                if !searchText.isEmpty && !hasResults {
+                    Text("No files found matching \"\(searchText)\"")
+                        .font(.subheadline)
+                        .foregroundColor(.hatchEdSecondaryText)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding()
+                } else {
+                    ForEach(signInManager.students) { student in
+                        let filtered = filteredFiles(for: student)
+                        if !searchText.isEmpty && filtered.isEmpty {
+                            EmptyView()
+                        } else {
+                            StudentWorkFilesList(
+                                student: student,
+                                files: filtered,
+                                onUpload: {
+                                    selectedStudent = student
+                                    showingFilePicker = true
+                                },
+                                onPhotoUpload: { items in
+                                    Task {
+                                        await handlePhotoSelection(items, for: student)
+                                    }
+                                }
+                            )
                         }
-                    )
+                    }
                 }
             }
         }
@@ -341,6 +376,17 @@ struct Resources: View {
         ]
         
         return mimeTypes[fileExtension.lowercased()] ?? "application/octet-stream"
+    }
+    
+    private func filteredFiles(for student: User) -> [StudentWorkFile] {
+        let files = studentWorkFiles[student.id] ?? []
+        guard !searchText.isEmpty else {
+            return files
+        }
+        let searchLower = searchText.lowercased()
+        return files.filter { file in
+            file.fileName.lowercased().contains(searchLower)
+        }
     }
 }
 

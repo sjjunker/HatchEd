@@ -177,6 +177,7 @@ struct ParentDashboard: View {
                 )
                 completedAssignmentsSection
                 attendanceSection
+                inspirationalQuoteSection
                 studentsSection
             }
             .padding(.horizontal)
@@ -559,6 +560,40 @@ struct ParentDashboard: View {
     private func calculatePercentage(pointsAwarded: Double, pointsPossible: Double) -> Double? {
         guard pointsPossible > 0 else { return nil }
         return (pointsAwarded / pointsPossible) * 100
+    }
+    
+    // MARK: - Inspirational Quote Section
+    
+    private var inspirationalQuoteSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "quote.opening")
+                    .foregroundColor(.hatchEdAccent)
+                Text("Daily Inspiration")
+                    .font(.headline)
+                    .foregroundColor(.hatchEdText)
+            }
+            
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Today's Quote")
+                    .font(.subheadline)
+                    .foregroundColor(.hatchEdSecondaryText)
+                Text("\"The beautiful thing about learning is that no one can take it away from you.\"")
+                    .font(.body)
+                    .italic()
+                    .foregroundColor(.hatchEdText)
+                Text("— B.B. King")
+                    .font(.caption)
+                    .foregroundColor(.hatchEdSecondaryText)
+                    .padding(.top, 4)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.hatchEdAccentBackground)
+        )
     }
 }
 

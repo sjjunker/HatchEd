@@ -10,6 +10,8 @@ import Foundation
 struct User: Identifiable, Codable, Equatable, Hashable {
     let id: String
     var appleId: String?
+    var googleId: String?
+    var username: String?
     var name: String?
     var email: String?
     var role: String?

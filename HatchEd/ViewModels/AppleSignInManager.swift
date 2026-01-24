@@ -282,18 +282,23 @@ class AppleSignInManager: NSObject, ObservableObject {
             let response: AuthResponse = try await api.request(
                 Endpoint(path: "api/auth/signup", method: .post, body: body)
             )
-            print("[Sign Up] API response received - hasToken: \(!response.token.isEmpty), userId: \(response.user.id), userRole: \(response.user.role ?? "nil")")
             
-            api.setAuthToken(response.token)
-            if let userId = response.user.id as String? {
+            guard let token = response.token, let user = response.user else {
+                throw NSError(domain: "AuthError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response from server"])
+            }
+            
+            print("[Sign Up] API response received - hasToken: \(!token.isEmpty), userId: \(user.id), userRole: \(user.role ?? "nil")")
+            
+            api.setAuthToken(token)
+            if let userId = user.id as String? {
                 storeUserID(userId)
             }
             print("[Sign Up] Token stored, applying user...")
-            applyUser(response.user)
+            applyUser(user)
             
             try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
             
-            cache.save(response.token, as: "token.json")
+            cache.save(token, as: "token.json")
             print("[Sign Up] Fetching family and notifications...")
             await fetchFamilyIfNeeded()
             await fetchNotifications()
@@ -313,21 +318,26 @@ class AppleSignInManager: NSObject, ObservableObject {
             let response: AuthResponse = try await api.request(
                 Endpoint(path: "api/auth/google", method: .post, body: body)
             )
-            print("[Sign In] API response received - hasToken: \(!response.token.isEmpty), userId: \(response.user.id), userRole: \(response.user.role ?? "nil"), userName: \(response.user.name ?? "nil"), hasFamilyId: \(response.user.familyId != nil)")
             
-            // Verify role is present in response
-            if response.user.role == nil || response.user.role?.isEmpty == true {
-                print("[Sign In] WARNING: User role is missing or empty in API response!")
-                print("[Sign In] Full user object: \(response.user)")
+            guard let token = response.token, let user = response.user else {
+                throw NSError(domain: "AuthError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response from server"])
             }
             
-            api.setAuthToken(response.token)
+            print("[Sign In] API response received - hasToken: \(!token.isEmpty), userId: \(user.id), userRole: \(user.role ?? "nil"), userName: \(user.name ?? "nil"), hasFamilyId: \(user.familyId != nil)")
+            
+            // Verify role is present in response
+            if user.role == nil || user.role?.isEmpty == true {
+                print("[Sign In] WARNING: User role is missing or empty in API response!")
+                print("[Sign In] Full user object: \(user)")
+            }
+            
+            api.setAuthToken(token)
             // For Google, we'll use the user ID from the response as the stored ID
-            if let userId = response.user.id as String? {
+            if let userId = user.id as String? {
                 storeUserID(userId)
             }
             print("[Sign In] Token stored, applying user...")
-            applyUser(response.user)
+            applyUser(user)
             
             // Wait a moment for state to update
             try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
@@ -343,7 +353,7 @@ class AppleSignInManager: NSObject, ObservableObject {
                 print("[Sign In] ✗ Sign-in failed - State: \(signInState)")
             }
             
-            cache.save(response.token, as: "token.json")
+            cache.save(token, as: "token.json")
             print("[Sign In] Fetching family and notifications...")
             await fetchFamilyIfNeeded()
             await fetchNotifications()
@@ -383,18 +393,23 @@ class AppleSignInManager: NSObject, ObservableObject {
             let response: AuthResponse = try await api.request(
                 Endpoint(path: "api/auth/apple", method: .post, body: body)
             )
-            print("[Sign In] API response received - hasToken: \(!response.token.isEmpty), userId: \(response.user.id), userRole: \(response.user.role ?? "nil"), userName: \(response.user.name ?? "nil"), hasFamilyId: \(response.user.familyId != nil)")
             
-            // Verify role is present in response
-            if response.user.role == nil || response.user.role?.isEmpty == true {
-                print("[Sign In] WARNING: User role is missing or empty in API response!")
-                print("[Sign In] Full user object: \(response.user)")
+            guard let token = response.token, let user = response.user else {
+                throw NSError(domain: "AuthError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response from server"])
             }
             
-            api.setAuthToken(response.token)
+            print("[Sign In] API response received - hasToken: \(!token.isEmpty), userId: \(user.id), userRole: \(user.role ?? "nil"), userName: \(user.name ?? "nil"), hasFamilyId: \(user.familyId != nil)")
+            
+            // Verify role is present in response
+            if user.role == nil || user.role?.isEmpty == true {
+                print("[Sign In] WARNING: User role is missing or empty in API response!")
+                print("[Sign In] Full user object: \(user)")
+            }
+            
+            api.setAuthToken(token)
             storeUserID(userId)
             print("[Sign In] Token stored, applying user...")
-            applyUser(response.user)
+            applyUser(user)
             
             // Wait a moment for state to update
             try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
@@ -410,7 +425,7 @@ class AppleSignInManager: NSObject, ObservableObject {
                 print("[Sign In] ✗ Sign-in failed - State: \(signInState)")
             }
             
-            cache.save(response.token, as: "token.json")
+            cache.save(token, as: "token.json")
             print("[Sign In] Fetching family and notifications...")
             await fetchFamilyIfNeeded()
             await fetchNotifications()

@@ -279,15 +279,15 @@ struct TwoFactorSetupView: View {
     @EnvironmentObject private var signInManager: AppleSignInManager
     @Binding var isPresented: Bool
     @Binding var twoFactorEnabled: Bool
-    @State private var qrCodeImage: UIImage?
-    @State private var manualEntryKey: String = ""
+    @State private var phoneNumber: String = ""
     @State private var verificationCode: String = ""
-    @State private var step: SetupStep = .scanning
+    @State private var step: SetupStep = .enteringPhone
     @State private var errorMessage: String?
     @State private var isLoading = false
+    @State private var formattedPhoneNumber: String = ""
     
     enum SetupStep {
-        case scanning
+        case enteringPhone
         case verifying
     }
     
@@ -295,8 +295,8 @@ struct TwoFactorSetupView: View {
         NavigationView {
             Form {
                 switch step {
-                case .scanning:
-                    scanningStep
+                case .enteringPhone:
+                    phoneEntryStep
                 case .verifying:
                     verifyingStep
                 }
@@ -311,45 +311,29 @@ struct TwoFactorSetupView: View {
                 }
             }
         }
-        .onAppear {
-            Task {
-                await loadQRCode()
-            }
-        }
     }
     
-    private var scanningStep: some View {
+    private var phoneEntryStep: some View {
         Section {
             VStack(spacing: 20) {
-                Text("Scan this QR code with your authenticator app")
+                Text("Enter your phone number to receive verification codes via SMS")
                     .font(.headline)
                     .multilineTextAlignment(.center)
                     .padding()
                 
-                if let qrCodeImage {
-                    Image(uiImage: qrCodeImage)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 250, height: 250)
-                        .padding()
-                } else if isLoading {
-                    ProgressView()
-                        .frame(width: 250, height: 250)
-                }
-                
-                if !manualEntryKey.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Or enter this key manually:")
-                            .font(.subheadline)
-                            .foregroundColor(.hatchEdSecondaryText)
-                        Text(manualEntryKey)
-                            .font(.system(.body, design: .monospaced))
-                            .padding()
-                            .background(Color.hatchEdAccentBackground)
-                            .cornerRadius(8)
+                TextField("(555) 123-4567", text: $phoneNumber)
+                    .textFieldStyle(.roundedBorder)
+                    .keyboardType(.phonePad)
+                    .font(.body)
+                    .onChange(of: phoneNumber) { oldValue, newValue in
+                        // Format phone number as user types
+                        let cleaned = newValue.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
+                        if cleaned.count <= 10 {
+                            phoneNumber = formatPhoneNumber(cleaned)
+                        } else {
+                            phoneNumber = oldValue
+                        }
                     }
-                    .padding()
-                }
                 
                 if let errorMessage {
                     Text(errorMessage)
@@ -358,11 +342,17 @@ struct TwoFactorSetupView: View {
                         .padding()
                 }
                 
-                Button("I've scanned the code") {
-                    step = .verifying
+                Button("Send Verification Code") {
+                    Task {
+                        await sendVerificationCode()
+                    }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(qrCodeImage == nil)
+                .disabled(phoneNumber.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression).count < 10 || isLoading)
+                
+                if isLoading {
+                    ProgressView()
+                }
             }
         }
     }
@@ -370,7 +360,7 @@ struct TwoFactorSetupView: View {
     private var verifyingStep: some View {
         Section {
             VStack(spacing: 20) {
-                Text("Enter the 6-digit code from your authenticator app")
+                Text("Enter the 6-digit code sent to \(formattedPhoneNumber)")
                     .font(.headline)
                     .multilineTextAlignment(.center)
                     .padding()
@@ -400,6 +390,13 @@ struct TwoFactorSetupView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(verificationCode.count != 6 || isLoading)
                 
+                Button("Resend Code") {
+                    Task {
+                        await sendVerificationCode()
+                    }
+                }
+                .disabled(isLoading)
+                
                 if isLoading {
                     ProgressView()
                 }
@@ -407,30 +404,44 @@ struct TwoFactorSetupView: View {
         }
     }
     
-    private func loadQRCode() async {
+    private func formatPhoneNumber(_ number: String) -> String {
+        if number.count <= 3 {
+            return number
+        } else if number.count <= 6 {
+            return "(\(number.prefix(3))) \(number.dropFirst(3))"
+        } else {
+            return "(\(number.prefix(3))) \(number.dropFirst(3).prefix(3))-\(number.dropFirst(6))"
+        }
+    }
+    
+    private func sendVerificationCode() async {
         isLoading = true
         errorMessage = nil
         
+        // Clean phone number (remove formatting)
+        let cleaned = phoneNumber.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
+        
+        guard cleaned.count >= 10 else {
+            await MainActor.run {
+                errorMessage = "Please enter a valid phone number"
+                isLoading = false
+            }
+            return
+        }
+        
         do {
             let api = APIClient.shared
-            let response = try await api.setupTwoFactor()
+            let response = try await api.setupTwoFactor(phoneNumber: cleaned)
             
             await MainActor.run {
-                // Decode QR code from base64 data URL (format: data:image/png;base64,...)
-                let base64String = response.qrCode.contains(",") 
-                    ? String(response.qrCode.split(separator: ",").last ?? "")
-                    : response.qrCode
-                
-                if let data = Data(base64Encoded: base64String),
-                   let image = UIImage(data: data) {
-                    qrCodeImage = image
-                }
-                manualEntryKey = response.manualEntryKey
+                formattedPhoneNumber = response.phoneNumber
+                step = .verifying
+                verificationCode = ""
                 isLoading = false
             }
         } catch {
             await MainActor.run {
-                errorMessage = "Failed to load QR code: \(error.localizedDescription)"
+                errorMessage = "Failed to send verification code: \(error.localizedDescription)"
                 isLoading = false
             }
         }

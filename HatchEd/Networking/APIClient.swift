@@ -410,10 +410,14 @@ final class APIClient {
     }
     
     // Two-Factor Authentication API methods
+    struct TwoFactorSetupRequest: Encodable {
+        let phoneNumber: String
+    }
+    
     struct TwoFactorSetupResponse: Decodable {
-        let secret: String
-        let qrCode: String
-        let manualEntryKey: String
+        let success: Bool
+        let message: String
+        let phoneNumber: String
     }
     
     struct TwoFactorVerifyResponse: Decodable {
@@ -421,9 +425,10 @@ final class APIClient {
         let message: String
     }
     
-    func setupTwoFactor() async throws -> TwoFactorSetupResponse {
+    func setupTwoFactor(phoneNumber: String) async throws -> TwoFactorSetupResponse {
+        let body = TwoFactorSetupRequest(phoneNumber: phoneNumber)
         return try await request(
-            Endpoint(path: "api/users/me/2fa/setup", method: .post),
+            Endpoint(path: "api/users/me/2fa/setup", method: .post, body: body),
             responseType: TwoFactorSetupResponse.self
         )
     }

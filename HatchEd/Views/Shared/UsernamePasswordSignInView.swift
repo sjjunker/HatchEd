@@ -54,7 +54,7 @@ struct UsernamePasswordSignInView: View {
                         .textFieldStyle(.roundedBorder)
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Enter your 6-digit verification code")
+                        Text("Enter the 6-digit code sent to your phone")
                             .font(.subheadline)
                             .foregroundColor(.hatchEdSecondaryText)
                         

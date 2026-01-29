@@ -1,7 +1,7 @@
 // Updated with assistance from Cursor (ChatGPT) on 11/7/25.
 
 import { ObjectId } from 'mongodb'
-import { findUserById, updateUserFamily, listStudentsForFamily } from '../models/userModel.js'
+import { findUserById, updateUserFamily, listStudentsForFamily, updateUserProfile } from '../models/userModel.js'
 import { addMemberToFamily, createFamily, findFamilyByJoinCode, findFamilyById } from '../models/familyModel.js'
 import { serializeFamily, serializeUser } from '../utils/serializers.js'
 import { ValidationError, NotFoundError, ForbiddenError } from '../utils/errors.js'
@@ -21,30 +21,10 @@ export async function getCurrentUser (req, res, next) {
 export async function updateProfile (req, res, next) {
   try {
   const { role, name } = req.body
-  const update = {}
-  if (role) update.role = role
-  if (name) update.name = name
-
-  const users = req.app.locals.db.collection('users')
-  const result = await users.findOneAndUpdate(
-    { _id: new ObjectId(req.user.userId) },
-    {
-      $set: {
-        ...update,
-        updatedAt: new Date()
-      }
-    },
-    { returnDocument: 'after' }
-  )
-
-  let userDoc = result.value
+  const userDoc = await updateUserProfile(req.user.userId, { role, name })
   if (!userDoc) {
-    userDoc = await users.findOne({ _id: new ObjectId(req.user.userId) })
-    if (!userDoc) {
-        throw new NotFoundError('User')
-    }
+    throw new NotFoundError('User')
   }
-
   res.json({ user: serializeUser(userDoc) })
   } catch (error) {
     next(error)

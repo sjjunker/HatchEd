@@ -2,6 +2,7 @@
 
 import { ObjectId } from 'mongodb'
 import { getCollection } from '../lib/mongo.js'
+import { encrypt, decrypt } from '../utils/piiCrypto.js'
 
 const FAMILIES_COLLECTION = 'families'
 
@@ -9,24 +10,33 @@ function familiesCollection () {
   return getCollection(FAMILIES_COLLECTION)
 }
 
+function decryptFamily (doc) {
+  if (!doc) return null
+  const out = { ...doc }
+  if (out.name != null) out.name = decrypt(out.name)
+  return out
+}
+
 export async function createFamily ({ name }) {
   const family = {
-    name,
+    name: name ? encrypt(name) : name,
     joinCode: generateJoinCode(),
     createdAt: new Date(),
     updatedAt: new Date()
   }
 
   const result = await familiesCollection().insertOne(family)
-  return { ...family, _id: result.insertedId }
+  return decryptFamily({ ...family, _id: result.insertedId })
 }
 
 export async function findFamilyById (id) {
-  return familiesCollection().findOne({ _id: new ObjectId(id) })
+  const doc = await familiesCollection().findOne({ _id: new ObjectId(id) })
+  return decryptFamily(doc)
 }
 
 export async function findFamilyByJoinCode (joinCode) {
-  return familiesCollection().findOne({ joinCode })
+  const doc = await familiesCollection().findOne({ joinCode })
+  return decryptFamily(doc)
 }
 
 export async function addMemberToFamily ({ familyId, userId }) {
@@ -40,7 +50,8 @@ export async function addMemberToFamily ({ familyId, userId }) {
 }
 
 export async function listAllFamilies () {
-  return familiesCollection().find({}).toArray()
+  const docs = await familiesCollection().find({}).toArray()
+  return docs.map(decryptFamily)
 }
 
 function generateJoinCode (length = 6) {

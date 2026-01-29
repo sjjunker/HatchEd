@@ -2,6 +2,7 @@
 
 import { ObjectId } from 'mongodb'
 import { getCollection, pingDatabase } from '../lib/mongo.js'
+import { encrypt, decrypt, hashForLookup } from '../utils/piiCrypto.js'
 
 const USERS_COLLECTION = 'users'
 
@@ -9,20 +10,48 @@ function usersCollection () {
   return getCollection(USERS_COLLECTION)
 }
 
+function decryptUser (doc) {
+  if (!doc) return null
+  const out = { ...doc }
+  if (out.name != null) out.name = decrypt(out.name)
+  if (out.email != null) out.email = decrypt(out.email)
+  if (out.username != null) out.username = decrypt(out.username)
+  return out
+}
+
+function encryptUserPII (data) {
+  const out = { ...data }
+  if (out.name != null && out.name !== '') out.name = encrypt(out.name)
+  if (out.email != null && out.email !== '') out.email = encrypt(out.email)
+  if (out.username != null && out.username !== '') {
+    out.usernameHash = hashForLookup(out.username)
+    out.username = encrypt(out.username)
+  }
+  return out
+}
+
 export async function findUserByAppleId (appleId) {
-  return usersCollection().findOne({ appleId })
+  const doc = await usersCollection().findOne({ appleId })
+  return decryptUser(doc)
 }
 
 export async function findUserByGoogleId (googleId) {
-  return usersCollection().findOne({ googleId })
+  const doc = await usersCollection().findOne({ googleId })
+  return decryptUser(doc)
 }
 
 export async function findUserByUsername (username) {
-  return usersCollection().findOne({ username })
+  const hash = hashForLookup(username)
+  let doc = await usersCollection().findOne({ usernameHash: hash })
+  if (!doc) {
+    doc = await usersCollection().findOne({ username })
+  }
+  return decryptUser(doc)
 }
 
 export async function findUserById (id) {
-  return usersCollection().findOne({ _id: new ObjectId(id) })
+  const doc = await usersCollection().findOne({ _id: new ObjectId(id) })
+  return decryptUser(doc)
 }
 
 export async function upsertUserByAppleId (appleId, userData) {
@@ -44,6 +73,7 @@ export async function upsertUserByAppleId (appleId, userData) {
   const filteredData = Object.fromEntries(
     Object.entries(userData).filter(([, value]) => value !== undefined)
   )
+  const encryptedData = encryptUserPII(filteredData)
 
     console.log('[Database] Filtered user data', {
       filteredKeys: Object.keys(filteredData),
@@ -52,7 +82,7 @@ export async function upsertUserByAppleId (appleId, userData) {
 
   const update = {
     $set: {
-      ...filteredData,
+      ...encryptedData,
       updatedAt: new Date()
     },
     $setOnInsert: {
@@ -81,7 +111,7 @@ export async function upsertUserByAppleId (appleId, userData) {
         role: result.value.role || 'null/empty',
         duration: `${totalDuration}ms`
       })
-    return result.value
+    return decryptUser(result.value)
   }
 
   const upsertedId = result.lastErrorObject?.upserted
@@ -95,7 +125,7 @@ export async function upsertUserByAppleId (appleId, userData) {
           role: fetchedUser.role || 'null/empty',
           duration: `${totalDuration}ms`
         })
-        return fetchedUser
+        return decryptUser(fetchedUser)
       }
     }
 
@@ -116,7 +146,7 @@ export async function upsertUserByAppleId (appleId, userData) {
       role: fallback.role || 'null/empty',
       duration: `${totalDuration}ms`
     })
-    return fallback
+    return decryptUser(fallback)
   } catch (error) {
     const totalDuration = Date.now() - startTime
     console.error('[Database] Error in upsertUserByAppleId', {
@@ -149,6 +179,7 @@ export async function upsertUserByGoogleId (googleId, userData) {
     const filteredData = Object.fromEntries(
       Object.entries(userData).filter(([, value]) => value !== undefined)
     )
+    const encryptedData = encryptUserPII(filteredData)
 
     console.log('[Database] Filtered user data', {
       filteredKeys: Object.keys(filteredData),
@@ -157,7 +188,7 @@ export async function upsertUserByGoogleId (googleId, userData) {
 
     const update = {
       $set: {
-        ...filteredData,
+        ...encryptedData,
         updatedAt: new Date()
       },
       $setOnInsert: {
@@ -186,7 +217,7 @@ export async function upsertUserByGoogleId (googleId, userData) {
         role: result.value.role || 'null/empty',
         duration: `${totalDuration}ms`
       })
-      return result.value
+      return decryptUser(result.value)
     }
 
     const upsertedId = result.lastErrorObject?.upserted
@@ -200,7 +231,7 @@ export async function upsertUserByGoogleId (googleId, userData) {
           role: fetchedUser.role || 'null/empty',
           duration: `${totalDuration}ms`
         })
-        return fetchedUser
+        return decryptUser(fetchedUser)
       }
     }
 
@@ -221,7 +252,7 @@ export async function upsertUserByGoogleId (googleId, userData) {
       role: fallback.role || 'null/empty',
       duration: `${totalDuration}ms`
     })
-  return fallback
+  return decryptUser(fallback)
   } catch (error) {
     const totalDuration = Date.now() - startTime
     console.error('[Database] Error in upsertUserByGoogleId', {
@@ -246,15 +277,18 @@ export async function updateUserFamily (userId, familyId) {
 }
 
 export async function listStudentsForFamily (familyId) {
-  return usersCollection().find({ familyId: new ObjectId(familyId), role: 'student' }).toArray()
+  const docs = await usersCollection().find({ familyId: new ObjectId(familyId), role: 'student' }).toArray()
+  return docs.map(decryptUser)
 }
 
 export async function listUsersForFamily (familyId) {
-  return usersCollection().find({ familyId: new ObjectId(familyId) }).toArray()
+  const docs = await usersCollection().find({ familyId: new ObjectId(familyId) }).toArray()
+  return docs.map(decryptUser)
 }
 
 export async function listParentsForFamily (familyId) {
-  return usersCollection().find({ familyId: new ObjectId(familyId), role: 'parent' }).toArray()
+  const docs = await usersCollection().find({ familyId: new ObjectId(familyId), role: 'parent' }).toArray()
+  return docs.map(decryptUser)
 }
 
 export async function createUserWithPassword (userData) {
@@ -282,9 +316,10 @@ export async function createUserWithPassword (userData) {
     const filteredData = Object.fromEntries(
       Object.entries(userData).filter(([, value]) => value !== undefined && value !== null)
     )
+    const encryptedData = encryptUserPII(filteredData)
 
     const newUser = {
-      ...filteredData,
+      ...encryptedData,
       createdAt: new Date(),
       updatedAt: new Date()
     }
@@ -306,7 +341,7 @@ export async function createUserWithPassword (userData) {
       role: createdUser.role || 'null/empty',
       duration: `${totalDuration}ms`
     })
-    return createdUser
+    return decryptUser(createdUser)
   } catch (error) {
     const totalDuration = Date.now() - startTime
     console.error('[Database] Error in createUserWithPassword', {
@@ -329,4 +364,19 @@ export async function updateUserTwoFactor (userId, twoFactorData) {
   }
   await usersCollection().updateOne({ _id: new ObjectId(userId) }, update)
   return await findUserById(userId)
+}
+
+export async function updateUserProfile (userId, { role, name }) {
+  const update = { updatedAt: new Date() }
+  if (role !== undefined) update.role = role
+  if (name !== undefined && name !== '') {
+    update.name = encrypt(name)
+  }
+  const result = await usersCollection().findOneAndUpdate(
+    { _id: new ObjectId(userId) },
+    { $set: update },
+    { returnDocument: 'after' }
+  )
+  const doc = result?.value ?? await usersCollection().findOne({ _id: new ObjectId(userId) })
+  return decryptUser(doc)
 }

@@ -1,11 +1,19 @@
 // Portfolio Image Model - stores AI-generated images in the database
 import { ObjectId } from 'mongodb'
 import { getCollection } from '../lib/mongo.js'
+import { encrypt, decrypt } from '../utils/piiCrypto.js'
 
 const PORTFOLIO_IMAGES_COLLECTION = 'portfolioImages'
 
 function portfolioImagesCollection() {
   return getCollection(PORTFOLIO_IMAGES_COLLECTION)
+}
+
+function decryptPortfolioImage (doc) {
+  if (!doc) return null
+  const out = { ...doc }
+  if (out.description != null) out.description = decrypt(out.description)
+  return out
 }
 
 /**
@@ -20,14 +28,14 @@ function portfolioImagesCollection() {
 export async function createPortfolioImage({ portfolioId, description, imageData, contentType = 'image/png' }) {
   const image = {
     portfolioId: new ObjectId(portfolioId),
-    description: description || '',
-    imageData: imageData, // Base64 encoded image
+    description: description ? encrypt(description) : '',
+    imageData: imageData,
     contentType: contentType,
     createdAt: new Date()
   }
 
   const result = await portfolioImagesCollection().insertOne(image)
-  return { ...image, _id: result.insertedId }
+  return decryptPortfolioImage({ ...image, _id: result.insertedId })
 }
 
 /**
@@ -36,10 +44,11 @@ export async function createPortfolioImage({ portfolioId, description, imageData
  * @returns {Promise<Array>} Array of image records
  */
 export async function findImagesByPortfolioId(portfolioId) {
-  return portfolioImagesCollection()
+  const docs = await portfolioImagesCollection()
     .find({ portfolioId: new ObjectId(portfolioId) })
     .sort({ createdAt: 1 })
     .toArray()
+  return docs.map(decryptPortfolioImage)
 }
 
 /**
@@ -48,7 +57,8 @@ export async function findImagesByPortfolioId(portfolioId) {
  * @returns {Promise<Object|null>} Image record or null
  */
 export async function findImageById(imageId) {
-  return portfolioImagesCollection().findOne({ _id: new ObjectId(imageId) })
+  const doc = await portfolioImagesCollection().findOne({ _id: new ObjectId(imageId) })
+  return decryptPortfolioImage(doc)
 }
 
 /**

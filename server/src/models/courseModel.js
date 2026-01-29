@@ -2,6 +2,7 @@
 
 import { ObjectId } from 'mongodb'
 import { getCollection } from '../lib/mongo.js'
+import { encrypt, decrypt } from '../utils/piiCrypto.js'
 
 const COURSES_COLLECTION = 'courses'
 
@@ -9,10 +10,17 @@ function coursesCollection () {
   return getCollection(COURSES_COLLECTION)
 }
 
+function decryptCourse (doc) {
+  if (!doc) return null
+  const out = { ...doc }
+  if (out.name != null) out.name = decrypt(out.name)
+  return out
+}
+
 export async function createCourse ({ familyId, name, studentUserId, grade }) {
   const course = {
     familyId: new ObjectId(familyId),
-    name,
+    name: name ? encrypt(name) : name,
     studentUserId: new ObjectId(studentUserId),
     grade: grade ?? null,
     assignments: [],
@@ -21,26 +29,28 @@ export async function createCourse ({ familyId, name, studentUserId, grade }) {
   }
 
   const result = await coursesCollection().insertOne(course)
-  return { ...course, _id: result.insertedId }
+  return decryptCourse({ ...course, _id: result.insertedId })
 }
 
 export async function findCoursesByFamilyId (familyId) {
-  return coursesCollection().find({ familyId: new ObjectId(familyId) }).sort({ name: 1 }).toArray()
+  const docs = await coursesCollection().find({ familyId: new ObjectId(familyId) }).sort({ createdAt: 1 }).toArray()
+  return docs.map(decryptCourse)
 }
 
 export async function findCoursesByStudentId (studentUserId) {
-  return coursesCollection().find({ studentUserId: new ObjectId(studentUserId) }).sort({ name: 1 }).toArray()
+  const docs = await coursesCollection().find({ studentUserId: new ObjectId(studentUserId) }).sort({ createdAt: 1 }).toArray()
+  return docs.map(decryptCourse)
 }
 
 export async function findCourseById (id) {
-  return coursesCollection().findOne({ _id: new ObjectId(id) })
+  const doc = await coursesCollection().findOne({ _id: new ObjectId(id) })
+  return decryptCourse(doc)
 }
 
 export async function updateCourse (id, { name, grade }) {
-  const update = {}
-  if (name !== undefined) update.name = name
+  const update = { updatedAt: new Date() }
+  if (name !== undefined) update.name = name ? encrypt(name) : name
   if (grade !== undefined) update.grade = grade
-  update.updatedAt = new Date()
 
   const result = await coursesCollection().findOneAndUpdate(
     { _id: new ObjectId(id) },
@@ -48,15 +58,11 @@ export async function updateCourse (id, { name, grade }) {
     { returnDocument: 'after' }
   )
 
-  // If result.value is null, the document wasn't found or update failed
-  // In that case, try to fetch the course again to return it
   if (!result || !result.value) {
     console.error('findOneAndUpdate returned null for course:', id)
-    // Try to fetch the course to see if it still exists
     const course = await findCourseById(id)
     if (course) {
-      // Apply the updates manually since findOneAndUpdate failed
-      if (name !== undefined) course.name = name
+      if (name !== undefined) course.name = typeof name === 'string' ? name : course.name
       if (grade !== undefined) course.grade = grade
       course.updatedAt = new Date()
       return course
@@ -64,7 +70,7 @@ export async function updateCourse (id, { name, grade }) {
     return null
   }
 
-  return result.value
+  return decryptCourse(result.value)
 }
 
 export async function deleteCourse (id) {

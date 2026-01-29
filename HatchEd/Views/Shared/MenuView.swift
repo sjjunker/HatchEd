@@ -10,7 +10,7 @@ import SwiftUI
 struct MenuView: View {
     @Binding var selectedDestination: NavigationDestination?
     @Binding var showMenu: Bool
-    @EnvironmentObject private var signInManager: AppleSignInManager
+    @EnvironmentObject private var authViewModel: AuthViewModel
     @EnvironmentObject private var menuManager: MenuManager
     
     var body: some View {
@@ -42,7 +42,7 @@ struct MenuView: View {
                 
                 // Sign Out Button
                 Button(action: {
-                    signInManager.signOut()
+                    authViewModel.signOut()
                     showMenu = false
                 }) {
                     HStack(spacing: 15) {
@@ -61,13 +61,13 @@ struct MenuView: View {
             }
             .listStyle(PlainListStyle())
             .onAppear {
-                if let user = signInManager.currentUser {
+                if let user = authViewModel.currentUser {
                     menuManager.setMenuItems(user: user)
                 } else {
                     menuManager.menuItems = []
                 }
             }
-            .onChange(of: signInManager.currentUser) { _, newUser in
+            .onChange(of: authViewModel.currentUser) { _, newUser in
                 if let user = newUser {
                     menuManager.setMenuItems(user: user)
                 } else {

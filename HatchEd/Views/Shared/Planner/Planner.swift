@@ -9,7 +9,7 @@
 import SwiftUI
 
 struct Planner: View {
-    @EnvironmentObject private var signInManager: AppleSignInManager
+    @EnvironmentObject private var authViewModel: AuthViewModel
     @StateObject private var taskStore = PlannerTaskStore()
     @State private var selectedDate = Calendar.current.startOfDay(for: Date())
     @State private var showingDaySheet = false
@@ -134,7 +134,7 @@ struct Planner: View {
         .sheet(isPresented: $showingAddAssignment) {
             AddAssignmentView(
                 initialDate: selectedDate,
-                students: signInManager.students,
+                students: authViewModel.students,
                 onSaveAssignment: {
                     // Reload assignments when a new assignment is created
                     Task {
@@ -148,7 +148,7 @@ struct Planner: View {
             TaskDetailSheetView(
                 task: task,
                 assignment: assignmentForTask(task),
-                students: signInManager.students,
+                students: authViewModel.students,
                 courses: courses,
                 onTaskUpdated: {
                     Task {

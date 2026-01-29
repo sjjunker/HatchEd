@@ -10,7 +10,7 @@ import PDFKit
 import UIKit
 
 struct ReportCard: View {
-    @EnvironmentObject private var signInManager: AppleSignInManager
+    @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var courses: [Course] = []
     @State private var attendanceRecords: [String: [AttendanceRecordDTO]] = [:] // studentId -> records
     @State private var isLoading = false
@@ -55,7 +55,7 @@ struct ReportCard: View {
                     // Group courses by student
                     let coursesByStudent = Dictionary(grouping: courses) { $0.student.id }
                     
-                    ForEach(signInManager.students) { student in
+                    ForEach(authViewModel.students) { student in
                         if let studentCourses = coursesByStudent[student.id], !studentCourses.isEmpty {
                             studentReportCard(student: student, courses: studentCourses)
                         }
@@ -112,7 +112,7 @@ struct ReportCard: View {
             }
         }) {
             StudentSelectionSheet(
-                students: signInManager.students,
+                students: authViewModel.students,
                 courses: courses,
                 selectedStudentIds: $selectedStudentIds,
                 onConfirm: {
@@ -214,7 +214,7 @@ struct ReportCard: View {
         var recordsDict: [String: [AttendanceRecordDTO]] = [:]
         
         // Fetch attendance for each student (limit to last 90 days for report card)
-        for student in signInManager.students {
+        for student in authViewModel.students {
             do {
                 let records = try await api.fetchAttendance(studentUserId: student.id, limit: 90)
                 recordsDict[student.id] = records
@@ -254,8 +254,8 @@ struct ReportCard: View {
     private func generatePDF() async {
         // Filter to only selected students (or all if none selected)
         let studentsToInclude = selectedStudentIds.isEmpty 
-            ? signInManager.students 
-            : signInManager.students.filter { selectedStudentIds.contains($0.id) }
+            ? authViewModel.students 
+            : authViewModel.students.filter { selectedStudentIds.contains($0.id) }
         
         guard !studentsToInclude.isEmpty else {
             errorMessage = "Please select at least one student"
@@ -287,8 +287,8 @@ struct ReportCard: View {
     private func printReportCard() async {
         // Filter to only selected students (or all if none selected)
         let studentsToInclude = selectedStudentIds.isEmpty 
-            ? signInManager.students 
-            : signInManager.students.filter { selectedStudentIds.contains($0.id) }
+            ? authViewModel.students 
+            : authViewModel.students.filter { selectedStudentIds.contains($0.id) }
         
         guard !studentsToInclude.isEmpty else {
             errorMessage = "Please select at least one student"

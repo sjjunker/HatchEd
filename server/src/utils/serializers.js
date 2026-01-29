@@ -106,6 +106,22 @@ export function serializePortfolio (portfolio) {
     return img
   })
   
+  // Client expects reportCardSnapshot as a string (JSON); after PII decrypt we may have an object
+  let reportCardSnapshot = portfolio.reportCardSnapshot ?? null
+  if (reportCardSnapshot != null && typeof reportCardSnapshot === 'object') {
+    reportCardSnapshot = JSON.stringify(reportCardSnapshot)
+  }
+
+  // Client expects sectionData as an object; after PII decrypt we may have object or string
+  let sectionData = portfolio.sectionData ?? null
+  if (typeof sectionData === 'string') {
+    try {
+      sectionData = sectionData ? JSON.parse(sectionData) : null
+    } catch {
+      sectionData = null
+    }
+  }
+
   return {
     id: portfolio._id?.toString?.() ?? portfolio._id,
     studentId: portfolio.studentId?.toString?.() ?? portfolio.studentId,
@@ -114,8 +130,8 @@ export function serializePortfolio (portfolio) {
     studentWorkFileIds: portfolio.studentWorkFileIds?.map(id => id.toString()) ?? [],
     studentRemarks: portfolio.studentRemarks ?? null,
     instructorRemarks: portfolio.instructorRemarks ?? null,
-    reportCardSnapshot: portfolio.reportCardSnapshot ?? null,
-    sectionData: portfolio.sectionData ?? null,
+    reportCardSnapshot,
+    sectionData,
     compiledContent: portfolio.compiledContent ?? '',
     snippet: portfolio.snippet ?? '',
     generatedImages: generatedImages,

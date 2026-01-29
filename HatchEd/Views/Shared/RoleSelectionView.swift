@@ -8,7 +8,7 @@ import SwiftUI
 
 struct RoleSelectionView: View {
     let userID: String
-    @EnvironmentObject var signInManager: AppleSignInManager
+    @EnvironmentObject var authViewModel: AuthViewModel
 
     var body: some View {
         VStack(spacing: 32) {
@@ -29,14 +29,14 @@ struct RoleSelectionView: View {
 
             VStack(spacing: 16) {
                 Button("I'm a Parent") {
-                    signInManager.saveRole("parent")
+                    authViewModel.saveRole("parent")
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.hatchEdAccent)
                 .controlSize(.large)
 
                 Button("I'm a Student") {
-                    signInManager.saveRole("student")
+                    authViewModel.saveRole("student")
                 }
                 .buttonStyle(.bordered)
                 .tint(.hatchEdAccent)

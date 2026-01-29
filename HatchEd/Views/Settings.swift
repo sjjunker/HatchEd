@@ -9,7 +9,7 @@
 import SwiftUI
 
 struct Settings: View {
-    @EnvironmentObject private var signInManager: AppleSignInManager
+    @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var showingCreateFamily = false
     @State private var showingJoinFamily = false
     @State private var newFamilyName = ""
@@ -20,7 +20,7 @@ struct Settings: View {
     @State private var twoFactorEnabled = false
     
     private var currentUser: User? {
-        signInManager.currentUser
+        authViewModel.currentUser
     }
     
     private var isParent: Bool {
@@ -28,7 +28,7 @@ struct Settings: View {
     }
     
     private var currentFamily: Family? {
-        signInManager.currentFamily
+        authViewModel.currentFamily
     }
     
     var body: some View {
@@ -73,7 +73,7 @@ struct Settings: View {
                     if let joinCode = family.joinCode {
                         familyDetailRow(title: "Join Code", value: joinCode, monospaced: true)
                     }
-                    familyDetailRow(title: "Linked Students", value: "\(signInManager.students.count)")
+                    familyDetailRow(title: "Linked Students", value: "\(authViewModel.students.count)")
                 }
             } else {
                 Button {
@@ -98,7 +98,7 @@ struct Settings: View {
             if let errorMessage {
                 Text(errorMessage)
                     .foregroundColor(.hatchEdCoralAccent)
-            } else if signInManager.isOffline {
+            } else if authViewModel.isOffline {
                 Text("Offline mode – changes will sync when you're back online.")
                     .foregroundColor(.hatchEdWarning)
             }
@@ -183,13 +183,13 @@ struct Settings: View {
         isSubmitting = true
         defer { isSubmitting = false }
         do {
-            try await signInManager.createFamily(named: newFamilyName.trimmingCharacters(in: .whitespacesAndNewlines))
+            try await authViewModel.createFamily(named: newFamilyName.trimmingCharacters(in: .whitespacesAndNewlines))
             await MainActor.run {
                 showingCreateFamily = false
                 newFamilyName = ""
                 errorMessage = nil
             }
-        } catch let error as AppleSignInManager.FamilyJoinError {
+        } catch let error as AuthViewModel.FamilyJoinError {
             await MainActor.run {
                 errorMessage = error.localizedDescription
             }
@@ -205,13 +205,13 @@ struct Settings: View {
         isSubmitting = true
         defer { isSubmitting = false }
         do {
-            try await signInManager.joinFamily(with: joinCode)
+            try await authViewModel.joinFamily(with: joinCode)
             await MainActor.run {
                 showingJoinFamily = false
                 joinCode = ""
                 errorMessage = nil
             }
-        } catch let error as AppleSignInManager.FamilyJoinError {
+        } catch let error as AuthViewModel.FamilyJoinError {
             await MainActor.run {
                 errorMessage = error.localizedDescription
             }
@@ -276,7 +276,7 @@ struct Settings: View {
 // MARK: - Two-Factor Setup View
 
 struct TwoFactorSetupView: View {
-    @EnvironmentObject private var signInManager: AppleSignInManager
+    @EnvironmentObject private var authViewModel: AuthViewModel
     @Binding var isPresented: Bool
     @Binding var twoFactorEnabled: Bool
     @State private var qrCodeImage: UIImage?

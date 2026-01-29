@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct UsernamePasswordSignInView: View {
-    @EnvironmentObject var signInManager: AppleSignInManager
+    @EnvironmentObject var authViewModel: AuthViewModel
     @State private var username = ""
     @State private var password = ""
     @State private var isLoading = false
@@ -135,13 +135,13 @@ struct UsernamePasswordSignInView: View {
         
         do {
             if requiresTwoFactor {
-                try await signInManager.handleUsernamePasswordSignIn(
+                try await authViewModel.handleUsernamePasswordSignIn(
                     username: username,
                     password: password,
                     twoFactorCode: twoFactorCode
                 )
             } else {
-                try await signInManager.handleUsernamePasswordSignIn(
+                try await authViewModel.handleUsernamePasswordSignIn(
                     username: username,
                     password: password
                 )
@@ -159,7 +159,7 @@ struct UsernamePasswordSignInView: View {
 }
 
 struct UsernamePasswordSignUpView: View {
-    @EnvironmentObject var signInManager: AppleSignInManager
+    @EnvironmentObject var authViewModel: AuthViewModel
     @Binding var showSignUp: Bool
     @State private var username = ""
     @State private var password = ""
@@ -277,7 +277,7 @@ struct UsernamePasswordSignUpView: View {
         }
         
         do {
-            try await signInManager.handleUsernamePasswordSignUp(
+            try await authViewModel.handleUsernamePasswordSignUp(
                 username: username,
                 password: password,
                 email: email.isEmpty ? nil : email,

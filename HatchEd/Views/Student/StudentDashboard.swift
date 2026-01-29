@@ -9,7 +9,7 @@ import SwiftUI
 import UserNotifications
 
 struct StudentDashboard: View {
-    @EnvironmentObject var signInManager: AppleSignInManager
+    @EnvironmentObject var authViewModel: AuthViewModel
     @State private var showMenu = false
     @State private var selectedDestination: NavigationDestination? = nil
     @State private var showingNameEditor = false
@@ -78,20 +78,20 @@ struct StudentDashboard: View {
             }
         }
         .onAppear {
-            signInManager.updateUserFromDatabase()
+            authViewModel.updateUserFromDatabase()
             loadCompletionStatus()
             Task {
-                await signInManager.fetchNotifications()
+                await authViewModel.fetchNotifications()
                 await loadDailyAssignments()
             }
-            if signInManager.currentUser?.name == nil {
+            if authViewModel.currentUser?.name == nil {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     showingNameEditor = true
                 }
             }
         }
         .refreshable {
-            await signInManager.fetchNotifications()
+            await authViewModel.fetchNotifications()
             await loadDailyAssignments()
         }
         .alert("Request Help", isPresented: $showingHelpConfirmation) {
@@ -113,7 +113,7 @@ struct StudentDashboard: View {
         .sheet(item: $selectedNotification) { notification in
             NotificationDetailView(notification: notification) { toDelete in
                 Task {
-                    await signInManager.deleteNotification(toDelete)
+                    await authViewModel.deleteNotification(toDelete)
                     await MainActor.run {
                         selectedNotification = nil
                     }
@@ -139,7 +139,7 @@ struct StudentDashboard: View {
                         Button("Save") {
                             let trimmed = editedName.trimmingCharacters(in: .whitespacesAndNewlines)
                             guard !trimmed.isEmpty else { return }
-                            signInManager.updateUserName(trimmed)
+                            authViewModel.updateUserName(trimmed)
                             showingNameEditor = false
                         }
                         .disabled(editedName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -154,12 +154,12 @@ struct StudentDashboard: View {
             VStack(spacing: 24) {
                 welcomeSection
                 NotificationsView(
-                    notifications: signInManager.notifications,
+                    notifications: authViewModel.notifications,
                     onSelect: { selectedNotification = $0 }
                 )
                 dailyAssignmentsSection
                 inspirationalQuoteSection
-                if signInManager.isOffline {
+                if authViewModel.isOffline {
                     HStack {
                         Image(systemName: "wifi.slash")
                             .foregroundColor(.hatchEdWarning)
@@ -182,7 +182,7 @@ struct StudentDashboard: View {
     private var welcomeSection: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Welcome, \(signInManager.currentUser?.name?.capitalized ?? "Student")!")
+                Text("Welcome, \(authViewModel.currentUser?.name?.capitalized ?? "Student")!")
                     .font(.largeTitle)
                     .fontWeight(.bold)
                     .foregroundColor(.hatchEdText)
@@ -192,7 +192,7 @@ struct StudentDashboard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             
-            if signInManager.currentUser?.name == nil {
+            if authViewModel.currentUser?.name == nil {
                 Button(action: {
                     editedName = ""
                     showingNameEditor = true
@@ -344,7 +344,7 @@ struct StudentDashboard: View {
     
     @MainActor
     private func requestHelp(for assignment: Assignment) async {
-        guard let currentUser = signInManager.currentUser,
+        guard let currentUser = authViewModel.currentUser,
               let familyId = currentUser.familyId else {
             print("Cannot request help: No current user or family ID")
             return
@@ -374,7 +374,7 @@ struct StudentDashboard: View {
             sendLocalNotification(title: notificationTitle, body: notificationBody)
             
             // Refresh notifications
-            await signInManager.fetchNotifications()
+            await authViewModel.fetchNotifications()
             
             // Show success feedback
             selectedAssignmentForHelp = nil

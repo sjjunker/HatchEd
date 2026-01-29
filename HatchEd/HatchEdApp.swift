@@ -12,14 +12,14 @@ import GoogleSignIn
 
 @main
 struct HatchEdApp: App {
-    @StateObject private var signInManager = AppleSignInManager()
+    @StateObject private var authViewModel = AuthViewModel()
     @StateObject private var menuManager = MenuManager()
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environmentObject(signInManager)
+                .environmentObject(authViewModel)
                 .environmentObject(menuManager)
                 .background(Color.hatchEdBackground)
                 .onAppear {

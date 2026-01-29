@@ -9,7 +9,7 @@ import AuthenticationServices
 import GoogleSignIn
 
 struct SignInView: View {
-    @EnvironmentObject var signInManager: AppleSignInManager
+    @EnvironmentObject var authViewModel: AuthViewModel
     @State private var showUsernamePasswordSignIn = false
     
     var body: some View {
@@ -36,7 +36,7 @@ struct SignInView: View {
                 SignInWithAppleButton(.signIn) { request in
                     request.requestedScopes = [.fullName, .email]
                 } onCompletion: { result in
-                    signInManager.handleSignIn(result: result)
+                    authViewModel.handleSignIn(result: result)
                 }
                 .signInWithAppleButtonStyle(.black)
                 .frame(height: 50)
@@ -76,7 +76,7 @@ struct SignInView: View {
             }
             .sheet(isPresented: $showUsernamePasswordSignIn) {
                 UsernamePasswordSignInView()
-                    .environmentObject(signInManager)
+                    .environmentObject(authViewModel)
             }
         }
         .padding()
@@ -122,7 +122,7 @@ struct SignInView: View {
             let email = user.profile?.email
             
             Task { @MainActor in
-                signInManager.handleGoogleSignIn(
+                authViewModel.handleGoogleSignIn(
                     idToken: idToken,
                     fullName: fullName,
                     email: email

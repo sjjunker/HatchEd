@@ -33,36 +33,21 @@ extension View {
 struct AddPortfolioView: View {
     let students: [User]
     let onSave: (Portfolio) -> Void
-    
+
     @Environment(\.dismiss) private var dismiss
-    private let api = APIClient.shared
-    
-    @State private var selectedStudent: User?
-    @State private var selectedDesignPattern: PortfolioDesignPattern = .general
-    @State private var selectedWorkFiles: Set<StudentWorkFile> = []
-    @State private var studentRemarks: String = ""
-    @State private var instructorRemarks: String = ""
-    @State private var aboutMe: String = ""
-    @State private var achievementsAndAwards: String = ""
-    @State private var attendanceNotes: String = ""
-    @State private var extracurricularActivities: String = ""
-    @State private var serviceLog: String = ""
-    @State private var isLoading = false
-    @State private var errorMessage: String?
-    @State private var availableWorkFiles: [StudentWorkFile] = []
-    @State private var isLoadingFiles = false
-    
+    @StateObject private var viewModel = AddPortfolioViewModel()
+
     var body: some View {
         NavigationView {
             Form {
                 Section(header: Text("Student")) {
                     if !students.isEmpty {
                         Picker("Select Student", selection: Binding(
-                            get: { selectedStudent?.id },
+                            get: { viewModel.selectedStudent?.id },
                             set: { id in
-                                selectedStudent = students.first { $0.id == id }
+                                viewModel.selectedStudent = students.first { $0.id == id }
                                 Task {
-                                    await loadStudentWorkFiles()
+                                    await viewModel.loadStudentWorkFiles(studentId: id)
                                 }
                             }
                         )) {
@@ -73,24 +58,22 @@ struct AddPortfolioView: View {
                         }
                     }
                 }
-                
                 Section(header: Text("Design Pattern")) {
-                    Picker("Pattern", selection: $selectedDesignPattern) {
+                    Picker("Pattern", selection: $viewModel.selectedDesignPattern) {
                         ForEach(PortfolioDesignPattern.allCases) { pattern in
                             Text(pattern.rawValue).tag(pattern)
                         }
                     }
                 }
-                
                 Section(header: Text("Student Work")) {
-                    if isLoadingFiles {
+                    if viewModel.isLoadingFiles {
                         ProgressView()
-                    } else if availableWorkFiles.isEmpty {
-                        Text(selectedStudent == nil ? "Select a student first" : "No student work files available")
+                    } else if viewModel.availableWorkFiles.isEmpty {
+                        Text(viewModel.selectedStudent == nil ? "Select a student first" : "No student work files available")
                             .font(.subheadline)
                             .foregroundColor(.hatchEdSecondaryText)
                     } else {
-                        ForEach(availableWorkFiles) { file in
+                        ForEach(viewModel.availableWorkFiles) { file in
                             HStack {
                                 Image(systemName: fileIcon(for: file.fileType))
                                     .foregroundColor(.hatchEdAccent)
@@ -102,61 +85,49 @@ struct AddPortfolioView: View {
                                         .foregroundColor(.hatchEdSecondaryText)
                                 }
                                 Spacer()
-                                if selectedWorkFiles.contains(file) {
+                                if viewModel.selectedWorkFiles.contains(file) {
                                     Image(systemName: "checkmark.circle.fill")
                                         .foregroundColor(.hatchEdSuccess)
                                 }
                             }
                             .contentShape(Rectangle())
-                            .onTapGesture {
-                                if selectedWorkFiles.contains(file) {
-                                    selectedWorkFiles.remove(file)
-                                } else {
-                                    selectedWorkFiles.insert(file)
-                                }
-                            }
+                            .onTapGesture { viewModel.toggleWorkFile(file) }
                         }
                     }
                 }
                 
                 Section(header: Text("Student Remarks")) {
-                    TextEditor(text: $studentRemarks)
+                    TextEditor(text: $viewModel.studentRemarks)
                         .frame(minHeight: 100)
                 }
-                
                 Section(header: Text("Instructor Remarks")) {
-                    TextEditor(text: $instructorRemarks)
+                    TextEditor(text: $viewModel.instructorRemarks)
                         .frame(minHeight: 100)
                 }
-                
                 Section(header: Text("About Me")) {
-                    TextEditor(text: $aboutMe)
+                    TextEditor(text: $viewModel.aboutMe)
                         .frame(minHeight: 100)
-                        .placeholder("Enter information about the student's interests, goals, and personality...", when: $aboutMe)
+                        .placeholder("Enter information about the student's interests, goals, and personality...", when: $viewModel.aboutMe)
                 }
-                
                 Section(header: Text("Achievements and Awards")) {
-                    TextEditor(text: $achievementsAndAwards)
+                    TextEditor(text: $viewModel.achievementsAndAwards)
                         .frame(minHeight: 100)
-                        .placeholder("List academic achievements, awards, recognitions, and honors...", when: $achievementsAndAwards)
+                        .placeholder("List academic achievements, awards, recognitions, and honors...", when: $viewModel.achievementsAndAwards)
                 }
-                
                 Section(header: Text("Attendance Notes")) {
-                    TextEditor(text: $attendanceNotes)
+                    TextEditor(text: $viewModel.attendanceNotes)
                         .frame(minHeight: 80)
-                        .placeholder("Add any notes about attendance or commitment to learning...", when: $attendanceNotes)
+                        .placeholder("Add any notes about attendance or commitment to learning...", when: $viewModel.attendanceNotes)
                 }
-                
                 Section(header: Text("Extracurricular Activities")) {
-                    TextEditor(text: $extracurricularActivities)
+                    TextEditor(text: $viewModel.extracurricularActivities)
                         .frame(minHeight: 100)
-                        .placeholder("List extracurricular activities, clubs, sports, and interests...", when: $extracurricularActivities)
+                        .placeholder("List extracurricular activities, clubs, sports, and interests...", when: $viewModel.extracurricularActivities)
                 }
-                
                 Section(header: Text("Service Log")) {
-                    TextEditor(text: $serviceLog)
+                    TextEditor(text: $viewModel.serviceLog)
                         .frame(minHeight: 100)
-                        .placeholder("Document community service, volunteer work, and service learning activities...", when: $serviceLog)
+                        .placeholder("Document community service, volunteer work, and service learning activities...", when: $viewModel.serviceLog)
                 }
                 
                 Section(footer: Text("A copy of the current report card will be automatically included. Yearly accomplishments by subject will be generated from course data.")) {
@@ -174,24 +145,30 @@ struct AddPortfolioView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create") {
                         Task {
-                            await createPortfolio()
+                            do {
+                                let portfolio = try await viewModel.createPortfolio()
+                                onSave(portfolio)
+                                dismiss()
+                            } catch {
+                                // errorMessage set in viewModel
+                            }
                         }
                     }
-                    .disabled(!isValid || isLoading)
+                    .disabled(!viewModel.isValid || viewModel.isLoading)
                 }
             }
             .alert("Error", isPresented: Binding(
-                get: { errorMessage != nil },
-                set: { if !$0 { errorMessage = nil } }
+                get: { viewModel.errorMessage != nil },
+                set: { if !$0 { viewModel.clearError() } }
             )) {
                 Button("OK") {}
             } message: {
-                if let message = errorMessage {
+                if let message = viewModel.errorMessage {
                     Text(message)
                 }
             }
             .overlay {
-                if isLoading {
+                if viewModel.isLoading {
                     ZStack {
                         Color.black.opacity(0.4)
                             .ignoresSafeArea()
@@ -221,19 +198,15 @@ struct AddPortfolioView: View {
                     }
                 }
             }
-            .disabled(isLoading)
+            .disabled(viewModel.isLoading)
         }
         .onAppear {
             Task {
-                await loadStudentWorkFiles()
+                await viewModel.loadStudentWorkFiles(studentId: viewModel.selectedStudent?.id)
             }
         }
     }
-    
-    private var isValid: Bool {
-        selectedStudent != nil
-    }
-    
+
     private func fileIcon(for fileType: String) -> String {
         if fileType.contains("image") {
             return "photo"
@@ -253,73 +226,5 @@ struct AddPortfolioView: View {
         return formatter.string(fromByteCount: bytes)
     }
     
-    @MainActor
-    private func loadStudentWorkFiles() async {
-        guard let studentId = selectedStudent?.id else {
-            availableWorkFiles = []
-            return
-        }
-        
-        isLoadingFiles = true
-        do {
-            availableWorkFiles = try await api.fetchStudentWorkFiles(studentId: studentId)
-        } catch {
-            print("Failed to load student work files: \(error)")
-            availableWorkFiles = []
-        }
-        isLoadingFiles = false
-    }
-    
-    @MainActor
-    private func createPortfolio() async {
-        guard let student = selectedStudent else { return }
-        
-        isLoading = true
-        errorMessage = nil
-        
-        do {
-            // Get current report card
-            let courses = try await api.fetchCourses()
-            let studentCourses = courses.filter { $0.student.id == student.id }
-            let reportCardData = try? JSONEncoder().encode(studentCourses)
-            let reportCardSnapshot = reportCardData.flatMap { String(data: $0, encoding: .utf8) }
-            
-            // Create section data
-            let sectionData = PortfolioSectionData(
-                aboutMe: aboutMe.isEmpty ? nil : aboutMe,
-                achievementsAndAwards: achievementsAndAwards.isEmpty ? nil : achievementsAndAwards,
-                attendanceNotes: attendanceNotes.isEmpty ? nil : attendanceNotes,
-                extracurricularActivities: extracurricularActivities.isEmpty ? nil : extracurricularActivities,
-                serviceLog: serviceLog.isEmpty ? nil : serviceLog
-            )
-            
-            // Create portfolio
-            let portfolio = try await api.createPortfolio(
-                studentId: student.id,
-                studentName: student.name ?? "Student",
-                designPattern: selectedDesignPattern,
-                studentWorkFileIds: Array(selectedWorkFiles.map { $0.id }),
-                studentRemarks: studentRemarks.isEmpty ? nil : studentRemarks,
-                instructorRemarks: instructorRemarks.isEmpty ? nil : instructorRemarks,
-                reportCardSnapshot: reportCardSnapshot,
-                sectionData: sectionData
-            )
-            
-            // Portfolio created successfully - refresh the list and dismiss
-            onSave(portfolio)
-            dismiss()
-        } catch {
-            // Only show error if portfolio creation actually failed
-            // Don't show errors for compilation warnings since portfolio was still created
-            print("[AddPortfolio] Error creating portfolio: \(error)")
-            if let apiError = error as? APIError {
-                errorMessage = "Failed to create portfolio: \(apiError.localizedDescription)"
-            } else {
-                errorMessage = "Failed to create portfolio: \(error.localizedDescription)"
-            }
-        }
-        
-        isLoading = false
-    }
 }
 

@@ -48,27 +48,13 @@ enum NavigationDestination: String, Identifiable {
 }
 
 struct ParentDashboard: View {
-    @EnvironmentObject private var signInManager: AppleSignInManager
+    @EnvironmentObject private var authViewModel: AuthViewModel
+    @StateObject private var dashboardVM = ParentDashboardViewModel()
     @State private var showingNameEditor = false
     @State private var editedName = ""
     @State private var showMenu = false
     @State private var selectedDestination: NavigationDestination? = nil
     @State private var selectedNotification: Notification?
-    @State private var attendanceDate = Date()
-    @State private var attendanceStatus: [String: Bool] = [:]
-    @State private var isSubmittingAttendance = false
-    @State private var attendanceSubmissionState: AttendanceSubmissionState = .idle
-    @State private var assignments: [Assignment] = []
-    @State private var courses: [Course] = []
-    @State private var isLoadingAssignments = false
-    @State private var selectedAssignment: Assignment?
-    @State private var showingAssignmentGrading = false
-    
-    private enum AttendanceSubmissionState: Equatable {
-        case idle
-        case success(message: String)
-        case failure(message: String)
-    }
     
     var body: some View {
         ZStack {
@@ -124,40 +110,39 @@ struct ParentDashboard: View {
             }
         }
         .onAppear {
-            signInManager.updateUserFromDatabase()
+            dashboardVM.setAuthViewModel(authViewModel)
+            authViewModel.updateUserFromDatabase()
             Task {
-                await signInManager.fetchNotifications()
-                await loadAssignmentsAndCourses()
+                await authViewModel.fetchNotifications()
+                await dashboardVM.loadAssignmentsAndCourses()
             }
-            initializeAttendanceStatusIfNeeded(with: signInManager.students)
-            if signInManager.currentUser?.name == nil {
+            dashboardVM.initializeAttendanceStatusIfNeeded(with: authViewModel.students)
+            if authViewModel.currentUser?.name == nil {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     showingNameEditor = true
                 }
             }
         }
         .refreshable {
-            await signInManager.fetchNotifications()
-            await loadAssignmentsAndCourses()
+            await authViewModel.fetchNotifications()
+            await dashboardVM.loadAssignmentsAndCourses()
         }
-        .sheet(item: $selectedAssignment) { assignment in
+        .sheet(item: $dashboardVM.selectedAssignment) { assignment in
             AssignmentGradingView(
                 assignment: assignment,
-                courses: courses,
-                onGradeSaved: { updatedAssignment in
-                    Task {
-                        await loadAssignmentsAndCourses()
-                    }
+                courses: dashboardVM.courses,
+                onGradeSaved: { _ in
+                    Task { await dashboardVM.loadAssignmentsAndCourses() }
                 }
             )
         }
-        .onChange(of: signInManager.students) { oldValue, newValue in
-            initializeAttendanceStatusIfNeeded(with: newValue)
+        .onChange(of: authViewModel.students) { _, newValue in
+            dashboardVM.initializeAttendanceStatusIfNeeded(with: newValue)
         }
         .sheet(item: $selectedNotification) { notification in
             NotificationDetailView(notification: notification) { toDelete in
                 Task {
-                    await signInManager.deleteNotification(toDelete)
+                    await authViewModel.deleteNotification(toDelete)
                     await MainActor.run {
                         selectedNotification = nil
                     }
@@ -172,7 +157,7 @@ struct ParentDashboard: View {
             VStack(spacing: 24) {
                 welcomeSection
                 NotificationsView(
-                    notifications: signInManager.notifications,
+                    notifications: authViewModel.notifications,
                     onSelect: { selectedNotification = $0 }
                 )
                 completedAssignmentsSection
@@ -186,23 +171,20 @@ struct ParentDashboard: View {
         .sheet(isPresented: $showingNameEditor) {
             NavigationView {
                 Form {
-                    Section(header: Text("Enter your name")) {
-                        TextField("Name", text: $editedName)
+                Section(header: Text("Enter your name")) {
+                    TextField("Name", text: $editedName)
                     }
                 }
                 .navigationTitle("Update Name")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") {
-                            showingNameEditor = false
-                        }
+                        Button("Cancel") { showingNameEditor = false }
                     }
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Save") {
-                            if !editedName.trimmingCharacters(in: .whitespaces).isEmpty {
-                                signInManager.updateUserName(editedName.trimmingCharacters(in: .whitespaces))
-                            }
+                            let trimmed = editedName.trimmingCharacters(in: .whitespaces)
+                            if !trimmed.isEmpty { dashboardVM.updateUserName(trimmed) }
                             showingNameEditor = false
                         }
                         .disabled(editedName.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -215,7 +197,7 @@ struct ParentDashboard: View {
     private var welcomeSection: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Welcome, \(signInManager.currentUser?.name?.capitalized ?? "Parent!")")
+                Text("Welcome, \(authViewModel.currentUser?.name?.capitalized ?? "Parent!")")
                     .font(.largeTitle)
                     .fontWeight(.bold)
                     .foregroundColor(.hatchEdText)
@@ -225,7 +207,7 @@ struct ParentDashboard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             
-            if signInManager.currentUser?.name == nil {
+            if authViewModel.currentUser?.name == nil {
                 Button(action: {
                     editedName = ""
                     showingNameEditor = true
@@ -256,7 +238,7 @@ struct ParentDashboard: View {
                     .foregroundColor(.hatchEdText)
             }
             
-            if signInManager.students.isEmpty {
+            if authViewModel.students.isEmpty {
                 Text("No students linked yet.")
                     .foregroundColor(.hatchEdSecondaryText)
                     .padding()
@@ -264,11 +246,11 @@ struct ParentDashboard: View {
                     .background(RoundedRectangle(cornerRadius: 16).fill(Color.hatchEdCardBackground))
             } else {
                 LazyVStack(spacing: 12) {
-                    ForEach(signInManager.students) { student in
+                    ForEach(authViewModel.students) { student in
                         NavigationLink(destination: StudentDetail(
                             student: student,
-                            courses: courses.filter { $0.student.id == student.id },
-                            assignments: assignments.filter { $0.studentId == student.id }
+                            courses: dashboardVM.courses.filter { $0.student.id == student.id },
+                            assignments: dashboardVM.assignments.filter { $0.studentId == student.id }
                         )) {
                             HStack {
                                 Image(systemName: "person.circle.fill")
@@ -304,50 +286,46 @@ struct ParentDashboard: View {
                     .font(.headline)
                     .foregroundColor(.hatchEdText)
                 Spacer()
-                DatePicker("Attendance Date", selection: $attendanceDate, displayedComponents: .date)
+                DatePicker("Attendance Date", selection: $dashboardVM.attendanceDate, displayedComponents: .date)
                     .labelsHidden()
                     .tint(.hatchEdAccent)
             }
             
-            if signInManager.students.isEmpty {
+            if dashboardVM.students.isEmpty {
                 Text("Link students to start recording attendance.")
                     .font(.subheadline)
                     .foregroundColor(.hatchEdSecondaryText)
             } else {
                 VStack(spacing: 12) {
                     HStack {
-                        Button("Mark All Present") {
-                            updateAttendanceStatusForAll(true)
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(.hatchEdSuccess)
-                        Button("Mark All Absent") {
-                            updateAttendanceStatusForAll(false)
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(.hatchEdCoralAccent)
+                        Button("Mark All Present") { dashboardVM.updateAttendanceStatusForAll(true) }
+                            .buttonStyle(.bordered)
+                            .tint(.hatchEdSuccess)
+                        Button("Mark All Absent") { dashboardVM.updateAttendanceStatusForAll(false) }
+                            .buttonStyle(.bordered)
+                            .tint(.hatchEdCoralAccent)
                     }
-                    
-                    ForEach(signInManager.students) { student in
+                    ForEach(dashboardVM.students) { student in
                         AttendanceToggleRow(
                             name: student.name ?? "Student",
                             isPresent: Binding(
-                                get: { attendanceStatus[student.id] ?? true },
-                                set: { attendanceStatus[student.id] = $0 }
+                                get: { dashboardVM.attendanceStatus[student.id] ?? true },
+                                set: { dashboardVM.setAttendance(studentId: student.id, isPresent: $0) }
                             )
                         )
                     }
                 }
             }
-            
             VStack(alignment: .leading, spacing: 8) {
-                Button(action: submitAttendance) {
+                Button {
+                    Task { await dashboardVM.submitAttendance() }
+                } label: {
                     HStack {
-                        if isSubmittingAttendance {
+                        if dashboardVM.isSubmittingAttendance {
                             ProgressView()
                                 .tint(.hatchEdWhite)
                         }
-                        Text(isSubmittingAttendance ? "Submitting..." : "Submit Attendance")
+                        Text(dashboardVM.isSubmittingAttendance ? "Submitting..." : "Submit Attendance")
                             .fontWeight(.semibold)
                     }
                     .frame(maxWidth: .infinity)
@@ -355,11 +333,9 @@ struct ParentDashboard: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.hatchEdAccent)
-                .disabled(isSubmittingAttendance || signInManager.students.isEmpty)
-                
-                switch attendanceSubmissionState {
-                case .idle:
-                    EmptyView()
+                .disabled(dashboardVM.isSubmittingAttendance || dashboardVM.students.isEmpty)
+                switch dashboardVM.attendanceSubmissionState {
+                case .idle: EmptyView()
                 case .success(let message):
                     Text(message)
                         .font(.footnote)
@@ -379,56 +355,7 @@ struct ParentDashboard: View {
                 .fill(Color.hatchEdCardBackground)
                 .shadow(color: Color.hatchEdSuccess.opacity(0.2), radius: 8, x: 0, y: 4)
         )
-        .animation(.easeInOut, value: attendanceSubmissionState)
-    }
-    
-    private func initializeAttendanceStatusIfNeeded(with students: [User]) {
-        guard !students.isEmpty else {
-            attendanceStatus = [:]
-            return
-        }
-        for student in students where attendanceStatus[student.id] == nil {
-            attendanceStatus[student.id] = true
-        }
-    }
-    
-    private func updateAttendanceStatusForAll(_ isPresent: Bool) {
-        for student in signInManager.students {
-            attendanceStatus[student.id] = isPresent
-        }
-    }
-    
-    private func submitAttendance() {
-        guard !isSubmittingAttendance else { return }
-        guard !signInManager.students.isEmpty else {
-            attendanceSubmissionState = .failure(message: "No students available to record attendance.")
-            return
-        }
-        let statuses = signInManager.students.reduce(into: [String: Bool]()) { partialResult, student in
-            partialResult[student.id] = attendanceStatus[student.id] ?? true
-        }
-        isSubmittingAttendance = true
-        attendanceSubmissionState = .idle
-        Task {
-            do {
-                let response = try await signInManager.submitAttendance(date: attendanceDate, attendanceStatus: statuses)
-                await MainActor.run {
-                    isSubmittingAttendance = false
-                    attendanceSubmissionState = .success(message: "Attendance saved for \(response.attendance.count) student(s) on \(formattedAttendanceDate).")
-                }
-            } catch {
-                await MainActor.run {
-                    isSubmittingAttendance = false
-                    attendanceSubmissionState = .failure(message: error.localizedDescription)
-                }
-            }
-        }
-    }
-    
-    private var formattedAttendanceDate: String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        return formatter.string(from: attendanceDate)
+        .animation(.easeInOut, value: dashboardVM.attendanceSubmissionState)
     }
     
     // MARK: - Completed Assignments Section
@@ -442,13 +369,12 @@ struct ParentDashboard: View {
                     .font(.headline)
                     .foregroundColor(.hatchEdText)
                 Spacer()
-                if isLoadingAssignments {
+                if dashboardVM.isLoadingAssignments {
                     ProgressView()
                         .scaleEffect(0.8)
                 }
             }
-            
-            if pendingGradingAssignments.isEmpty && !isLoadingAssignments {
+            if dashboardVM.pendingGradingAssignments.isEmpty && !dashboardVM.isLoadingAssignments {
                 Text("No assignments pending grading.")
                     .font(.subheadline)
                     .foregroundColor(.hatchEdSecondaryText)
@@ -457,9 +383,9 @@ struct ParentDashboard: View {
                     .background(RoundedRectangle(cornerRadius: 12).fill(Color.hatchEdSecondaryBackground))
             } else {
                 LazyVStack(spacing: 12) {
-                    ForEach(pendingGradingAssignments.prefix(5)) { assignment in
+                    ForEach(dashboardVM.pendingGradingAssignments.prefix(5)) { assignment in
                         Button {
-                            selectedAssignment = assignment
+                            dashboardVM.selectedAssignment = assignment
                         } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
@@ -491,7 +417,7 @@ struct ParentDashboard: View {
                                             .font(.subheadline)
                                             .fontWeight(.semibold)
                                             .foregroundColor(.hatchEdSuccess)
-                                        if let percentage = calculatePercentage(pointsAwarded: pointsAwarded, pointsPossible: pointsPossible) {
+                                        if let percentage = ParentDashboardViewModel.percentage(pointsAwarded: pointsAwarded, pointsPossible: pointsPossible) {
                                             Text(String(format: "%.0f%%", percentage))
                                                 .font(.caption2)
                                                 .foregroundColor(.hatchEdSecondaryText)
@@ -524,42 +450,6 @@ struct ParentDashboard: View {
             RoundedRectangle(cornerRadius: 16)
                 .fill(Color.hatchEdCardBackground)
         )
-    }
-    
-    private var pendingGradingAssignments: [Assignment] {
-        let today = Calendar.current.startOfDay(for: Date())
-        return assignments.filter { assignment in
-            // Exclude assignments that are already graded (completed)
-            if assignment.isCompleted {
-                return false
-            }
-            // Show assignments that are due today or in the past
-            guard let dueDate = assignment.dueDate else { return false }
-            let dueDateStart = Calendar.current.startOfDay(for: dueDate)
-            return dueDateStart <= today
-        }
-        .sorted { ($0.dueDate ?? Date()) > ($1.dueDate ?? Date()) }
-    }
-    
-    @MainActor
-    private func loadAssignmentsAndCourses() async {
-        guard !isLoadingAssignments else { return }
-        isLoadingAssignments = true
-        let api = APIClient.shared
-        do {
-            async let assignmentsTask = api.fetchAssignments()
-            async let coursesTask = api.fetchCourses()
-            assignments = try await assignmentsTask
-            courses = try await coursesTask
-        } catch {
-            print("Failed to load assignments/courses: \(error)")
-        }
-        isLoadingAssignments = false
-    }
-    
-    private func calculatePercentage(pointsAwarded: Double, pointsPossible: Double) -> Double? {
-        guard pointsPossible > 0 else { return nil }
-        return (pointsAwarded / pointsPossible) * 100
     }
     
     // MARK: - Inspirational Quote Section
@@ -616,9 +506,9 @@ private struct AttendanceToggleRow: View {
 }
 
 #Preview {
-    let signInManager = AppleSignInManager()
-    signInManager.currentUser = User(id: "preview-user-id", appleId: "apple-id", name: "Jane Parent", email: "jane@example.com", role: "parent", familyId: nil)
+    let authViewModel = AuthViewModel()
+    authViewModel.currentUser = User(id: "preview-user-id", appleId: "apple-id", name: "Jane Parent", email: "jane@example.com", role: "parent", familyId: nil)
     return ParentDashboard()
-        .environmentObject(signInManager)
+        .environmentObject(authViewModel)
 }
 

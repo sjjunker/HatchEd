@@ -10,7 +10,7 @@ import UniformTypeIdentifiers
 import PhotosUI
 
 struct Resources: View {
-    @EnvironmentObject private var signInManager: AppleSignInManager
+    @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var studentWorkFiles: [String: [StudentWorkFile]] = [:] // Keyed by studentId
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -110,13 +110,13 @@ struct Resources: View {
                 }
             }
             
-            if signInManager.students.isEmpty {
+            if authViewModel.students.isEmpty {
                 Text("No students available")
                     .font(.subheadline)
                     .foregroundColor(.hatchEdSecondaryText)
                     .padding()
             } else {
-                let hasResults = signInManager.students.contains { student in
+                let hasResults = authViewModel.students.contains { student in
                     !filteredFiles(for: student).isEmpty
                 }
                 
@@ -127,7 +127,7 @@ struct Resources: View {
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding()
                 } else {
-                    ForEach(signInManager.students) { student in
+                    ForEach(authViewModel.students) { student in
                         let filtered = filteredFiles(for: student)
                         if !searchText.isEmpty && filtered.isEmpty {
                             EmptyView()
@@ -164,7 +164,7 @@ struct Resources: View {
         
         var allFiles: [String: [StudentWorkFile]] = [:]
         
-        for student in signInManager.students {
+        for student in authViewModel.students {
             do {
                 let files = try await api.fetchStudentWorkFiles(studentId: student.id)
                 allFiles[student.id] = files
@@ -179,7 +179,7 @@ struct Resources: View {
     
     @MainActor
     private func handleFileSelection(_ result: Result<[URL], Error>) async {
-        guard let student = selectedStudent ?? signInManager.students.first else { return }
+        guard let student = selectedStudent ?? authViewModel.students.first else { return }
         
         switch result {
         case .success(let urls):
@@ -229,7 +229,7 @@ struct Resources: View {
     
     @MainActor
     private func handlePhotoSelection(_ items: [PhotosPickerItem], for student: User? = nil) async {
-        let targetStudent = student ?? selectedStudent ?? signInManager.students.first
+        let targetStudent = student ?? selectedStudent ?? authViewModel.students.first
         guard let student = targetStudent else {
             print("[Resources] No student available for photo upload")
             return

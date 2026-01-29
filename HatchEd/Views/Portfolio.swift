@@ -8,30 +8,25 @@
 import SwiftUI
 
 struct PortfolioView: View {
-    @EnvironmentObject private var signInManager: AppleSignInManager
-    @State private var portfolios: [Portfolio] = []
-    @State private var isLoading = false
-    @State private var errorMessage: String?
+    @EnvironmentObject private var authViewModel: AuthViewModel
+    @StateObject private var viewModel = PortfolioListViewModel()
     @State private var showingAddPortfolio = false
     @State private var selectedPortfolio: Portfolio?
-    
-    private let api = APIClient.shared
-    
+
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             ScrollView {
                 VStack(spacing: 24) {
-                    if isLoading {
+                    if viewModel.isLoading {
                         ProgressView()
                             .frame(maxWidth: .infinity)
                             .padding()
-                    } else if portfolios.isEmpty {
+                    } else if viewModel.portfolios.isEmpty {
                         emptyStateView
                     } else {
                         portfoliosList
                     }
-                    
-                    if let errorMessage = errorMessage {
+                    if let errorMessage = viewModel.errorMessage {
                         Text(errorMessage)
                             .font(.subheadline)
                             .foregroundColor(.hatchEdCoralAccent)
@@ -39,10 +34,8 @@ struct PortfolioView: View {
                     }
                 }
                 .padding()
-                .padding(.bottom, 80) // Space for floating button
+                .padding(.bottom, 80)
             }
-            
-            // Floating Add Button
             Button {
                 showingAddPortfolio = true
             } label: {
@@ -60,30 +53,22 @@ struct PortfolioView: View {
         .navigationTitle("Portfolio")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            Task {
-                await loadPortfolios()
-            }
+            Task { await viewModel.loadPortfolios() }
         }
         .refreshable {
-            await loadPortfolios()
+            await viewModel.loadPortfolios()
         }
         .sheet(isPresented: $showingAddPortfolio) {
             AddPortfolioView(
-                students: signInManager.students,
-                onSave: { portfolio in
-                    // Portfolio was created - refresh the list
-                    Task { @MainActor in
-                        await loadPortfolios()
-                    }
+                students: authViewModel.students,
+                onSave: { _ in
+                    Task { await viewModel.loadPortfolios() }
                 }
             )
         }
         .onChange(of: showingAddPortfolio) { oldValue, newValue in
-            // Refresh when the sheet is dismissed (in case onSave wasn't called)
             if oldValue == true && newValue == false {
-                Task {
-                    await loadPortfolios()
-                }
+                Task { await viewModel.loadPortfolios() }
             }
         }
         .sheet(item: $selectedPortfolio) { portfolio in
@@ -110,31 +95,11 @@ struct PortfolioView: View {
     
     private var portfoliosList: some View {
         VStack(spacing: 16) {
-            ForEach(portfolios) { portfolio in
+            ForEach(viewModel.portfolios) { portfolio in
                 PortfolioRow(portfolio: portfolio)
-                    .onTapGesture {
-                        selectedPortfolio = portfolio
-                    }
+                    .onTapGesture { selectedPortfolio = portfolio }
             }
         }
-    }
-    
-    @MainActor
-    private func loadPortfolios() async {
-        isLoading = true
-        errorMessage = nil
-        do {
-            let fetchedPortfolios = try await api.fetchPortfolios()
-            print("[PortfolioView] Loaded \(fetchedPortfolios.count) portfolios")
-            portfolios = fetchedPortfolios
-        } catch {
-            print("[PortfolioView] Error loading portfolios: \(error)")
-            if let decodingError = error as? DecodingError {
-                print("[PortfolioView] Decoding error details: \(decodingError)")
-            }
-            errorMessage = "Failed to load portfolios: \(error.localizedDescription)"
-        }
-        isLoading = false
     }
 }
 

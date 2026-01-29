@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct CurriculumView: View {
-    @EnvironmentObject private var signInManager: AppleSignInManager
+    @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var courses: [Course] = []
     @State private var assignments: [Assignment] = []
     @State private var showingAddSheet = false
@@ -112,7 +112,7 @@ struct CurriculumView: View {
                     type: type,
                     courses: $courses,
                     assignments: $assignments,
-                    students: signInManager.students,
+                    students: authViewModel.students,
                     errorMessage: $errorMessage
                 )
             }
@@ -121,7 +121,7 @@ struct CurriculumView: View {
             TaskDetailSheetView(
                 task: createPlannerTaskFromAssignment(assignment),
                 assignment: assignment,
-                students: signInManager.students,
+                students: authViewModel.students,
                 courses: courses,
                 onTaskUpdated: {},
                 onAssignmentUpdated: {
@@ -136,7 +136,7 @@ struct CurriculumView: View {
             NavigationView {
                 EditCourseView(
                     course: course,
-                    students: signInManager.students,
+                    students: authViewModel.students,
                     onCourseUpdated: {
                         Task {
                             await loadCurriculum()

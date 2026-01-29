@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct StudentJoinFamilyView: View {
-    @EnvironmentObject private var signInManager: AppleSignInManager
+    @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var joinCode: String = ""
     @State private var errorMessage: String?
     @State private var isSubmitting: Bool = false
@@ -85,12 +85,12 @@ struct StudentJoinFamilyView: View {
         errorMessage = nil
         Task {
             do {
-                try await signInManager.joinFamily(with: code)
+                try await authViewModel.joinFamily(with: code)
                 await MainActor.run {
                     joinCode = ""
                     isSubmitting = false
                 }
-            } catch let error as AppleSignInManager.FamilyJoinError {
+            } catch let error as AuthViewModel.FamilyJoinError {
                 await MainActor.run {
                     errorMessage = error.localizedDescription
                     isSubmitting = false

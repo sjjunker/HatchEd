@@ -15,7 +15,7 @@ struct NotificationsView: View {
     private let cardWidth: CGFloat = 260
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Image(systemName: "exclamationmark.circle")
                     .foregroundColor(.hatchEdWarning)
@@ -25,21 +25,22 @@ struct NotificationsView: View {
             }
 
             if notifications.isEmpty {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.hatchEdSecondaryBackground)
-                    .overlay(
-                        VStack(spacing: 8) {
+                VStack(spacing: 0) {
+                    Spacer()
+                        .frame(height: 24)
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.hatchEdSecondaryBackground)
+                        .overlay(
                             Text("No new notifications")
                                 .font(.subheadline)
                                 .foregroundColor(.hatchEdSecondaryText)
-                            Text("You're all caught up! We'll let you know when there's something to review.")
-                                .font(.footnote)
                                 .multilineTextAlignment(.center)
-                                .foregroundColor(.hatchEdSecondaryText)
-                        }
-                        .padding()
-                    )
-                    .frame(maxWidth: .infinity)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        )
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 80)
+                }
+                .frame(maxWidth: .infinity)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 16) {
@@ -73,6 +74,7 @@ struct NotificationsView: View {
                         }
                     }
                     .padding(.vertical, 4)
+                    .padding(.top, 12)
                 }
             }
         }

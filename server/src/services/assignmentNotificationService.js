@@ -7,6 +7,10 @@ import { listStudentsForFamily } from '../models/userModel.js'
 // Track ongoing checks to prevent concurrent execution
 const ongoingChecks = new Set()
 
+// Throttle: only run overdue check for a family at most once per day
+const ONE_DAY_MS = 24 * 60 * 60 * 1000
+const lastCheckByFamilyId = new Map()
+
 export async function checkOverdueAssignments (familyId) {
   const familyIdStr = familyId.toString()
   
@@ -15,8 +19,16 @@ export async function checkOverdueAssignments (familyId) {
     console.log(`Skipping duplicate check for family ${familyIdStr}`)
     return
   }
+
+  // Skip if we already checked this family in the last 24 hours
+  const lastCheck = lastCheckByFamilyId.get(familyIdStr)
+  if (lastCheck && Date.now() - lastCheck < ONE_DAY_MS) {
+    console.log(`Skipping overdue check for family ${familyIdStr} (last check ${Math.round((Date.now() - lastCheck) / 3600000)}h ago)`)
+    return
+  }
   
   ongoingChecks.add(familyIdStr)
+  lastCheckByFamilyId.set(familyIdStr, Date.now())
   
   try {
     const assignments = await findAssignmentsByFamilyId(familyId)

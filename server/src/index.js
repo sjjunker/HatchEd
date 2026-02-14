@@ -199,8 +199,9 @@ async function start () {
       })
     })
     
-    // Set up background task to check for overdue assignments every hour
+    // Set up background task to check for overdue assignments once per day
     const { checkAllFamiliesOverdueAssignments } = await import('./services/assignmentNotificationService.js')
+    const ONE_DAY_MS = 24 * 60 * 60 * 1000
     setInterval(() => {
       checkAllFamiliesOverdueAssignments().catch(err => {
         console.error('Error in scheduled overdue assignment check:', {
@@ -209,9 +210,8 @@ async function start () {
           timestamp: new Date().toISOString()
         })
       })
-    }, 60 * 60 * 1000) // Check every hour
-    
-    // Run initial check after 30 seconds
+    }, ONE_DAY_MS)
+    // Run first check 60 seconds after startup
     setTimeout(() => {
       checkAllFamiliesOverdueAssignments().catch(err => {
         console.error('Error in initial overdue assignment check:', {
@@ -220,7 +220,7 @@ async function start () {
           timestamp: new Date().toISOString()
         })
       })
-    }, 30000)
+    }, 60000)
   } catch (error) {
     console.error('Failed to start server:', {
       message: error.message,

@@ -6,6 +6,7 @@ import { findFamilyById } from '../models/familyModel.js'
 import { createCourse, findCoursesByFamilyId, findCoursesByStudentId, updateCourse, deleteCourse, findCourseById } from '../models/courseModel.js'
 import { createAssignment, findAssignmentsByFamilyId, findAssignmentsByCourseId, updateAssignment, deleteAssignment, findAssignmentById } from '../models/assignmentModel.js'
 import { serializeCourse, serializeAssignment } from '../utils/serializers.js'
+import { unlinkResourcesByAssignmentId } from '../models/resourceModel.js'
 
 // Courses
 export async function createCourseHandler (req, res) {
@@ -236,6 +237,7 @@ export async function deleteAssignmentHandler (req, res) {
     return res.status(403).json({ error: { message: 'Not authorized' } })
   }
 
+  await unlinkResourcesByAssignmentId(id)
   await deleteAssignment(id)
   res.json({ success: true })
 }

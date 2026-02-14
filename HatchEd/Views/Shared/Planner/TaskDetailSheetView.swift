@@ -27,7 +27,10 @@ struct TaskDetailSheetView: View {
     @State private var editedStudent: User? = nil
     @State private var isSaving: Bool = false
     @State private var errorMessage: String? = nil
-    
+    @State private var linkedResources: [Resource] = []
+    @State private var previewFileURL: URL?
+    @State private var previewResourceType: ResourceType?
+
     private let api = APIClient.shared
     
     private let dateFormatter: DateFormatter = {
@@ -159,6 +162,42 @@ struct TaskDetailSheetView: View {
                         course.students.contains(where: { $0.id == student.id }) && course.assignments.contains { $0.id == assignment.id }
                     }
                 }
+            }
+            .task(id: assignment?.id) {
+                guard let assignment = assignment else { return }
+                do {
+                    linkedResources = try await api.fetchResourcesForAssignment(assignmentId: assignment.id)
+                } catch {
+                    linkedResources = []
+                }
+            }
+            .sheet(isPresented: Binding(
+                get: { previewFileURL != nil },
+                set: { if !$0 { if let url = previewFileURL { try? FileManager.default.removeItem(at: url) }; previewFileURL = nil; previewResourceType = nil } }
+            )) {
+                if let url = previewFileURL {
+                    ResourcePreviewView(url: url, resourceType: previewResourceType) {
+                        if let u = previewFileURL { try? FileManager.default.removeItem(at: u) }
+                        previewFileURL = nil
+                        previewResourceType = nil
+                    }
+                }
+            }
+        }
+    }
+
+    private func openLinkedResource(_ resource: Resource) {
+        if resource.type == .link, let u = resource.url, let url = URL(string: u) {
+            UIApplication.shared.open(url)
+            return
+        }
+        guard resource.fileUrl != nil else { return }
+        Task {
+            do {
+                let localURL = try await api.downloadResourceFile(resourceId: resource.id, displayName: resource.displayName, mimeType: resource.mimeType)
+                await MainActor.run { previewFileURL = localURL; previewResourceType = resource.type }
+            } catch {
+                await MainActor.run { errorMessage = "Could not open file: \(error.localizedDescription)" }
             }
         }
     }
@@ -376,6 +415,39 @@ struct TaskDetailSheetView: View {
                                 Text(course.name)
                                     .font(.body)
                                     .foregroundColor(.hatchEdText)
+                            }
+                        }
+                        .padding()
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color.hatchEdCardBackground)
+                        )
+                    }
+
+                    // Linked resources (for assignments – parent can attach resources to help student)
+                    if assignment != nil, !linkedResources.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Resources")
+                                .font(.headline)
+                                .foregroundColor(.hatchEdText)
+                            ForEach(linkedResources) { resource in
+                                Button {
+                                    openLinkedResource(resource)
+                                } label: {
+                                    HStack {
+                                        Image(systemName: resource.type.systemImage)
+                                            .foregroundColor(.hatchEdAccent)
+                                        Text(resource.displayName)
+                                            .foregroundColor(.hatchEdText)
+                                            .multilineTextAlignment(.leading)
+                                        Spacer()
+                                        Image(systemName: "arrow.up.forward")
+                                            .font(.caption)
+                                            .foregroundColor(.hatchEdSecondaryText)
+                                    }
+                                    .padding(.vertical, 6)
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                         .padding()

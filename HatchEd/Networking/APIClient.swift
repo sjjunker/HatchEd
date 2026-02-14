@@ -514,6 +514,182 @@ final class APIClient {
         )
     }
 
+    // MARK: - Resources (folders + file/link/photo/video, optional assignment link)
+    struct ResourceFoldersResponse: Decodable { let folders: [ResourceFolder] }
+    struct ResourceFolderResponse: Decodable { let folder: ResourceFolder }
+    struct ResourcesResponse: Decodable { let resources: [Resource] }
+    struct ResourceResponse: Decodable { let resource: Resource }
+
+    func fetchResourceFolders() async throws -> [ResourceFolder] {
+        let r = try await request(Endpoint(path: "api/resources/folders"), responseType: ResourceFoldersResponse.self)
+        return r.folders
+    }
+    struct CreateResourceFolderRequest: Encodable {
+        let name: String
+        let parentFolderId: String?
+    }
+    struct UpdateResourceFolderRequest: Encodable {
+        let name: String?
+        let parentFolderId: String?
+    }
+    func createResourceFolder(name: String, parentFolderId: String?) async throws -> ResourceFolder {
+        let body = CreateResourceFolderRequest(name: name, parentFolderId: parentFolderId)
+        let r = try await request(Endpoint(path: "api/resources/folders", method: .post, body: body), responseType: ResourceFolderResponse.self)
+        return r.folder
+    }
+    func updateResourceFolder(id: String, name: String?, parentFolderId: String?) async throws -> ResourceFolder {
+        let body = UpdateResourceFolderRequest(name: name, parentFolderId: parentFolderId)
+        let r = try await request(Endpoint(path: "api/resources/folders/\(id)", method: .patch, body: body), responseType: ResourceFolderResponse.self)
+        return r.folder
+    }
+    func deleteResourceFolder(id: String) async throws {
+        _ = try await request(Endpoint(path: "api/resources/folders/\(id)", method: .delete), responseType: EmptyResponse.self)
+    }
+    func fetchResources(folderId: String? = nil) async throws -> [Resource] {
+        var endpoint = Endpoint(path: "api/resources")
+        if let fid = folderId {
+            endpoint.queryItems = [URLQueryItem(name: "folderId", value: fid)]
+        }
+        let r = try await request(endpoint, responseType: ResourcesResponse.self)
+        return r.resources
+    }
+    func fetchResourcesForAssignment(assignmentId: String) async throws -> [Resource] {
+        let r = try await request(
+            Endpoint(path: "api/resources/for-assignment/\(assignmentId)"),
+            responseType: ResourcesResponse.self
+        )
+        return r.resources
+    }
+    struct CreateResourceLinkRequest: Encodable {
+        let displayName: String
+        let type: String = "link"
+        let url: String
+        let folderId: String?
+        let assignmentId: String?
+    }
+    func createResourceLink(displayName: String, url: String, folderId: String?, assignmentId: String?) async throws -> Resource {
+        let body = CreateResourceLinkRequest(displayName: displayName, url: url, folderId: folderId, assignmentId: assignmentId)
+        let r = try await request(Endpoint(path: "api/resources", method: .post, body: body), responseType: ResourceResponse.self)
+        return r.resource
+    }
+    func uploadResource(displayName: String, type: ResourceType, folderId: String?, assignmentId: String?, fileName: String, fileData: Data, mimeType: String) async throws -> Resource {
+        var request = URLRequest(url: baseURL.appendingPathComponent("api/resources/upload"))
+        request.httpMethod = "POST"
+        if let token = tokenStore.token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        let boundary = UUID().uuidString
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var body = Data()
+        func appendField(_ name: String, _ value: String) {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(value)\r\n".data(using: .utf8)!)
+        }
+        appendField("displayName", displayName)
+        appendField("type", type.rawValue)
+        if let f = folderId { appendField("folderId", f) }
+        if let a = assignmentId { appendField("assignmentId", a) }
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+        body.append(fileData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = body
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        guard (200...299).contains(httpResponse.statusCode) else { throw try APIError(from: data, statusCode: httpResponse.statusCode) }
+        return try JSONDecoder.api.decode(ResourceResponse.self, from: data).resource
+    }
+    struct UpdateResourceRequest: Encodable {
+        let displayName: String?
+        let folderId: String?
+        let assignmentId: String?
+    }
+    func updateResource(id: String, displayName: String?, folderId: String?, assignmentId: String?) async throws -> Resource {
+        let body = UpdateResourceRequest(displayName: displayName, folderId: folderId, assignmentId: assignmentId)
+        let r = try await request(Endpoint(path: "api/resources/\(id)", method: .patch, body: body), responseType: ResourceResponse.self)
+        return r.resource
+    }
+    func deleteResource(id: String) async throws {
+        _ = try await request(Endpoint(path: "api/resources/\(id)", method: .delete), responseType: EmptyResponse.self)
+    }
+    /// Full URL for a resource file (for opening in browser or app).
+    func fullURL(forFileUrl fileUrl: String) -> URL? {
+        guard !fileUrl.isEmpty else { return nil }
+        let path = fileUrl.hasPrefix("/") ? String(fileUrl.dropFirst()) : fileUrl
+        return baseURL.appendingPathComponent(path)
+    }
+
+    /// Downloads a resource's file via the authenticated API (GET /api/resources/:id/file) and returns a local temp file URL for preview.
+    /// The server looks up the resource in the DB and streams the actual file from disk, so you always get the correct content.
+    func downloadResourceFile(resourceId: String, displayName: String?, mimeType: String?) async throws -> URL {
+        let endpoint = Endpoint(path: "api/resources/\(resourceId)/file")
+        var request = try endpoint.urlRequest(baseURL: baseURL)
+        if let token = tokenStore.token {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.invalidResponse
+        }
+        let contentType = (http.value(forHTTPHeaderField: "Content-Type") ?? "").lowercased()
+        if contentType.contains("text/html") || contentType.contains("application/json") {
+            throw APIError.invalidResponse
+        }
+        var ext = ""
+        if let mime = mimeType?.lowercased() {
+            ext = Self.fileExtension(forMimeType: mime)
+        }
+        if ext.isEmpty, let name = displayName, !name.isEmpty {
+            let fromName = (name as NSString).pathExtension.lowercased()
+            if ["doc", "docx", "pdf", "xls", "xlsx", "ppt", "pptx", "txt", "rtf"].contains(fromName) {
+                ext = fromName
+            }
+        }
+        let safeExt = ext.isEmpty ? "" : ".\(ext)"
+        let base: String
+        if let name = displayName?.trimmingCharacters(in: .whitespaces), !name.isEmpty {
+            let sanitized = name
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "\\", with: "_")
+                .replacingOccurrences(of: ":", with: "_")
+                .replacingOccurrences(of: "*", with: "_")
+                .replacingOccurrences(of: "?", with: "_")
+                .replacingOccurrences(of: "\"", with: "_")
+                .replacingOccurrences(of: "<", with: "_")
+                .replacingOccurrences(of: ">", with: "_")
+                .replacingOccurrences(of: "|", with: "_")
+            let withoutExt = (sanitized as NSString).deletingPathExtension
+            base = withoutExt.isEmpty ? "preview" : withoutExt
+        } else {
+            base = "preview"
+        }
+        let filename = base + safeExt
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        if FileManager.default.fileExists(atPath: tempURL.path) {
+            try? FileManager.default.removeItem(at: tempURL)
+        }
+        try data.write(to: tempURL)
+        return tempURL
+    }
+
+    private static func fileExtension(forMimeType mimeType: String) -> String {
+        let mime = mimeType.split(separator: ";").first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? mimeType
+        switch mime {
+        case "image/jpeg", "image/jpg": return "jpg"
+        case "image/png": return "png"
+        case "image/gif": return "gif"
+        case "image/heic": return "heic"
+        case "image/webp": return "webp"
+        case "application/pdf": return "pdf"
+        case "application/msword": return "doc"
+        case "application/vnd.openxmlformats-officedocument.wordprocessingml.document": return "docx"
+        case "text/plain": return "txt"
+        case "text/html": return "html"
+        case "application/json": return "json"
+        default: return ""
+        }
+    }
+
     // Two-Factor Authentication API methods
     struct TwoFactorSetupResponse: Decodable {
         let secret: String

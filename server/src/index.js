@@ -18,6 +18,7 @@ import subjectsRoutes from './routes/subjects.js'
 import portfolioRoutes from './routes/portfolios.js'
 import plannerRoutes from './routes/planner.js'
 import inviteRoutes from './routes/invite.js'
+import resourcesRoutes from './routes/resources.js'
 import { errorHandler } from './middleware/errorHandler.js'
 import { notFoundHandler } from './middleware/notFoundHandler.js'
 
@@ -101,7 +102,8 @@ app.get('/', (_req, res) => {
       subjects: '/api/subjects',
       portfolios: '/api/portfolios',
       planner: '/api/planner',
-      invite: '/api/invite'
+      invite: '/api/invite',
+      resources: '/api/resources'
     }
   })
 })
@@ -123,6 +125,7 @@ app.use('/api/subjects', subjectsRoutes)
 app.use('/api/portfolios', portfolioRoutes)
 app.use('/api/planner', plannerRoutes)
 app.use('/api/invite', inviteRoutes)
+app.use('/api/resources', resourcesRoutes)
 
 // Serve uploaded files
 app.use('/uploads', express.static('uploads'))

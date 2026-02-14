@@ -2,502 +2,795 @@
 //  Resources.swift
 //  HatchEd
 //
-//  Created by Sandi Junker on 10/22/25.
-//  Updated with assistance from Cursor (ChatGPT) on 11/7/25.
+//  Family resources: user-created folders; file, link, photo, video with custom names; optional link to assignment.
 //
+
 import SwiftUI
 import UniformTypeIdentifiers
 import PhotosUI
+import AVKit
 
-struct Resources: View {
-    @EnvironmentObject private var authViewModel: AuthViewModel
-    @State private var studentWorkFiles: [String: [StudentWorkFile]] = [:] // Keyed by studentId
-    @State private var isLoading = false
-    @State private var errorMessage: String?
-    @State private var selectedStudent: User?
-    @State private var showingFilePicker = false
-    @State private var selectedPhotoItems: [PhotosPickerItem] = []
-    @State private var showingPhotoPicker = false
-    @State private var searchText = ""
-    
-    private let api = APIClient.shared
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            // Search Bar
-            HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.hatchEdSecondaryText)
-                TextField("Search files...", text: $searchText)
-                    .textFieldStyle(.plain)
-            }
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.hatchEdCardBackground)
-            )
-            .padding(.horizontal)
-            .padding(.top, 8)
-            
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    studentWorkSection
-                }
-                .padding()
-            }
-        }
-        .navigationTitle("Resources")
-        .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            Task {
-                await loadStudentWorkFiles()
-            }
-        }
-        .refreshable {
-            await loadStudentWorkFiles()
-        }
-        .fileImporter(
-            isPresented: $showingFilePicker,
-            allowedContentTypes: [.item], // Allow all file types
-            allowsMultipleSelection: true
-        ) { result in
-            Task {
-                await handleFileSelection(result)
-            }
-        }
-        .photosPicker(
-            isPresented: $showingPhotoPicker,
-            selection: $selectedPhotoItems,
-            maxSelectionCount: 10,
-            matching: .images
-        )
-        .onChange(of: selectedPhotoItems) { oldValue, newValue in
-            // Only process if we have new items and the picker was just shown
-            if !newValue.isEmpty && newValue.count != oldValue.count {
-                Task {
-                    await handlePhotoSelection(newValue)
-                }
-            }
-        }
+/// Returns display path for a folder (e.g. "Math > Chapter 1") or "Root" for nil.
+private func folderPathString(folderId: String?, in folders: [ResourceFolder]) -> String {
+    guard let id = folderId, let folder = folders.first(where: { $0.id == id }) else { return "Root" }
+    var names: [String] = []
+    var current: ResourceFolder? = folder
+    while let f = current {
+        names.insert(f.name, at: 0)
+        current = f.parentFolderId.flatMap { pid in folders.first { $0.id == pid } }
     }
-    
-    private var studentWorkSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Image(systemName: "folder.fill")
-                    .foregroundColor(.hatchEdAccent)
-                Text("Student Work")
-                    .font(.headline)
-                    .foregroundColor(.hatchEdText)
-                Spacer()
-                Menu {
-                    Button {
-                        selectedStudent = nil // Will use first student if none selected
-                        showingPhotoPicker = true
-                    } label: {
-                        Label("Add Photos", systemImage: "photo")
-                    }
-                    Button {
-                        selectedStudent = nil // Will use first student if none selected
-                        showingFilePicker = true
-                    } label: {
-                        Label("Add Files", systemImage: "doc")
-                    }
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .foregroundColor(.hatchEdAccent)
-                        .font(.title2)
-                }
-            }
-            
-            if authViewModel.students.isEmpty {
-                Text("No students available")
-                    .font(.subheadline)
-                    .foregroundColor(.hatchEdSecondaryText)
-                    .padding()
-            } else {
-                let hasResults = authViewModel.students.contains { student in
-                    !filteredFiles(for: student).isEmpty
-                }
-                
-                if !searchText.isEmpty && !hasResults {
-                    Text("No files found matching \"\(searchText)\"")
-                        .font(.subheadline)
-                        .foregroundColor(.hatchEdSecondaryText)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding()
-                } else {
-                    ForEach(authViewModel.students) { student in
-                        let filtered = filteredFiles(for: student)
-                        if !searchText.isEmpty && filtered.isEmpty {
-                            EmptyView()
-                        } else {
-                            StudentWorkFilesList(
-                                student: student,
-                                files: filtered,
-                                onUpload: {
-                                    selectedStudent = student
-                                    showingFilePicker = true
-                                },
-                                onPhotoUpload: { items in
-                                    Task {
-                                        await handlePhotoSelection(items, for: student)
-                                    }
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color.hatchEdCardBackground)
-        )
+    return names.joined(separator: " › ")
+}
+
+/// Returns set of folder ids that are the given folder or any of its descendants (for cycle prevention).
+private func descendantIds(of folderId: String, in folders: [ResourceFolder]) -> Set<String> {
+    var result: Set<String> = [folderId]
+    for f in folders where f.parentFolderId == folderId {
+        result.formUnion(descendantIds(of: f.id, in: folders))
     }
-    
-    @MainActor
-    private func loadStudentWorkFiles() async {
-        isLoading = true
-        errorMessage = nil
-        
-        var allFiles: [String: [StudentWorkFile]] = [:]
-        
-        for student in authViewModel.students {
-            do {
-                let files = try await api.fetchStudentWorkFiles(studentId: student.id)
-                allFiles[student.id] = files
-            } catch {
-                print("Failed to load files for student \(student.id): \(error)")
-            }
-        }
-        
-        studentWorkFiles = allFiles
-        isLoading = false
+    return result
+}
+
+/// Reads file data from a URL (including iCloud-backed URLs) using coordination so the system can resolve the file.
+private func readFileData(from url: URL) throws -> Data {
+    let coordinator = NSFileCoordinator()
+    var coordinatorError: NSError?
+    var data: Data?
+    coordinator.coordinate(readingItemAt: url, options: .forUploading, error: &coordinatorError) { coordinatedURL in
+        data = try? Data(contentsOf: coordinatedURL)
     }
-    
-    @MainActor
-    private func handleFileSelection(_ result: Result<[URL], Error>) async {
-        guard let student = selectedStudent ?? authViewModel.students.first else { return }
-        
-        switch result {
-        case .success(let urls):
-            for url in urls {
-                do {
-                    // Start accessing the security-scoped resource
-                    guard url.startAccessingSecurityScopedResource() else {
-                        print("Failed to access security-scoped resource: \(url)")
-                        continue
-                    }
-                    defer { url.stopAccessingSecurityScopedResource() }
-                    
-                    // Read file data
-                    let fileData = try Data(contentsOf: url)
-                    
-                    // Get file name from URL
-                    let fileName = url.lastPathComponent
-                    
-                    // Determine file type from URL extension
-                    let fileExtension = url.pathExtension.lowercased()
-                    let fileType = getMimeType(for: fileExtension)
-                    
-                    print("[Resources] Uploading file - name: \(fileName), type: \(fileType), size: \(fileData.count) bytes")
-                    
-                    let uploadedFile = try await api.uploadStudentWorkFile(
-                        studentId: student.id,
-                        fileName: fileName,
-                        fileData: fileData,
-                        fileType: fileType
-                    )
-                    
-                    print("[Resources] File uploaded successfully: \(uploadedFile.fileName)")
-                } catch {
-                    print("[Resources] Failed to upload file \(url.lastPathComponent): \(error.localizedDescription)")
-                    errorMessage = "Failed to upload \(url.lastPathComponent): \(error.localizedDescription)"
-                }
-            }
-            
-            // Refresh files after uploads
-            await loadStudentWorkFiles()
-            
-        case .failure(let error):
-            print("[Resources] File picker error: \(error.localizedDescription)")
-            errorMessage = "Failed to select files: \(error.localizedDescription)"
-        }
-    }
-    
-    @MainActor
-    private func handlePhotoSelection(_ items: [PhotosPickerItem], for student: User? = nil) async {
-        let targetStudent = student ?? selectedStudent ?? authViewModel.students.first
-        guard let student = targetStudent else {
-            print("[Resources] No student available for photo upload")
-            return
-        }
-        
-        print("[Resources] Starting photo upload for student: \(student.name ?? student.id), items: \(items.count)")
-        
-        var successCount = 0
-        var failureCount = 0
-        
-        for (index, item) in items.enumerated() {
-            do {
-                print("[Resources] Loading photo \(index + 1) of \(items.count)...")
-                
-                // Try loading as Data - this will automatically download iCloud photos if needed
-                // The key is to catch errors and provide helpful feedback
-                var imageData: Data?
-                
-                do {
-                    // Try loading as Data - Photos framework will handle iCloud download automatically
-                    if let data = try await item.loadTransferable(type: Data.self) {
-                        imageData = data
-                        print("[Resources] Loaded photo as Data")
-                    }
-                } catch {
-                    // If loading fails, it's likely an iCloud photo that needs to be downloaded
-                    print("[Resources] Error loading photo data: \(error.localizedDescription)")
-                    print("[Resources] This may be an iCloud photo. Retrying with longer wait...")
-                    
-                    // Wait a bit and try again (gives iCloud time to download)
-                    try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-                    
-                    // Try one more time
-                    if let data = try? await item.loadTransferable(type: Data.self) {
-                        imageData = data
-                        print("[Resources] Successfully loaded photo on retry")
-                    } else {
-                        throw error // Re-throw if still fails
-                    }
-                }
-                
-                guard let data = imageData else {
-                    print("[Resources] Failed to load photo data for item \(index + 1)")
-                    errorMessage = "Failed to load photo \(index + 1). Please try selecting a different photo or ensure iCloud photos are downloaded."
-                    failureCount += 1
-                    continue
-                }
-                
-                print("[Resources] Photo data loaded: \(data.count) bytes")
-                
-                // Determine image type from data
-                let imageType = getImageType(from: data)
-                
-                // Generate filename with timestamp and index
-                let timestamp = Int(Date().timeIntervalSince1970)
-                let fileName = "photo_\(timestamp)_\(index + 1).\(imageType.extension)"
-                
-                // Use the MIME type from image detection
-                let fileType = imageType.mimeType
-                
-                print("[Resources] Uploading photo - name: \(fileName), type: \(fileType), size: \(data.count) bytes")
-                
-                let uploadedFile = try await api.uploadStudentWorkFile(
-                    studentId: student.id,
-                    fileName: fileName,
-                    fileData: data,
-                    fileType: fileType
-                )
-                
-                print("[Resources] Photo uploaded successfully: \(uploadedFile.fileName)")
-                successCount += 1
-            } catch {
-                print("[Resources] Failed to upload photo \(index + 1): \(error.localizedDescription)")
-                errorMessage = "Failed to upload photo: \(error.localizedDescription)"
-                failureCount += 1
-            }
-        }
-        
-        print("[Resources] Photo upload complete - Success: \(successCount), Failed: \(failureCount)")
-        
-        // Clear selection after upload
-        selectedPhotoItems = []
-        
-        // Refresh files after uploads - add a small delay to ensure server has processed
-        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second delay
-        await loadStudentWorkFiles()
-        
-        if successCount > 0 {
-            print("[Resources] Files refreshed after photo upload")
-        }
-    }
-    
-    private func getImageType(from data: Data) -> (extension: String, mimeType: String) {
-        // Check for common image formats
-        if data.count >= 4 {
-            let bytes = [UInt8](data.prefix(4))
-            
-            // PNG signature: 89 50 4E 47
-            if bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47 {
-                return ("png", "image/png")
-            }
-            
-            // JPEG signature: FF D8 FF
-            if bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF {
-                return ("jpg", "image/jpeg")
-            }
-            
-            // GIF signature: 47 49 46 38
-            if bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x38 {
-                return ("gif", "image/gif")
-            }
-        }
-        
-        // Default to JPEG
-        return ("jpg", "image/jpeg")
-    }
-    
-    private func getMimeType(for fileExtension: String) -> String {
-        let mimeTypes: [String: String] = [
-            "pdf": "application/pdf",
-            "doc": "application/msword",
-            "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "xls": "application/vnd.ms-excel",
-            "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "ppt": "application/vnd.ms-powerpoint",
-            "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            "txt": "text/plain",
-            "rtf": "application/rtf",
-            "zip": "application/zip",
-            "jpg": "image/jpeg",
-            "jpeg": "image/jpeg",
-            "png": "image/png",
-            "gif": "image/gif",
-            "mp4": "video/mp4",
-            "mov": "video/quicktime",
-            "mp3": "audio/mpeg",
-            "wav": "audio/wav",
-            "html": "text/html",
-            "css": "text/css",
-            "js": "application/javascript",
-            "json": "application/json",
-            "xml": "application/xml",
-            "csv": "text/csv"
-        ]
-        
-        return mimeTypes[fileExtension.lowercased()] ?? "application/octet-stream"
-    }
-    
-    private func filteredFiles(for student: User) -> [StudentWorkFile] {
-        let files = studentWorkFiles[student.id] ?? []
-        guard !searchText.isEmpty else {
-            return files
-        }
-        let searchLower = searchText.lowercased()
-        return files.filter { file in
-            file.fileName.lowercased().contains(searchLower)
+    if let err = coordinatorError { throw err }
+    guard let result = data else { throw NSError(domain: NSCocoaErrorDomain, code: NSFileReadUnknownError, userInfo: [NSLocalizedDescriptionKey: "Could not read file"]) }
+    return result
+}
+
+/// Transferable for loading image data from PhotosPickerItem (e.g. iCloud Photos).
+private struct ImageDataTransfer: Transferable {
+    let data: Data
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(importedContentType: .image) { data in
+            Self(data: data)
         }
     }
 }
 
-private struct StudentWorkFilesList: View {
-    let student: User
-    let files: [StudentWorkFile]
-    let onUpload: () -> Void
-    let onPhotoUpload: ([PhotosPickerItem]) -> Void
-    @State private var showingPhotoPicker = false
-    @State private var selectedPhotoItems: [PhotosPickerItem] = []
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(student.name ?? "Student")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.hatchEdText)
-                Spacer()
-                Menu {
-                    Button {
-                        showingPhotoPicker = true
-                    } label: {
-                        Label("Add Photos", systemImage: "photo")
+struct Resources: View {
+    @EnvironmentObject private var authViewModel: AuthViewModel
+    @State private var folders: [ResourceFolder] = []
+    @State private var resources: [Resource] = []
+    @State private var currentFolderId: String?
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+    @State private var showingAddFolder = false
+    @State private var showingAddResource = false
+    @State private var newFolderName = ""
+    @State private var resourceToEdit: Resource?
+    @State private var folderToEdit: ResourceFolder?
+    @State private var previewFileURL: URL?
+    @State private var previewResourceType: ResourceType?
+    private let api = APIClient.shared
+
+    private var currentFolder: ResourceFolder? {
+        currentFolderId.flatMap { id in folders.first { $0.id == id } }
+    }
+
+    /// Path from root to current folder; nil = root. First element is nil (Resources), then parent chain, then current.
+    private var breadcrumbPath: [(id: String?, folder: ResourceFolder?)] {
+        var path: [(id: String?, ResourceFolder?)] = [(nil, nil)]
+        var folder = currentFolder
+        var chain: [ResourceFolder] = []
+        while let f = folder {
+            chain.insert(f, at: 0)
+            folder = f.parentFolderId.flatMap { pid in folders.first { $0.id == pid } }
+        }
+        for f in chain {
+            path.append((f.id, f))
+        }
+        return path
+    }
+
+    /// Top bar shown when inside a folder: Back button + breadcrumb. Stays visible (safeAreaInset).
+    private var breadcrumbBar: some View {
+        HStack(spacing: 0) {
+            Button {
+                currentFolderId = currentFolder?.parentFolderId
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.left")
+                        .font(.body.weight(.semibold))
+                    Text("Back")
+                        .font(.subheadline.weight(.medium))
+                }
+                .foregroundColor(.accentColor)
+                .padding(.trailing, 12)
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(.plain)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(Array(breadcrumbPath.enumerated()), id: \.offset) { index, item in
+                        if index > 0 {
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(.secondary)
+                        }
+                        Button {
+                            currentFolderId = item.id
+                        } label: {
+                            Text(item.folder?.name ?? "Resources")
+                                .font(.subheadline)
+                                .fontWeight(index == breadcrumbPath.count - 1 ? .semibold : .regular)
+                                .foregroundColor(index == breadcrumbPath.count - 1 ? .primary : .secondary)
+                                .lineLimit(1)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    Button {
-                        onUpload()
-                    } label: {
-                        Label("Add Files", systemImage: "doc")
+                }
+                .padding(.horizontal, 4)
+                .padding(.vertical, 4)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .frame(maxWidth: .infinity)
+        .background(Color(.secondarySystemBackground))
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .padding()
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 12) {
+                        let subfolders = folders.filter { $0.parentFolderId == currentFolderId }
+                        ForEach(subfolders) { folder in
+                            FolderRow(
+                                folder: folder,
+                                onTap: { currentFolderId = folder.id },
+                                onEdit: { folderToEdit = folder },
+                                onDelete: { Task { await deleteFolder(folder) } }
+                            )
+                        }
+                        ForEach(resources) { resource in
+                            ResourceRow(
+                                resource: resource,
+                                onTap: { openResource(resource) },
+                                onEdit: { resourceToEdit = resource },
+                                onDelete: { Task { await deleteResource(resource) } }
+                            )
+                        }
+                        if subfolders.isEmpty && resources.isEmpty {
+                            Text("No folders or resources here")
+                                .font(.subheadline)
+                                .foregroundColor(.hatchEdSecondaryText)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 32)
+                        }
+                    }
+                    .padding()
+                }
+            }
+        }
+        .navigationTitle(currentFolder == nil ? "Resources" : currentFolder?.name ?? "Folder")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button { showingAddFolder = true } label: {
+                        Label("New Folder", systemImage: "folder.badge.plus")
+                    }
+                    Button { showingAddResource = true } label: {
+                        Label("Add Resource", systemImage: "plus.circle")
                     }
                 } label: {
-                    Image(systemName: "plus.circle")
+                    Image(systemName: "plus.circle.fill")
+                }
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if breadcrumbPath.count > 1 {
+                breadcrumbBar
+            }
+        }
+        .task(id: currentFolderId) { await load() }
+        .refreshable { await load() }
+        .alert("Error", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button("OK") {}
+        } message: {
+            if let m = errorMessage { Text(m) }
+        }
+        .sheet(isPresented: $showingAddFolder) {
+            AddFolderSheet(
+                name: $newFolderName,
+                parentFolderId: currentFolderId,
+                folders: folders,
+                onSave: {
+                    Task {
+                        await createFolder()
+                        newFolderName = ""
+                        showingAddFolder = false
+                    }
+                },
+                onCancel: { showingAddFolder = false }
+            )
+        }
+        .sheet(isPresented: $showingAddResource) {
+            AddResourceSheet(
+                folderId: currentFolderId,
+                assignments: [],
+                onDismiss: { showingAddResource = false },
+                onSaved: {
+                    Task { await load() }
+                    showingAddResource = false
+                },
+                errorMessage: $errorMessage
+            )
+            .environmentObject(authViewModel)
+        }
+        .sheet(item: $resourceToEdit) { resource in
+            EditResourceSheet(
+                resource: resource,
+                folderId: currentFolderId,
+                folders: folders,
+                onDismiss: { resourceToEdit = nil },
+                onSaved: {
+                    Task { await load() }
+                    resourceToEdit = nil
+                },
+                errorMessage: $errorMessage
+            )
+        }
+        .sheet(item: $folderToEdit) { folder in
+            EditFolderSheet(
+                folder: folder,
+                folders: folders,
+                onDismiss: { folderToEdit = nil },
+                onSaved: {
+                    Task { await load() }
+                    folderToEdit = nil
+                },
+                errorMessage: $errorMessage
+            )
+        }
+        .sheet(isPresented: Binding(
+            get: { previewFileURL != nil },
+            set: { if !$0 { if let url = previewFileURL { try? FileManager.default.removeItem(at: url) }; previewFileURL = nil; previewResourceType = nil } }
+        )) {
+            if let url = previewFileURL {
+                ResourcePreviewView(url: url, resourceType: previewResourceType) {
+                    if let u = previewFileURL { try? FileManager.default.removeItem(at: u) }
+                    previewFileURL = nil
+                    previewResourceType = nil
+                }
+            }
+        }
+    }
+
+    private func load() async {
+        await MainActor.run { isLoading = true; errorMessage = nil }
+        do {
+            let (f, r) = try await (api.fetchResourceFolders(), api.fetchResources(folderId: currentFolderId))
+            await MainActor.run {
+                folders = f
+                resources = r
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                isLoading = false
+            }
+        }
+    }
+
+    private func createFolder() async {
+        guard !newFolderName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        do {
+            _ = try await api.createResourceFolder(name: newFolderName.trimmingCharacters(in: .whitespaces), parentFolderId: currentFolderId)
+            await load()
+        } catch {
+            await MainActor.run { errorMessage = error.localizedDescription }
+        }
+    }
+
+    private func deleteFolder(_ folder: ResourceFolder) async {
+        do {
+            try await api.deleteResourceFolder(id: folder.id)
+            if currentFolderId == folder.id { currentFolderId = folder.parentFolderId }
+            await load()
+        } catch {
+            await MainActor.run { errorMessage = error.localizedDescription }
+        }
+    }
+
+    private func deleteResource(_ resource: Resource) async {
+        do {
+            try await api.deleteResource(id: resource.id)
+            await load()
+        } catch {
+            await MainActor.run { errorMessage = error.localizedDescription }
+        }
+    }
+
+    private func openResource(_ resource: Resource) {
+        if resource.type == .link, let u = resource.url, let url = URL(string: u) {
+            UIApplication.shared.open(url)
+            return
+        }
+        guard resource.fileUrl != nil else { return }
+        Task {
+            do {
+                let localURL = try await api.downloadResourceFile(resourceId: resource.id, displayName: resource.displayName, mimeType: resource.mimeType)
+                await MainActor.run { previewFileURL = localURL; previewResourceType = resource.type }
+            } catch {
+                await MainActor.run { errorMessage = "Could not open file: \(error.localizedDescription)" }
+            }
+        }
+    }
+}
+
+extension Resource: Hashable {
+    static func == (lhs: Resource, rhs: Resource) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+}
+
+extension ResourceFolder: Hashable {
+    static func == (lhs: ResourceFolder, rhs: ResourceFolder) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+}
+
+// MARK: - Rows
+private struct FolderRow: View {
+    let folder: ResourceFolder
+    let onTap: () -> Void
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+    @State private var showingDelete = false
+
+    var body: some View {
+        HStack {
+            Button(action: onTap) {
+                HStack {
+                    Image(systemName: "folder.fill")
+                        .foregroundColor(.hatchEdWarning)
+                    Text(folder.name)
+                        .foregroundColor(.hatchEdText)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .foregroundColor(.hatchEdSecondaryText)
+                }
+                .padding()
+                .background(RoundedRectangle(cornerRadius: 12).fill(Color.hatchEdCardBackground))
+            }
+            .buttonStyle(.plain)
+            Menu {
+                Button(role: .destructive, action: { showingDelete = true }) { Label("Delete", systemImage: "trash") }
+            } label: { Image(systemName: "ellipsis.circle") }
+        }
+        .confirmationDialog("Delete folder and its contents?", isPresented: $showingDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive, action: onDelete)
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+}
+
+private struct ResourceRow: View {
+    let resource: Resource
+    let onTap: () -> Void
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+    @State private var showingDelete = false
+
+    var body: some View {
+        HStack {
+            Button(action: onTap) {
+                HStack {
+                    Image(systemName: resource.type.systemImage)
                         .foregroundColor(.hatchEdAccent)
-                }
-                .photosPicker(
-                    isPresented: $showingPhotoPicker,
-                    selection: $selectedPhotoItems,
-                    maxSelectionCount: 10,
-                    matching: .images
-                )
-                .onChange(of: selectedPhotoItems) { oldValue, newValue in
-                    // Only process if we have new items and the picker was just shown
-                    if !newValue.isEmpty && newValue.count != oldValue.count {
-                        onPhotoUpload(newValue)
-                        // Don't clear here - let the parent handle it after upload
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(resource.displayName)
+                            .foregroundColor(.hatchEdText)
+                            .lineLimit(1)
+                        Text(resource.type.displayName)
+                            .font(.caption)
+                            .foregroundColor(.hatchEdSecondaryText)
                     }
+                    Spacer()
+                }
+                .padding()
+                .background(RoundedRectangle(cornerRadius: 12).fill(Color.hatchEdCardBackground))
+            }
+            .buttonStyle(.plain)
+            Menu {
+                Button(action: onEdit) { Label("Edit", systemImage: "pencil") }
+                Button(role: .destructive, action: { showingDelete = true }) { Label("Delete", systemImage: "trash") }
+            } label: { Image(systemName: "ellipsis.circle") }
+        }
+        .confirmationDialog("Delete this resource?", isPresented: $showingDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive, action: onDelete)
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+}
+
+// MARK: - Add Folder
+private struct AddFolderSheet: View {
+    @Binding var name: String
+    var parentFolderId: String?
+    let folders: [ResourceFolder]
+    let onSave: () -> Void
+    let onCancel: () -> Void
+
+    private var locationLabel: String {
+        folderPathString(folderId: parentFolderId, in: folders)
+    }
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section {
+                    TextField("Folder name", text: $name)
+                }
+                Section {
+                    LabeledContent("Location", value: locationLabel)
                 }
             }
-            
-            if files.isEmpty {
-                Text("No files uploaded")
-                    .font(.caption)
-                    .foregroundColor(.hatchEdSecondaryText)
-                    .padding(.leading)
-            } else {
-                ForEach(files) { file in
-                    HStack {
-                        Image(systemName: fileIcon(for: file.fileType))
-                            .foregroundColor(.hatchEdAccent)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(file.fileName)
-                                .font(.caption)
-                                .foregroundColor(.hatchEdText)
-                            Text(fileSizeString(file.fileSize))
-                                .font(.caption2)
-                                .foregroundColor(.hatchEdSecondaryText)
+            .navigationTitle("New Folder")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: onCancel) }
+                ToolbarItem(placement: .confirmationAction) { Button("Save", action: onSave).disabled(name.trimmingCharacters(in: .whitespaces).isEmpty) }
+            }
+        }
+    }
+}
+
+// MARK: - Add Resource (type + name + link or file; optional assignment)
+private struct AddResourceSheet: View {
+    @EnvironmentObject private var authViewModel: AuthViewModel
+    var folderId: String?
+    var assignments: [Assignment]
+    let onDismiss: () -> Void
+    let onSaved: () -> Void
+    @Binding var errorMessage: String?
+    @State private var resourceType: ResourceType = .link
+    @State private var displayName = ""
+    @State private var linkURL = ""
+    @State private var selectedAssignmentId: String?
+    @State private var isSaving = false
+    @State private var showingFilePicker = false
+    @State private var assignmentsLoaded: [Assignment] = []
+    @State private var pendingFileData: Data?
+    @State private var pendingFileName: String?
+    @State private var pendingMimeType: String?
+    @State private var selectedPhotoItems: [PhotosPickerItem] = []
+    private let api = APIClient.shared
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section("Type") {
+                    Picker("Type", selection: $resourceType) {
+                        ForEach(ResourceType.allCases, id: \.self) { type in
+                            Text(type.displayName).tag(type)
                         }
-                        Spacer()
                     }
-                    .padding(.vertical, 4)
-                    .padding(.leading)
+                    .pickerStyle(.menu)
+                    .onChange(of: resourceType) {
+                        pendingFileData = nil
+                        pendingFileName = nil
+                        pendingMimeType = nil
+                        selectedPhotoItems = []
+                    }
+                }
+                Section("Name") {
+                    TextField("Name you’ll remember", text: $displayName)
+                }
+                if resourceType == .link {
+                    Section("URL") {
+                        TextField("https://...", text: $linkURL)
+                            .keyboardType(.URL)
+                            .textInputAutocapitalization(.never)
+                    }
+                }
+                if resourceType == .file || resourceType == .photo {
+                    Section("File") {
+                        Button("Choose file (Files, iCloud Drive)") { showingFilePicker = true }
+                        if let name = pendingFileName {
+                            Text("Selected: \(name)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    if resourceType == .photo {
+                        Section("Photo") {
+                            PhotosPicker(
+                                selection: $selectedPhotoItems,
+                                maxSelectionCount: 1,
+                                matching: .images
+                            ) {
+                                Label("Choose from Photos", systemImage: "photo.on.rectangle.angled")
+                            }
+                            .onChange(of: selectedPhotoItems) { Task { await loadSelectedPhoto() } }
+                        }
+                    }
+                }
+                Section("Link to assignment") {
+                    Picker("Assignment", selection: $selectedAssignmentId) {
+                        Text("None").tag(nil as String?)
+                        ForEach(assignmentsLoaded, id: \.id) { a in
+                            Text(a.title).tag(a.id as String?)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Add Resource")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: onDismiss) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { Task { await save() } }
+                    .disabled(!isValid || isSaving)
+                }
+            }
+            .onAppear {
+                Task { await loadAssignments() }
+            }
+            .fileImporter(
+                isPresented: $showingFilePicker,
+                allowedContentTypes: resourceType == .photo ? [.image] : [.item],
+                allowsMultipleSelection: false
+            ) { result in
+                Task { await handleFileResult(result) }
+            }
+        }
+    }
+
+    private var isValid: Bool {
+        let nameOk = !displayName.trimmingCharacters(in: .whitespaces).isEmpty
+        if resourceType == .link {
+            return nameOk && !linkURL.trimmingCharacters(in: .whitespaces).isEmpty
+        }
+        if resourceType == .file || resourceType == .photo {
+            return nameOk && pendingFileData != nil
+        }
+        return nameOk
+    }
+
+    private func loadAssignments() async {
+        do {
+            assignmentsLoaded = try await api.fetchAssignments()
+        } catch {}
+    }
+
+    private func save() async {
+        guard isValid else { return }
+        await MainActor.run { isSaving = true }
+        defer { Task { @MainActor in isSaving = false } }
+        do {
+            if resourceType == .link {
+                _ = try await api.createResourceLink(
+                    displayName: displayName.trimmingCharacters(in: .whitespaces),
+                    url: linkURL.trimmingCharacters(in: .whitespaces),
+                    folderId: folderId,
+                    assignmentId: selectedAssignmentId
+                )
+                onSaved()
+            } else if let data = pendingFileData, let fileName = pendingFileName, let mimeType = pendingMimeType {
+                if mimeType.hasPrefix("video/") {
+                    await MainActor.run { errorMessage = "Video files are not supported; they are too large." }
+                    return
+                }
+                let type: ResourceType = mimeType.hasPrefix("image/") ? .photo : .file
+                let name = displayName.trimmingCharacters(in: .whitespaces).isEmpty ? fileName : displayName.trimmingCharacters(in: .whitespaces)
+                _ = try await api.uploadResource(
+                    displayName: name,
+                    type: type,
+                    folderId: folderId,
+                    assignmentId: selectedAssignmentId,
+                    fileName: fileName,
+                    fileData: data,
+                    mimeType: mimeType
+                )
+                onSaved()
+            }
+        } catch {
+            await MainActor.run { errorMessage = error.localizedDescription }
+        }
+    }
+
+    private func handleFileResult(_ result: Result<[URL], Error>) async {
+        guard case .success(let urls) = result, let url = urls.first else { return }
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let data = try readFileData(from: url)
+            let fileName = url.lastPathComponent
+            let mimeType = getMimeType(for: url.pathExtension)
+            if mimeType.hasPrefix("video/") {
+                await MainActor.run { errorMessage = "Video files are not supported; they are too large." }
+                return
+            }
+            await MainActor.run {
+                pendingFileData = data
+                pendingFileName = fileName
+                pendingMimeType = mimeType
+            }
+        } catch {
+            await MainActor.run { errorMessage = error.localizedDescription }
+        }
+    }
+
+    private func loadSelectedPhoto() async {
+        guard let item = selectedPhotoItems.first else {
+            await MainActor.run { pendingFileData = nil; pendingFileName = nil; pendingMimeType = nil }
+            return
+        }
+        do {
+            if let imageData = try await item.loadTransferable(type: ImageDataTransfer.self) {
+                await MainActor.run {
+                    pendingFileData = imageData.data
+                    pendingFileName = "photo.jpg"
+                    pendingMimeType = "image/jpeg"
+                }
+            } else {
+                await MainActor.run { errorMessage = "Could not load photo. Try choosing from Files instead." }
+            }
+        } catch {
+            await MainActor.run { errorMessage = error.localizedDescription }
+        }
+    }
+
+    private func getMimeType(for ext: String) -> String {
+        let map: [String: String] = [
+            "pdf": "application/pdf", "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "gif": "image/gif",
+            "mp4": "video/mp4", "mov": "video/quicktime", "txt": "text/plain"
+        ]
+        return map[ext.lowercased()] ?? "application/octet-stream"
+    }
+}
+
+// MARK: - Edit Resource
+private struct EditResourceSheet: View {
+    let resource: Resource
+    var folderId: String?
+    let folders: [ResourceFolder]
+    let onDismiss: () -> Void
+    let onSaved: () -> Void
+    @Binding var errorMessage: String?
+    @State private var displayName = ""
+    @State private var selectedFolderId: String?
+    @State private var selectedAssignmentId: String?
+    @State private var assignmentsLoaded: [Assignment] = []
+    @State private var isSaving = false
+    private let api = APIClient.shared
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section("Name") {
+                    TextField("Name", text: $displayName)
+                }
+                Section("Folder") {
+                    Picker("Folder", selection: $selectedFolderId) {
+                        Text("Root").tag(nil as String?)
+                        ForEach(folders) { f in
+                            Text(folderPathString(folderId: f.id, in: folders))
+                                .tag(f.id as String?)
+                        }
+                    }
+                }
+                Section("Link to assignment") {
+                    Picker("Assignment", selection: $selectedAssignmentId) {
+                        Text("None").tag(nil as String?)
+                        ForEach(assignmentsLoaded, id: \.id) { a in
+                            Text(a.title).tag(a.id as String?)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Edit Resource")
+            .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                displayName = resource.displayName
+                selectedFolderId = resource.folderId
+                selectedAssignmentId = resource.assignmentId
+                Task { await loadAssignments() }
+            }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: onDismiss) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { Task { await save() } }
+                    .disabled(displayName.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
                 }
             }
         }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.hatchEdSecondaryBackground)
-        )
     }
-    
-    private func fileIcon(for fileType: String) -> String {
-        let lowercased = fileType.lowercased()
-        if lowercased.contains("image") {
-            return "photo"
-        } else if lowercased.contains("pdf") {
-            return "doc.fill"
-        } else if lowercased.contains("text") || lowercased.contains("plain") {
-            return "doc.text"
-        } else if lowercased.contains("video") {
-            return "video.fill"
-        } else if lowercased.contains("audio") {
-            return "music.note"
-        } else if lowercased.contains("spreadsheet") || lowercased.contains("excel") || lowercased.contains("csv") {
-            return "tablecells.fill"
-        } else if lowercased.contains("presentation") || lowercased.contains("powerpoint") {
-            return "rectangle.stack.fill"
-        } else if lowercased.contains("zip") || lowercased.contains("archive") {
-            return "archivebox.fill"
-        } else if lowercased.contains("word") || lowercased.contains("document") {
-            return "doc.text.fill"
-        } else {
-            return "doc"
+
+    private func loadAssignments() async {
+        do {
+            assignmentsLoaded = try await api.fetchAssignments()
+        } catch {}
+    }
+
+    private func save() async {
+        await MainActor.run { isSaving = true }
+        defer { Task { @MainActor in isSaving = false } }
+        do {
+            _ = try await api.updateResource(
+                id: resource.id,
+                displayName: displayName.trimmingCharacters(in: .whitespaces),
+                folderId: selectedFolderId,
+                assignmentId: selectedAssignmentId
+            )
+            onSaved()
+        } catch {
+            await MainActor.run { errorMessage = error.localizedDescription }
         }
     }
-    
-    private func fileSizeString(_ bytes: Int64) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useKB, .useMB]
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: bytes)
+}
+
+// MARK: - Edit Folder
+private struct EditFolderSheet: View {
+    let folder: ResourceFolder
+    let folders: [ResourceFolder]
+    let onDismiss: () -> Void
+    let onSaved: () -> Void
+    @Binding var errorMessage: String?
+    @State private var name = ""
+    @State private var selectedParentFolderId: String?
+    @State private var isSaving = false
+    private let api = APIClient.shared
+
+    /// Folders that can be chosen as parent (excludes self and descendants to avoid cycles).
+    private var validParentOptions: [ResourceFolder] {
+        let invalidIds = descendantIds(of: folder.id, in: folders)
+        return folders.filter { !invalidIds.contains($0.id) }
+    }
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section("Name") {
+                    TextField("Folder name", text: $name)
+                }
+                Section("Parent folder") {
+                    Picker("Location", selection: $selectedParentFolderId) {
+                        Text("Root").tag(nil as String?)
+                        ForEach(validParentOptions) { f in
+                            Text(folderPathString(folderId: f.id, in: folders))
+                                .tag(f.id as String?)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Edit Folder")
+            .onAppear {
+                name = folder.name
+                selectedParentFolderId = folder.parentFolderId
+            }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: onDismiss) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { Task { await save() } }
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
+                }
+            }
+        }
+    }
+
+    private func save() async {
+        await MainActor.run { isSaving = true }
+        defer { Task { @MainActor in isSaving = false } }
+        do {
+            _ = try await api.updateResourceFolder(id: folder.id, name: name.trimmingCharacters(in: .whitespaces), parentFolderId: selectedParentFolderId)
+            onSaved()
+        } catch {
+            await MainActor.run { errorMessage = error.localizedDescription }
+        }
     }
 }
 

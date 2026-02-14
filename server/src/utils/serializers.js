@@ -177,6 +177,34 @@ export function serializeStudentWorkFile (file) {
   }
 }
 
+export function serializeResourceFolder (folder) {
+  if (!folder) return null
+  return {
+    id: folder._id?.toString?.() ?? folder._id,
+    name: folder.name,
+    parentFolderId: folder.parentFolderId?.toString?.() ?? folder.parentFolderId ?? null,
+    createdAt: folder.createdAt,
+    updatedAt: folder.updatedAt
+  }
+}
+
+export function serializeResource (resource) {
+  if (!resource) return null
+  return {
+    id: resource._id?.toString?.() ?? resource._id,
+    folderId: resource.folderId?.toString?.() ?? resource.folderId ?? null,
+    displayName: resource.displayName,
+    type: resource.type ?? 'file',
+    fileUrl: resource.fileUrl ?? null,
+    url: resource.url ?? null,
+    mimeType: resource.mimeType ?? null,
+    fileSize: resource.fileSize ?? null,
+    assignmentId: resource.assignmentId?.toString?.() ?? resource.assignmentId ?? null,
+    createdAt: resource.createdAt,
+    updatedAt: resource.updatedAt
+  }
+}
+
 export function serializePlannerTask (task) {
   if (!task) return null
   return {

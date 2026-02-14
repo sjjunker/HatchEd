@@ -17,14 +17,19 @@ function decryptStudentWorkFile (doc) {
   return out
 }
 
-export async function createStudentWorkFile ({ familyId, studentId, fileName, fileUrl, fileType, fileSize }) {
+/**
+ * Create a student work file. File content is stored in DB as base64 (like portfolioImages).
+ * @param {Object} params
+ * @param {string} params.fileData - Base64-encoded file content
+ */
+export async function createStudentWorkFile ({ familyId, studentId, fileName, fileType, fileSize, fileData }) {
   const file = {
     familyId: new ObjectId(familyId),
     studentId: new ObjectId(studentId),
     fileName: fileName ? encrypt(fileName) : fileName,
-    fileUrl,
     fileType,
     fileSize,
+    fileData: fileData ?? null,
     uploadedAt: new Date(),
     createdAt: new Date(),
     updatedAt: new Date()

@@ -53,62 +53,42 @@ async function downloadImageAsBase64(imageUrl) {
 }
 
 /**
- * Download and store multiple images in the database
- * @param {Array<{description: string, url: string}>} images - Array of image objects
- * @param {string} portfolioId - Portfolio ID to associate images with
- * @param {string} baseUrl - Base URL for the server (e.g., 'http://localhost:4000')
- * @returns {Promise<Array<{id: string, description: string, url: string}>>} Array of images with database IDs and server URLs
+ * Download and store multiple images in the database.
+ * Returns only references: { id, description } for the portfolio's generatedImages array.
+ * No URLs are stored; clients load images by id from GET /api/portfolios/images/:id.
  */
-export async function downloadAndStoreImages(images, portfolioId, baseUrl = '') {
+export async function downloadAndStoreImages(images, portfolioId) {
   if (!images || images.length === 0) {
     return []
   }
-  
   if (!portfolioId) {
     throw new Error('Portfolio ID is required to store images')
   }
-  
   console.log('[Image Storage] Downloading and storing', images.length, 'images in database...')
-  
   const storedImages = []
-  
   for (let i = 0; i < images.length; i++) {
     const image = images[i]
+    if (!image.url || image.url.trim() === '') {
+      console.warn(`[Image Storage] Skipping image ${i + 1} (no URL - generation failed)`)
+      storedImages.push({ id: `failed-${i}`, description: image.description || '' })
+      continue
+    }
     try {
-      // Download image and convert to base64
       const { data: imageData, contentType } = await downloadImageAsBase64(image.url)
-      
-      // Store in database
       const imageRecord = await createPortfolioImage({
         portfolioId,
         description: image.description || '',
         imageData,
         contentType
       })
-      
-      // Create server URL for the image
       const imageId = imageRecord._id.toString()
-      const serverUrl = `${baseUrl}/api/portfolios/images/${imageId}`
-      
-      storedImages.push({
-        id: imageId,
-        description: image.description || '',
-        url: serverUrl
-      })
-      
+      storedImages.push({ id: imageId, description: image.description || '' })
       console.log(`[Image Storage] Image ${i + 1}/${images.length} stored in database: ${imageId}`)
     } catch (error) {
       console.error(`[Image Storage] Failed to store image ${i + 1}:`, error.message)
-      // Continue with other images even if one fails
-      // Use original URL as fallback
-      storedImages.push({
-        id: `fallback-${i}`,
-        description: image.description || '',
-        url: image.url // Keep original URL as fallback
-      })
+      storedImages.push({ id: `fallback-${i}`, description: image.description || '' })
     }
   }
-  
   console.log('[Image Storage] Completed storing images in database:', storedImages.length, 'of', images.length)
   return storedImages
 }

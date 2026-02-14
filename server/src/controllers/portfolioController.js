@@ -3,7 +3,7 @@
 import { ObjectId } from 'mongodb'
 import { findUserById } from '../models/userModel.js'
 import { createPortfolio, findPortfoliosByFamilyId, findPortfolioById, updatePortfolio, deletePortfolio, portfoliosCollection } from '../models/portfolioModel.js'
-import { findStudentWorkFilesByStudentId, createStudentWorkFile, findStudentWorkFileById } from '../models/studentWorkFileModel.js'
+import { findStudentWorkFilesByStudentId, createStudentWorkFile, findStudentWorkFileById, deleteStudentWorkFile } from '../models/studentWorkFileModel.js'
 import { findCoursesByStudentId } from '../models/courseModel.js'
 import { findAttendanceForStudent } from '../models/attendanceModel.js'
 import { serializePortfolio, serializeStudentWorkFile, serializeCourse } from '../utils/serializers.js'
@@ -11,20 +11,22 @@ import { compilePortfolioWithChatGPT } from '../services/chatgptService.js'
 import multer from 'multer'
 import path from 'path'
 import fs from 'fs/promises'
+import { UPLOADS_DIR } from '../lib/uploadsPath.js'
 
-// Configure multer for file uploads
-// Accepts all file types (documents, images, videos, etc.)
+// Max size for student work file uploads (stored in MongoDB as base64)
+const MAX_STUDENT_WORK_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+
+// Configure multer for file uploads (temp dir; we read into DB then delete)
 const upload = multer({
-  dest: 'uploads/',
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
-  // No fileFilter - accepts all file types
+  dest: UPLOADS_DIR,
+  limits: { fileSize: MAX_STUDENT_WORK_FILE_SIZE },
   fileFilter: (req, file, cb) => {
     console.log('[Multer] File filter called', {
       fieldname: file.fieldname,
       originalname: file.originalname,
       mimetype: file.mimetype
     })
-    cb(null, true) // Accept all files
+    cb(null, true)
   }
 })
 
@@ -37,7 +39,7 @@ const handleMulterError = (err, req, res, next) => {
       field: err.field
     })
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ error: { message: 'File too large. Maximum size is 50MB.' } })
+      return res.status(400).json({ error: { message: `File too large. Maximum size is ${MAX_STUDENT_WORK_FILE_SIZE / (1024 * 1024)}MB.` } })
     }
     return res.status(400).json({ error: { message: `Upload error: ${err.message}` } })
   } else if (err) {
@@ -76,7 +78,7 @@ export async function getPortfoliosHandler (req, res) {
 }
 
 export async function createPortfolioHandler (req, res) {
-  const { studentId, studentName, designPattern, studentWorkFileIds, studentRemarks, instructorRemarks, reportCardSnapshot, sectionData } = req.body
+  const { studentId, studentName, designPattern, studentWorkFileIds, usePhotoFileIds, studentRemarks, instructorRemarks, reportCardSnapshot, sectionData } = req.body
 
   if (!studentId || !studentName || !designPattern) {
     return res.status(400).json({ error: { message: 'Student ID, name, and design pattern are required' } })
@@ -95,10 +97,30 @@ export async function createPortfolioHandler (req, res) {
 
   // Fetch student work files
   const studentWorkFiles = await Promise.all(
-    studentWorkFileIds.map(async (fileId) => {
+    (studentWorkFileIds || []).map(async (fileId) => {
       return await findStudentWorkFileById(fileId)
     })
   )
+  const validWorkFiles = studentWorkFiles.filter(Boolean)
+  const providedPhotoWorkFiles = (usePhotoFileIds || [])
+    .map((id) => validWorkFiles.find((f) => f._id?.toString() === id))
+    .filter(Boolean)
+
+  // Read text from work files for quote extraction (text, DOCX, PDF, Pages from DB fileData)
+  const { canExtractText, extractTextFromBuffer } = await import('../utils/documentTextExtractor.js')
+  const textExcerpts = []
+  for (const file of validWorkFiles) {
+    if (!file.fileData || !canExtractText(file.fileType, file.fileName)) continue
+    try {
+      const buffer = Buffer.from(file.fileData, 'base64')
+      const content = await extractTextFromBuffer(buffer, file.fileType, file.fileName)
+      if (content && content.trim().length > 0) {
+        textExcerpts.push({ fileName: file.fileName || 'document', text: content })
+      }
+    } catch (err) {
+      console.warn('[Portfolio Controller] Could not extract text for quotes:', file.fileName, err.message)
+    }
+  }
 
   // Fetch courses for the student
   const courses = await findCoursesByStudentId(studentId)
@@ -157,7 +179,9 @@ export async function createPortfolioHandler (req, res) {
     const compilationResult = await compilePortfolioWithChatGPT({
       studentName,
       designPattern,
-      studentWorkFiles: studentWorkFiles.filter(Boolean),
+      studentWorkFiles: validWorkFiles,
+      providedPhotoWorkFiles,
+      textExcerpts,
       studentRemarks,
       instructorRemarks,
       reportCardSnapshot,
@@ -170,11 +194,12 @@ export async function createPortfolioHandler (req, res) {
     generatedImages = compilationResult.images || []
     console.log('[Portfolio Controller] Portfolio compilation completed successfully')
   } catch (error) {
-    console.error('[Portfolio Controller] Error compiling portfolio with ChatGPT:', error)
-    compilationWarnings.push(`Compilation warning: ${error.message}`)
-    // Continue with fallback content - portfolio will be created but not compiled
-    compiledContent = 'Portfolio compilation pending. Please try again later.'
-    snippet = 'Portfolio compilation in progress...'
+    const errMsg = error?.message || String(error)
+    console.error('[Portfolio Controller] Error compiling portfolio with ChatGPT:', errMsg)
+    compilationWarnings.push(errMsg)
+    // Continue so portfolio is still created; user will see message and warnings in response
+    compiledContent = `Portfolio compilation could not be completed.\n\nReason: ${errMsg}\n\nPlease check your OpenAI API key and connection, then try again.`
+    snippet = 'Compilation failed. Please try again.'
     generatedImages = []
   }
 
@@ -186,7 +211,7 @@ export async function createPortfolioHandler (req, res) {
       studentId,
       studentName,
       designPattern,
-      studentWorkFileIds,
+      studentWorkFileIds: studentWorkFileIds || [],
       studentRemarks,
       instructorRemarks,
       reportCardSnapshot,
@@ -197,56 +222,77 @@ export async function createPortfolioHandler (req, res) {
     })
     
     console.log('[Portfolio Controller] Portfolio created successfully:', portfolio._id)
-    
-    // Download and store images in the database
+
+    // Extract placeholder order: [PROVIDED_PHOTO: n] and [IMAGE: description]
+    const providedPhotoRegex = /\[PROVIDED_PHOTO:\s*(\d+)\]/g
+    const imageRegex = /\[IMAGE:\s*([^\]]+)\]/g
+    const placeholders = []
+    const contentWithPlaceholderMarkers = compiledContent
+      .replace(providedPhotoRegex, (_, n) => {
+        placeholders.push({ type: 'provided', n: parseInt(n, 10) })
+        return `\u0000P${placeholders.length - 1}\u0000`
+      })
+    const tempContent = contentWithPlaceholderMarkers.replace(imageRegex, (_, desc) => {
+      placeholders.push({ type: 'generated', description: desc.trim() })
+      return `\u0000G${placeholders.length - 1}\u0000`
+    })
+    const providedCount = placeholders.filter(p => p.type === 'provided').length
+    const generatedCount = placeholders.filter(p => p.type === 'generated').length
+    console.log('[Portfolio Controller] Placeholders:', placeholders.length, '(provided:', providedCount, ', generated:', generatedCount, ')')
+
+    // Reference user-provided photos by their existing studentWorkFile _id (no copy to portfolioImages)
+    const providedImageRecords = providedPhotoWorkFiles.map((file) => ({
+      id: file._id.toString(),
+      description: 'Provided photo'
+    }))
+
+    // Store generated (DALL-E) images
+    let storedGeneratedImages = []
     if (generatedImages.length > 0) {
       try {
-        console.log('[Portfolio Controller] Downloading and storing', generatedImages.length, 'images in database...')
         const { downloadAndStoreImages } = await import('../utils/imageStorage.js')
-        
-        // Get base URL from request
-        const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'
-        const host = req.headers.host || 'localhost:4000'
-        const baseUrl = `${protocol}://${host}`
-        
-        // Store images in database and get updated image objects with IDs
-        const storedImages = await downloadAndStoreImages(generatedImages, portfolio._id.toString(), baseUrl)
-        
-        // Update portfolio with stored images
-        await updatePortfolio(portfolio._id.toString(), {
-          compiledContent,
-          snippet
-        })
-        
-        // Update the portfolio's generatedImages array
-        await portfoliosCollection().updateOne(
-          { _id: portfolio._id },
-          { $set: { generatedImages: storedImages } }
-        )
-        
-        portfolio.generatedImages = storedImages
-        console.log('[Portfolio Controller] Images stored in database successfully')
-      } catch (error) {
-        console.error('[Portfolio Controller] Error storing images in database:', error)
-        // Continue with original URLs if storage fails
-        console.warn('[Portfolio Controller] Using original image URLs as fallback')
-        // Update portfolio with original images
-        await portfoliosCollection().updateOne(
-          { _id: portfolio._id },
-          { $set: { generatedImages: generatedImages.map((img, idx) => ({
-            id: `fallback-${idx}`,
-            description: img.description || '',
-            url: img.url
-          })) } }
-        )
-        portfolio.generatedImages = generatedImages.map((img, idx) => ({
+        storedGeneratedImages = await downloadAndStoreImages(generatedImages, portfolio._id.toString())
+      } catch (err) {
+        console.error('[Portfolio Controller] Error storing generated images:', err)
+        storedGeneratedImages = generatedImages.map((img, idx) => ({
           id: `fallback-${idx}`,
-          description: img.description || '',
-          url: img.url
+          description: img.description || ''
         }))
       }
     }
-    
+
+    // Build merged image list in placeholder order
+    let genIdx = 0
+    const mergedImages = []
+    for (let i = 0; i < placeholders.length; i++) {
+      const p = placeholders[i]
+      if (p.type === 'provided' && p.n >= 1 && p.n <= providedImageRecords.length) {
+        mergedImages.push(providedImageRecords[p.n - 1])
+      } else if (p.type === 'generated' && genIdx < storedGeneratedImages.length) {
+        mergedImages.push(storedGeneratedImages[genIdx++])
+      } else {
+        mergedImages.push({ id: `missing-${i}`, description: '' })
+      }
+    }
+    // Replace placeholder markers with [IMAGE] only - no URLs. Client uses generatedImages[i].id to load from GET /images/:id
+    let replIdx = 0
+    const finalContent = tempContent.replace(/\u0000[PG]\d+\u0000/g, () => {
+      replIdx++
+      return '[IMAGE]'
+    })
+    if (replIdx !== mergedImages.length) {
+      console.warn('[Portfolio Controller] Placeholder count mismatch: replaced', replIdx, 'markers but mergedImages has', mergedImages.length)
+    }
+
+    // Single atomic update so content and images are always in sync
+    await updatePortfolio(portfolio._id.toString(), {
+      compiledContent: finalContent,
+      snippet,
+      generatedImages: mergedImages
+    })
+    portfolio.compiledContent = finalContent
+    portfolio.generatedImages = mergedImages
+    console.log('[Portfolio Controller] Portfolio updated with', mergedImages.length, 'image references (content + images saved together)')
     // Always send a successful response even if there were compilation warnings
     res.status(201).json({ 
       portfolio: serializePortfolio(portfolio),
@@ -274,7 +320,6 @@ export async function getPortfolioHandler (req, res) {
   if (portfolio.familyId.toString() !== user.familyId.toString()) {
     return res.status(403).json({ error: { message: 'Not authorized' } })
   }
-
   res.json({ portfolio: serializePortfolio(portfolio) })
 }
 
@@ -383,28 +428,21 @@ export async function uploadStudentWorkFileHandler (req, res) {
       path: req.file.path
     })
 
-    // In production, you'd want to upload to cloud storage (S3, etc.)
-    // For now, we'll store the file path
-    const fileUrl = `/uploads/${req.file.filename}`
     const fileSize = req.file.size
     const fileName = req.file.originalname || req.file.filename
     const fileType = req.file.mimetype || 'application/octet-stream'
 
-    console.log('[Upload] Creating student work file record', {
-      studentId,
-      fileName,
-      fileType,
-      fileSize,
-      fileUrl
-    })
+    const buf = await fs.readFile(req.file.path)
+    const fileData = buf.toString('base64')
+    await fs.unlink(req.file.path).catch(() => {})
 
     const file = await createStudentWorkFile({
       familyId: user.familyId,
       studentId,
       fileName,
-      fileUrl,
       fileType,
-      fileSize
+      fileSize,
+      fileData
     })
 
     if (!file) {
@@ -433,6 +471,31 @@ export async function uploadStudentWorkFileHandler (req, res) {
     })
     res.status(500).json({ error: { message: error.message || 'Internal server error' } })
   }
+}
+
+export async function deleteStudentWorkFileHandler (req, res) {
+  const { id } = req.params
+
+  const user = await findUserById(req.user.userId)
+  if (!user || !user.familyId) {
+    return res.status(400).json({ error: { message: 'User must belong to a family' } })
+  }
+
+  const file = await findStudentWorkFileById(id)
+  if (!file) {
+    return res.status(404).json({ error: { message: 'File not found' } })
+  }
+
+  if (file.familyId?.toString() !== user.familyId.toString()) {
+    return res.status(403).json({ error: { message: 'Not authorized' } })
+  }
+
+  const deleted = await deleteStudentWorkFile(id)
+  if (!deleted) {
+    return res.status(404).json({ error: { message: 'File not found' } })
+  }
+
+  res.json({ success: true })
 }
 
 // Export multer middleware

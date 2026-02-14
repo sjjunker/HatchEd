@@ -36,6 +36,7 @@ struct AddPortfolioView: View {
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = AddPortfolioViewModel()
+    @State private var showingCreateWarnings = false
 
     var body: some View {
         NavigationView {
@@ -74,24 +75,34 @@ struct AddPortfolioView: View {
                             .foregroundColor(.hatchEdSecondaryText)
                     } else {
                         ForEach(viewModel.availableWorkFiles) { file in
-                            HStack {
-                                Image(systemName: fileIcon(for: file.fileType))
-                                    .foregroundColor(.hatchEdAccent)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(file.fileName)
-                                        .font(.body)
-                                    Text(fileSizeString(file.fileSize))
-                                        .font(.caption)
-                                        .foregroundColor(.hatchEdSecondaryText)
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Image(systemName: fileIcon(for: file.fileType))
+                                        .foregroundColor(.hatchEdAccent)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(file.fileName)
+                                            .font(.body)
+                                        Text(fileSizeString(file.fileSize))
+                                            .font(.caption)
+                                            .foregroundColor(.hatchEdSecondaryText)
+                                    }
+                                    Spacer()
+                                    if viewModel.selectedWorkFiles.contains(file) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(.hatchEdSuccess)
+                                    }
                                 }
-                                Spacer()
-                                if viewModel.selectedWorkFiles.contains(file) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(.hatchEdSuccess)
+                                .contentShape(Rectangle())
+                                .onTapGesture { viewModel.toggleWorkFile(file) }
+                                if viewModel.selectedWorkFiles.contains(file) && file.fileType.hasPrefix("image/") {
+                                    Toggle("Use this photo in portfolio (instead of AI-generated)", isOn: Binding(
+                                        get: { viewModel.usePhotoFileIds.contains(file.id) },
+                                        set: { _ in viewModel.toggleUsePhotoInPortfolio(file) }
+                                    ))
+                                    .font(.caption)
                                 }
                             }
-                            .contentShape(Rectangle())
-                            .onTapGesture { viewModel.toggleWorkFile(file) }
+                            .padding(.vertical, 4)
                         }
                     }
                 }
@@ -148,13 +159,27 @@ struct AddPortfolioView: View {
                             do {
                                 let portfolio = try await viewModel.createPortfolio()
                                 onSave(portfolio)
-                                dismiss()
+                                if viewModel.createWarnings.isEmpty {
+                                    dismiss()
+                                } else {
+                                    showingCreateWarnings = true
+                                }
                             } catch {
                                 // errorMessage set in viewModel
                             }
                         }
                     }
                     .disabled(!viewModel.isValid || viewModel.isLoading)
+                }
+            }
+            .alert("Portfolio created with issues", isPresented: $showingCreateWarnings) {
+                Button("OK") {
+                    showingCreateWarnings = false
+                    dismiss()
+                }
+            } message: {
+                if !viewModel.createWarnings.isEmpty {
+                    Text(viewModel.createWarnings.joined(separator: "\n\n"))
                 }
             }
             .alert("Error", isPresented: Binding(

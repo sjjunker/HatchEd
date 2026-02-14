@@ -17,15 +17,14 @@ enum PortfolioDesignPattern: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// Reference to an image stored in the portfolioImages collection. No URL stored; load via GET /api/portfolios/images/:id.
 struct PortfolioImage: Identifiable, Codable, Equatable {
     let id: String
     var description: String
-    var url: String
-    
-    init(id: String = UUID().uuidString, description: String, url: String) {
+
+    init(id: String = UUID().uuidString, description: String) {
         self.id = id
         self.description = description
-        self.url = url
     }
 }
 
@@ -159,7 +158,8 @@ struct Portfolio: Identifiable, Codable, Equatable {
 struct StudentWorkFile: Identifiable, Codable, Equatable, Hashable {
     let id: String
     var fileName: String
-    var fileUrl: String // URL to the file on server
+    /// Optional; files are stored in DB and loaded via GET /api/portfolios/images/:id when needed.
+    var fileUrl: String?
     var fileType: String // e.g., "image/png", "application/pdf"
     var fileSize: Int64 // Size in bytes
     var studentId: String
@@ -169,7 +169,7 @@ struct StudentWorkFile: Identifiable, Codable, Equatable, Hashable {
     
     init(id: String = UUID().uuidString,
          fileName: String,
-         fileUrl: String,
+         fileUrl: String? = nil,
          fileType: String,
          fileSize: Int64,
          studentId: String,

@@ -303,6 +303,12 @@ final class APIClient {
     struct PortfolioResponse: Decodable {
         let portfolio: Portfolio
     }
+
+    /// Response from POST create portfolio; may include warnings if AI compilation failed.
+    struct CreatePortfolioResponse: Decodable {
+        let portfolio: Portfolio
+        let warnings: [String]?
+    }
     
     struct StudentWorkFilesResponse: Decodable {
         let files: [StudentWorkFile]
@@ -317,6 +323,7 @@ final class APIClient {
         let studentName: String
         let designPattern: String
         let studentWorkFileIds: [String]
+        let usePhotoFileIds: [String]?
         let studentRemarks: String?
         let instructorRemarks: String?
         let reportCardSnapshot: String?
@@ -330,22 +337,30 @@ final class APIClient {
         )
         return response.portfolios
     }
+
+    /// URL to load a portfolio image from the database (GET returns image bytes). No URLs are stored; use this with image.id.
+    func portfolioImageURL(imageId: String) -> URL {
+        baseURL.appendingPathComponent("api/portfolios/images/\(imageId)")
+    }
     
+    /// Create a new portfolio. Returns the created portfolio and any server warnings (e.g. AI compilation failed).
     func createPortfolio(
         studentId: String,
         studentName: String,
         designPattern: PortfolioDesignPattern,
         studentWorkFileIds: [String],
+        usePhotoFileIds: [String]? = nil,
         studentRemarks: String?,
         instructorRemarks: String?,
         reportCardSnapshot: String?,
         sectionData: PortfolioSectionData?
-    ) async throws -> Portfolio {
+    ) async throws -> (portfolio: Portfolio, warnings: [String]) {
         let body = CreatePortfolioRequest(
             studentId: studentId,
             studentName: studentName,
             designPattern: designPattern.rawValue,
             studentWorkFileIds: studentWorkFileIds,
+            usePhotoFileIds: usePhotoFileIds?.isEmpty == true ? nil : usePhotoFileIds,
             studentRemarks: studentRemarks,
             instructorRemarks: instructorRemarks,
             reportCardSnapshot: reportCardSnapshot,
@@ -374,8 +389,8 @@ final class APIClient {
         switch httpResponse.statusCode {
         case 200...299:
             let decoder = JSONDecoder.api
-            let portfolioResponse = try decoder.decode(PortfolioResponse.self, from: data)
-            return portfolioResponse.portfolio
+            let createResponse = try decoder.decode(CreatePortfolioResponse.self, from: data)
+            return (portfolio: createResponse.portfolio, warnings: createResponse.warnings ?? [])
         default:
             throw try APIError(from: data, statusCode: httpResponse.statusCode)
         }
@@ -439,7 +454,14 @@ final class APIClient {
             throw try APIError(from: data, statusCode: httpResponse.statusCode)
         }
     }
-    
+
+    func deleteStudentWorkFile(id: String) async throws {
+        let _: SuccessResponse = try await request(
+            Endpoint(path: "api/portfolios/student-work/\(id)", method: .delete),
+            responseType: SuccessResponse.self
+        )
+    }
+
     // Add Child (parent invite flow)
     struct CreateChildRequest: Encodable {
         let name: String

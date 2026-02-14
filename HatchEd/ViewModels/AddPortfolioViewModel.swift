@@ -13,6 +13,8 @@ final class AddPortfolioViewModel: ObservableObject {
     @Published var selectedStudent: User?
     @Published var selectedDesignPattern: PortfolioDesignPattern = .general
     @Published var selectedWorkFiles: Set<StudentWorkFile> = []
+    /// IDs of selected image work files that should appear in the portfolio instead of AI-generated images.
+    @Published var usePhotoFileIds: Set<String> = []
     @Published var studentRemarks = ""
     @Published var instructorRemarks = ""
     @Published var aboutMe = ""
@@ -25,6 +27,8 @@ final class AddPortfolioViewModel: ObservableObject {
     @Published private(set) var isLoadingFiles = false
     @Published private(set) var isLoading = false
     @Published private(set) var errorMessage: String?
+    /// Warnings from the server after a successful create (e.g. AI compilation failed).
+    @Published var createWarnings: [String] = []
 
     private let api = APIClient.shared
 
@@ -38,18 +42,33 @@ final class AddPortfolioViewModel: ObservableObject {
         isLoadingFiles = true
         defer { isLoadingFiles = false }
         do {
-            availableWorkFiles = try await api.fetchStudentWorkFiles(studentId: studentId)
+            let files = try await api.fetchStudentWorkFiles(studentId: studentId)
+            availableWorkFiles = files
+            // Auto-include all best-work files unless parent explicitly removes
+            selectedWorkFiles = Set(files)
+            usePhotoFileIds = usePhotoFileIds.filter { id in files.contains(where: { $0.id == id }) }
         } catch {
             print("Failed to load student work files: \(error)")
             availableWorkFiles = []
+            selectedWorkFiles = []
         }
     }
 
     func toggleWorkFile(_ file: StudentWorkFile) {
         if selectedWorkFiles.contains(file) {
             selectedWorkFiles.remove(file)
+            usePhotoFileIds.remove(file.id)
         } else {
             selectedWorkFiles.insert(file)
+        }
+    }
+
+    func toggleUsePhotoInPortfolio(_ file: StudentWorkFile) {
+        guard file.fileType.hasPrefix("image/") else { return }
+        if usePhotoFileIds.contains(file.id) {
+            usePhotoFileIds.remove(file.id)
+        } else {
+            usePhotoFileIds.insert(file.id)
         }
     }
 
@@ -72,16 +91,18 @@ final class AddPortfolioViewModel: ObservableObject {
                 extracurricularActivities: extracurricularActivities.isEmpty ? nil : extracurricularActivities,
                 serviceLog: serviceLog.isEmpty ? nil : serviceLog
             )
-            let portfolio = try await api.createPortfolio(
+            let (portfolio, warnings) = try await api.createPortfolio(
                 studentId: student.id,
                 studentName: student.name ?? "Student",
                 designPattern: selectedDesignPattern,
                 studentWorkFileIds: Array(selectedWorkFiles.map { $0.id }),
+                usePhotoFileIds: Array(usePhotoFileIds),
                 studentRemarks: studentRemarks.isEmpty ? nil : studentRemarks,
                 instructorRemarks: instructorRemarks.isEmpty ? nil : instructorRemarks,
                 reportCardSnapshot: reportCardSnapshot,
                 sectionData: sectionData
             )
+            createWarnings = warnings
             return portfolio
         } catch {
             errorMessage = (error as? APIError)?.localizedDescription ?? error.localizedDescription

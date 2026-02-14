@@ -98,7 +98,7 @@ struct ModelTests {
             "compiledContent": "",
             "snippet": "",
             "generatedImages": [
-                { "id": "img1", "description": "A photo", "url": "https://example.com/1.png" }
+                { "id": "img1", "description": "A photo" }
             ]
         }
         """
@@ -109,7 +109,6 @@ struct ModelTests {
         #expect(portfolio.generatedImages.count == 1)
         #expect(portfolio.generatedImages[0].id == "img1")
         #expect(portfolio.generatedImages[0].description == "A photo")
-        #expect(portfolio.generatedImages[0].url == "https://example.com/1.png")
     }
 
     // MARK: - User
@@ -167,10 +166,9 @@ struct ModelTests {
     // MARK: - PortfolioImage
 
     @Test func portfolioImageInit() {
-        let img = PortfolioImage(id: "i1", description: "Desc", url: "https://x.com/img.png")
+        let img = PortfolioImage(id: "i1", description: "Desc")
         #expect(img.id == "i1")
         #expect(img.description == "Desc")
-        #expect(img.url == "https://x.com/img.png")
     }
 
     // MARK: - StudentWorkFile
@@ -212,7 +210,7 @@ struct ModelTests {
             studentWorkFileIds: ["f1"],
             compiledContent: "Content",
             snippet: "Snippet",
-            generatedImages: [PortfolioImage(id: "img1", description: "D", url: "https://x.com/1.png")]
+            generatedImages: [PortfolioImage(id: "img1", description: "D")]
         )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601

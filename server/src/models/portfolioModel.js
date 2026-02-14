@@ -100,10 +100,11 @@ export async function findPortfolioById (id) {
   return decryptPortfolio(doc)
 }
 
-export async function updatePortfolio (id, { compiledContent, snippet }) {
+export async function updatePortfolio (id, { compiledContent, snippet, generatedImages }) {
   const update = { updatedAt: new Date() }
   if (compiledContent !== undefined) update.compiledContent = encrypt(compiledContent)
   if (snippet !== undefined) update.snippet = encrypt(snippet)
+  if (generatedImages !== undefined) update.generatedImages = generatedImages
 
   const result = await portfoliosCollection().findOneAndUpdate(
     { _id: new ObjectId(id) },
@@ -111,7 +112,8 @@ export async function updatePortfolio (id, { compiledContent, snippet }) {
     { returnDocument: 'after' }
   )
 
-  return decryptPortfolio(result.value)
+  const doc = result?.value ?? result
+  return decryptPortfolio(doc)
 }
 
 export async function deletePortfolio (id) {

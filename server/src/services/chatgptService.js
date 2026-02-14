@@ -1,12 +1,15 @@
 // Updated with assistance from Cursor (ChatGPT) on 11/7/25.
 
 import OpenAI from 'openai'
-import { AppError } from '../utils/errors.js'
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-})
+// Lazy client so API key is read after dotenv has loaded
+function getOpenAI () {
+  const key = process.env.OPENAI_API_KEY
+  if (!key || typeof key !== 'string' || key.trim() === '') {
+    return null
+  }
+  return new OpenAI({ apiKey: key })
+}
 
 /**
  * Extract image descriptions from portfolio content
@@ -32,6 +35,8 @@ function extractImageDescriptions (content) {
  * @returns {Promise<string|null>} Image URL or null if generation fails
  */
 async function generateImage (description, designPattern) {
+  const openai = getOpenAI()
+  if (!openai) return null
   try {
     // Enhance prompt with design pattern context
     const enhancedPrompt = `Create a professional, academic portfolio illustration: ${description}. Style: ${designPattern.toLowerCase()}, clean and appropriate for an educational portfolio.`
@@ -101,12 +106,16 @@ function getWorkSummaries (studentWorkFiles) {
  * @param {Object} params - Portfolio parameters
  * @returns {string} Formatted prompt
  */
-function buildPortfolioPrompt ({ studentName, designPattern, studentRemarks, instructorRemarks, reportCardSnapshot, studentWorkSummaries, attendanceSummary, courses, sectionData }) {
+function buildPortfolioPrompt ({ studentName, designPattern, studentRemarks, instructorRemarks, reportCardSnapshot, studentWorkSummaries, attendanceSummary, courses, sectionData, providedPhotoCount, textExcerpts }) {
   const promptParts = []
 
   promptParts.push(`Create a comprehensive, visually rich academic portfolio for ${studentName}.`)
   promptParts.push(`\nDesign Pattern: ${designPattern}`)
-  promptParts.push(`\n\nIMPORTANT: The portfolio must include ALL of the following sections. Use the provided information where available, and enhance it with engaging descriptions. Note where images should be placed (use [IMAGE: description] as placeholders for images).`)
+  promptParts.push(`\n\nIMPORTANT: The portfolio must include ALL of the following sections. Use the provided information where available, and enhance it with engaging descriptions.`)
+  if (providedPhotoCount > 0) {
+    promptParts.push(` The parent has provided ${providedPhotoCount} photo(s) to include. Use the placeholder [PROVIDED_PHOTO: 1] through [PROVIDED_PHOTO: ${providedPhotoCount}] in the portfolio where those photos would fit (e.g. About Me, Achievements, work samples). Use these instead of [IMAGE: ...] for those slots.`)
+  }
+  promptParts.push(` For any other image slots use [IMAGE: description] as placeholders.`)
   
   // About Me section
   if (sectionData?.aboutMe) {
@@ -173,8 +182,24 @@ function buildPortfolioPrompt ({ studentName, designPattern, studentRemarks, ins
     promptParts.push(`\n\nInstructor Remarks:\n${instructorRemarks}`)
   }
 
-  if (studentWorkSummaries && studentWorkSummaries.length > 0) {
-    promptParts.push(`\n\nStudent Work Samples:\n${studentWorkSummaries.join('\n')}`)
+  // Work file list (metadata only—do NOT describe or invent content for these)
+  const workSummariesArr = Array.isArray(studentWorkSummaries)
+    ? studentWorkSummaries
+    : (typeof studentWorkSummaries === 'string' && studentWorkSummaries.length > 0 ? [studentWorkSummaries] : [])
+  if (workSummariesArr.length > 0) {
+    promptParts.push(`\n\nWork files on file (metadata only; do not invent or write descriptions of these):\n${workSummariesArr.join('\n')}`)
+  }
+
+  // Text excerpts = the ONLY source for the Student Work Samples section (real quotes only)
+  if (textExcerpts && textExcerpts.length > 0) {
+    promptParts.push(`\n\n--- STUDENT WORK SAMPLES SECTION (use only the content below) ---`)
+    promptParts.push(`\nYou MUST include a section titled "## Student Work Samples". In that section, use ONLY real quotes or short excerpts from the text below. Attribute each quote to its source (e.g. "From [filename]: \"...\"" or "— [filename]"). Do NOT make up work sample descriptions. Do NOT describe or invent content for work samples. If you use a quote, it must appear in the text below.`)
+    promptParts.push(`\nActual text from the student's work (use only these for the Student Work Samples section):\n`)
+    textExcerpts.forEach(({ fileName, text }) => {
+      promptParts.push(`\n--- ${fileName} ---\n${text.substring(0, 4000)}\n`)
+    })
+  } else if (workSummariesArr.length > 0) {
+    promptParts.push(`\n\nStudent Work Samples section: No text content was extracted from the work files (e.g. they may be images or non-text). Include a short line such as "Work samples are on file; see uploaded materials." Do NOT make up or invent descriptions of work samples.`)
   }
 
   if (reportCardSnapshot) {
@@ -233,27 +258,29 @@ function buildPortfolioPrompt ({ studentName, designPattern, studentRemarks, ins
  * @param {Object} params - Portfolio compilation parameters
  * @returns {Promise<{content: string, snippet: string}>}
  */
-export async function compilePortfolioWithChatGPT ({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot, attendanceSummary, courses, sectionData }) {
+export async function compilePortfolioWithChatGPT ({ studentName, designPattern, studentWorkFiles, providedPhotoWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot, attendanceSummary, courses, sectionData, textExcerpts }) {
   const startTime = Date.now()
+  const providedPhotoCount = providedPhotoWorkFiles?.length ?? 0
+  const apiKey = process.env.OPENAI_API_KEY
+  const hasKey = !!apiKey && typeof apiKey === 'string' && apiKey.trim().length > 0 && apiKey.startsWith('sk-')
+
+  if (!hasKey) {
+    console.error('[ChatGPT Service] OPENAI_API_KEY is missing or invalid (must be set in .env and start with "sk-"). Using fallback compilation (no AI).')
+    return getFallbackCompilation({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot, attendanceSummary, courses, sectionData })
+  }
+
+  const openai = getOpenAI()
+  if (!openai) {
+    console.error('[ChatGPT Service] Could not create OpenAI client. Using fallback compilation.')
+    return getFallbackCompilation({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot, attendanceSummary, courses, sectionData })
+  }
 
   try {
-    if (!process.env.OPENAI_API_KEY) {
-      console.error('[ChatGPT Service] OPENAI_API_KEY not set! Check your .env file or environment variables.')
-      console.error('[ChatGPT Service] Using fallback compilation (no AI generation)')
-      return getFallbackCompilation({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot, attendanceSummary, courses, sectionData })
-    }
-    
-    // Verify the API key format (should start with 'sk-')
-    if (!process.env.OPENAI_API_KEY.startsWith('sk-')) {
-      console.error('[ChatGPT Service] OPENAI_API_KEY appears to be invalid (should start with "sk-")')
-      console.error('[ChatGPT Service] Using fallback compilation (no AI generation)')
-      return getFallbackCompilation({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot, attendanceSummary, courses, sectionData })
-    }
-
     console.log('[ChatGPT Service] Starting portfolio compilation with OpenAI', {
       studentName,
       designPattern,
       workFilesCount: studentWorkFiles?.length || 0,
+      providedPhotoCount,
       timestamp: new Date().toISOString()
     })
 
@@ -267,10 +294,12 @@ export async function compilePortfolioWithChatGPT ({ studentName, designPattern,
       studentRemarks,
       instructorRemarks,
       reportCardSnapshot,
-      studentWorkSummaries: workSummaries.join('\n\n'),
+      studentWorkSummaries: workSummaries,
       attendanceSummary,
       courses,
-      sectionData
+      sectionData,
+      providedPhotoCount,
+      textExcerpts
     })
 
     console.log('[ChatGPT Service] Sending request to OpenAI...', {
@@ -284,7 +313,7 @@ export async function compilePortfolioWithChatGPT ({ studentName, designPattern,
       messages: [
         {
           role: 'system',
-          content: 'You are an expert portfolio generator. Create comprehensive, engaging academic portfolios that highlight student achievements, growth, and progress. Use markdown formatting with clear sections (## for section titles). Include [IMAGE: description] placeholders throughout to indicate where images would enhance the content. Make the content detailed, positive, and reflective of the student\'s journey.'
+          content: 'You are an expert portfolio generator. Create comprehensive, engaging academic portfolios that highlight student achievements, growth, and progress. Use markdown formatting with clear sections (## for section titles). For the "Student Work Samples" section: use only real quotes or excerpts from the text the user provides; never make up or invent work sample descriptions. Include [IMAGE: description] placeholders where images would enhance the content. Make the content detailed, positive, and reflective of the student\'s journey.'
         },
         {
           role: 'user',
@@ -331,7 +360,12 @@ export async function compilePortfolioWithChatGPT ({ studentName, designPattern,
             })
             console.log(`[ChatGPT Service] Image ${i + 1} generated successfully (${imageDuration}ms)`)
           } else {
-            console.warn(`[ChatGPT Service] Image ${i + 1} generation returned no URL`)
+            // Keep a slot so placeholder order matches; controller will fill with missing/placeholder
+            generatedImages.push({
+              description,
+              url: '' // Failed; controller will assign missing slot so indices stay in sync
+            })
+            console.warn(`[ChatGPT Service] Image ${i + 1} generation failed, keeping slot for order`)
           }
           
           // Add a small delay between image generations to avoid rate limiting
@@ -358,28 +392,19 @@ export async function compilePortfolioWithChatGPT ({ studentName, designPattern,
     }
   } catch (error) {
     const duration = Date.now() - startTime
+    const errMsg = error.message || String(error)
     console.error('[ChatGPT Service] Error compiling portfolio with OpenAI', {
-      error: error.message,
+      error: errMsg,
       errorType: error.constructor?.name,
-      errorStack: error.stack,
       duration: `${duration}ms`,
-      timestamp: new Date().toISOString(),
-      hasApiKey: !!process.env.OPENAI_API_KEY,
-      apiKeyPreview: process.env.OPENAI_API_KEY ? (process.env.OPENAI_API_KEY.substring(0, 7) + '...') : 'missing'
+      timestamp: new Date().toISOString()
     })
+    if (error.status) console.error('[ChatGPT Service] HTTP status:', error.status)
+    if (error.response?.data) console.error('[ChatGPT Service] API response:', JSON.stringify(error.response.data).slice(0, 500))
+    if (error.code) console.error('[ChatGPT Service] Error code:', error.code)
 
-    // Check for specific OpenAI API errors
-    if (error.response) {
-      console.error('[ChatGPT Service] OpenAI API response error:', {
-        status: error.response.status,
-        statusText: error.response.statusText,
-        data: error.response.data
-      })
-    }
-
-    // Fallback to basic compilation if OpenAI fails
-    console.warn('[ChatGPT Service] Falling back to basic compilation (no AI generation)')
-    return getFallbackCompilation({ studentName, designPattern, studentWorkFiles, studentRemarks, instructorRemarks, reportCardSnapshot, attendanceSummary, courses, sectionData })
+    // Re-throw so the controller can surface this to the client instead of silent fallback
+    throw new Error(`Portfolio AI failed: ${errMsg}`)
   }
 }
 

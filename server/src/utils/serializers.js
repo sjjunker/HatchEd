@@ -116,13 +116,12 @@ export function serializeAssignment (assignment) {
 export function serializePortfolio (portfolio) {
   if (!portfolio) return null
   
-  // Ensure generatedImages have id field if missing
+  // generatedImages are references only: { id, description }. No URLs; client loads from GET /api/portfolios/images/:id
   const generatedImages = (portfolio.generatedImages ?? []).map((img, index) => {
     if (typeof img === 'object' && img !== null) {
       return {
         id: img.id || `img-${index}`,
-        description: img.description || '',
-        url: img.url || ''
+        description: img.description || ''
       }
     }
     return img
@@ -167,7 +166,7 @@ export function serializeStudentWorkFile (file) {
   return {
     id: file._id?.toString?.() ?? file._id,
     fileName: file.fileName,
-    fileUrl: file.fileUrl,
+    fileUrl: file.fileUrl ?? null,
     fileType: file.fileType,
     fileSize: file.fileSize,
     studentId: file.studentId?.toString?.() ?? file.studentId,

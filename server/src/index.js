@@ -21,6 +21,8 @@ import inviteRoutes from './routes/invite.js'
 import resourcesRoutes from './routes/resources.js'
 import { errorHandler } from './middleware/errorHandler.js'
 import { notFoundHandler } from './middleware/notFoundHandler.js'
+import { UPLOADS_DIR } from './lib/uploadsPath.js'
+import fs from 'fs/promises'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -127,8 +129,9 @@ app.use('/api/planner', plannerRoutes)
 app.use('/api/invite', inviteRoutes)
 app.use('/api/resources', resourcesRoutes)
 
-// Serve uploaded files
-app.use('/uploads', express.static('uploads'))
+// Ensure uploads dir exists and serve uploaded files (same path multer uses)
+await fs.mkdir(UPLOADS_DIR, { recursive: true })
+app.use('/uploads', express.static(UPLOADS_DIR))
 
 // 404 handler - must be after all routes
 app.use(notFoundHandler)
@@ -157,10 +160,12 @@ const port = process.env.PORT || 4000
 
 async function start () {
   try {
+    const openaiKey = process.env.OPENAI_API_KEY
     console.log('[Server] Starting server initialization...', {
       timestamp: new Date().toISOString(),
       port,
-      nodeEnv: process.env.NODE_ENV || 'development'
+      nodeEnv: process.env.NODE_ENV || 'development',
+      openaiApiKey: openaiKey ? (openaiKey.startsWith('sk-') ? 'set (sk-...)' : 'set but invalid format') : 'NOT SET'
     })
 
     console.log('[Server] Connecting to database...')

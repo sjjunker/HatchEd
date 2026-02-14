@@ -97,3 +97,10 @@ export async function findAttendanceForStudent ({ familyId, studentUserId, limit
 
   return cursor.toArray()
 }
+
+export async function deleteAttendanceRecordsByStudentUserId (studentUserId) {
+  const result = await attendanceCollection().deleteMany({
+    studentUserId: new ObjectId(studentUserId)
+  })
+  return result.deletedCount
+}

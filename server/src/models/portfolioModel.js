@@ -83,6 +83,18 @@ export async function findPortfoliosByFamilyId (familyId) {
   return docs.map(decryptPortfolio)
 }
 
+export async function findPortfoliosByStudentId (studentId) {
+  const docs = await portfoliosCollection().find({ studentId: new ObjectId(studentId) }).toArray()
+  return docs.map(decryptPortfolio)
+}
+
+export async function deletePortfoliosByStudentId (studentId) {
+  const result = await portfoliosCollection().deleteMany({
+    studentId: new ObjectId(studentId)
+  })
+  return result.deletedCount
+}
+
 export async function findPortfolioById (id) {
   const doc = await portfoliosCollection().findOne({ _id: new ObjectId(id) })
   return decryptPortfolio(doc)

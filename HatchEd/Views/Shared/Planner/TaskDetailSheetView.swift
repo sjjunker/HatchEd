@@ -156,7 +156,7 @@ struct TaskDetailSheetView: View {
                           let student = students.first(where: { $0.id == assignment.studentId }) {
                     // Fallback: find course from assignments list
                     editedCourse = courses.first { course in
-                        course.student.id == student.id && course.assignments.contains { $0.id == assignment.id }
+                        course.students.contains(where: { $0.id == student.id }) && course.assignments.contains { $0.id == assignment.id }
                     }
                 }
             }
@@ -474,7 +474,7 @@ struct TaskDetailSheetView: View {
         VStack(spacing: 12) {
             if let student = editedStudent ?? displayStudent {
                 // Show courses for the selected student
-                let studentCourses = courses.filter { $0.student.id == student.id }
+                let studentCourses = courses.filter { $0.students.contains(where: { $0.id == student.id }) }
                 
                 if !studentCourses.isEmpty {
                     Picker("Course", selection: $editedCourse) {
@@ -531,7 +531,7 @@ struct TaskDetailSheetView: View {
             // Fallback: try to find the course that contains this assignment in its assignments list
             if let student = students.first(where: { $0.id == assignment.studentId }) {
                 return courses.first { course in
-                    course.student.id == student.id && course.assignments.contains { $0.id == assignment.id }
+                    course.students.contains(where: { $0.id == student.id }) && course.assignments.contains { $0.id == assignment.id }
                 }
             }
         }
@@ -633,7 +633,7 @@ struct TaskDetailSheetView: View {
             // Fallback: try to find course from assignments list
             if courseToSet == nil, let student = students.first(where: { $0.id == assignment.studentId }) {
                 courseToSet = courses.first(where: { course in
-                    course.student.id == student.id && course.assignments.contains { $0.id == assignment.id }
+                    course.students.contains(where: { $0.id == student.id }) && course.assignments.contains { $0.id == assignment.id }
                 })
             }
         }

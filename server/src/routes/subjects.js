@@ -12,7 +12,7 @@ import {
   getAssignmentsHandler,
   updateAssignmentHandler,
   deleteAssignmentHandler
-} from '../controllers/curriculumController.js'
+} from '../controllers/subjectsController.js'
 
 const router = Router()
 
@@ -31,4 +31,3 @@ router.patch('/assignments/:id', asyncHandler(updateAssignmentHandler))
 router.delete('/assignments/:id', asyncHandler(deleteAssignmentHandler))
 
 export default router
-

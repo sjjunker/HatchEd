@@ -65,3 +65,10 @@ export async function deletePlannerTask (id) {
   return result.deletedCount > 0
 }
 
+export async function deletePlannerTasksByUserId (userId) {
+  const result = await plannerTasksCollection().deleteMany({
+    userId: new ObjectId(userId)
+  })
+  return result.deletedCount
+}
+

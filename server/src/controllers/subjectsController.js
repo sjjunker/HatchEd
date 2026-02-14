@@ -9,12 +9,15 @@ import { serializeCourse, serializeAssignment } from '../utils/serializers.js'
 
 // Courses
 export async function createCourseHandler (req, res) {
-  const { name, studentUserId, grade } = req.body
+  const { name, studentUserId, studentUserIds, grade } = req.body
   if (!name || !name.trim()) {
     return res.status(400).json({ error: { message: 'Course name is required' } })
   }
-  if (!studentUserId) {
-    return res.status(400).json({ error: { message: 'Student is required' } })
+  const ids = Array.isArray(studentUserIds) && studentUserIds.length > 0
+    ? studentUserIds
+    : (studentUserId ? [studentUserId] : [])
+  if (ids.length === 0) {
+    return res.status(400).json({ error: { message: 'At least one student is required' } })
   }
 
   const user = await findUserById(req.user.userId)
@@ -22,19 +25,20 @@ export async function createCourseHandler (req, res) {
     return res.status(400).json({ error: { message: 'User must belong to a family' } })
   }
 
-  // Verify student belongs to the same family
-  const student = await findUserById(studentUserId)
-  if (!student || student.familyId?.toString() !== user.familyId.toString()) {
-    return res.status(400).json({ error: { message: 'Student must belong to the same family' } })
+  // Verify all students belong to the same family
+  const students = await Promise.all(ids.map(id => findUserById(id)))
+  const invalid = students.some((s, i) => !s || s.familyId?.toString() !== user.familyId.toString())
+  if (invalid) {
+    return res.status(400).json({ error: { message: 'All students must belong to your family' } })
   }
 
   const course = await createCourse({
     familyId: user.familyId,
     name: name.trim(),
-    studentUserId,
+    studentUserIds: ids,
     grade
   })
-  res.status(201).json({ course: serializeCourse(course, student) })
+  res.status(201).json({ course: serializeCourse(course, students) })
 }
 
 export async function getCoursesHandler (req, res) {
@@ -46,13 +50,14 @@ export async function getCoursesHandler (req, res) {
   const courses = await findCoursesByFamilyId(user.familyId)
   const coursesWithDetails = await Promise.all(
     courses.map(async (course) => {
-      const student = await findUserById(course.studentUserId)
-      // Fetch assignments for this course
+      const ids = course.studentUserIds?.length
+        ? course.studentUserIds
+        : (course.studentUserId ? [course.studentUserId] : [])
+      const students = await Promise.all(ids.map(id => findUserById(id.toString?.() ?? id)))
       const assignments = await findAssignmentsByCourseId(course._id.toString())
       const serializedAssignments = assignments.map(assignment => serializeAssignment(assignment))
-      // Add assignments to course before serializing
       const courseWithAssignments = { ...course, assignments: serializedAssignments }
-      return serializeCourse(courseWithAssignments, student)
+      return serializeCourse(courseWithAssignments, students)
     })
   )
   res.json({ courses: coursesWithDetails })
@@ -61,13 +66,12 @@ export async function getCoursesHandler (req, res) {
 export async function updateCourseHandler (req, res) {
   try {
     const { id } = req.params
-    let { name, grade } = req.body
+    let { name, grade, studentUserIds } = req.body
 
     // Normalize grade: convert empty string, null, or undefined to null
     if (grade === '' || grade === null || grade === undefined) {
       grade = null
     } else if (typeof grade === 'string') {
-      // If grade is a string, try to parse it
       const parsed = parseFloat(grade)
       grade = isNaN(parsed) ? null : parsed
     }
@@ -86,37 +90,36 @@ export async function updateCourseHandler (req, res) {
       return res.status(403).json({ error: { message: 'Not authorized' } })
     }
 
-    const updated = await updateCourse(id, { name, grade })
+    if (studentUserIds !== undefined && Array.isArray(studentUserIds) && studentUserIds.length === 0) {
+      return res.status(400).json({ error: { message: 'At least one student is required' } })
+    }
+    if (studentUserIds !== undefined && Array.isArray(studentUserIds)) {
+      const students = await Promise.all(studentUserIds.map(sid => findUserById(sid)))
+      const invalid = students.some((s, i) => !s || s.familyId?.toString() !== user.familyId.toString())
+      if (invalid) {
+        return res.status(400).json({ error: { message: 'All students must belong to your family' } })
+      }
+    }
+
+    const updated = await updateCourse(id, { name, grade, studentUserIds })
     if (!updated || updated === null) {
       console.error('updateCourse returned null/undefined for course:', id)
       return res.status(500).json({ error: { message: 'Failed to update course' } })
     }
 
-    // Use the original course's studentUserId if updated doesn't have it
-    // This handles cases where the update might not return all fields
-    const studentUserId = (updated && updated.studentUserId) ? updated.studentUserId : course.studentUserId
-    if (!studentUserId) {
-      console.error('Course missing studentUserId. Course:', course, 'Updated:', updated)
-      return res.status(500).json({ error: { message: 'Course missing studentUserId' } })
-    }
-
-    const student = await findUserById(studentUserId)
-    if (!student) {
-      return res.status(500).json({ error: { message: 'Student not found for course' } })
-    }
-
-    // Fetch assignments for this course
+    const ids = updated.studentUserIds?.length
+      ? updated.studentUserIds
+      : (updated.studentUserId ? [updated.studentUserId] : [])
+    const students = await Promise.all(ids.map(sid => findUserById(sid.toString?.() ?? sid)))
     let assignments = []
     try {
       assignments = await findAssignmentsByCourseId(id)
     } catch (assignmentsError) {
       console.error('Error fetching assignments for course:', assignmentsError)
-      // Continue without assignments rather than failing the entire request
     }
     const serializedAssignments = assignments.map(assignment => serializeAssignment(assignment))
-    // Add assignments to course before serializing
     const courseWithAssignments = { ...updated, assignments: serializedAssignments }
-    res.json({ course: serializeCourse(courseWithAssignments, student) })
+    res.json({ course: serializeCourse(courseWithAssignments, students) })
   } catch (error) {
     console.error('Error updating course:', error)
     console.error('Error stack:', error.stack)
@@ -236,4 +239,3 @@ export async function deleteAssignmentHandler (req, res) {
   await deleteAssignment(id)
   res.json({ success: true })
 }
-

@@ -40,7 +40,14 @@ final class APIClient {
     private let tokenStore = TokenStore()
     
     private init() {
-        let urlString = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String ?? "http://localhost:4000"
+        let urlString: String
+        #if DEBUG
+        // Development: use local server so you don't hit production when NODE_ENV=development
+        urlString = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL_DEV") as? String ?? "http://localhost:4000"
+        #else
+        // Release / TestFlight: use production server
+        urlString = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String ?? "http://localhost:4000"
+        #endif
         guard let url = URL(string: urlString) else {
             fatalError("Invalid API base URL")
         }
@@ -110,7 +117,7 @@ final class APIClient {
         return response.attendance
     }
     
-    // Curriculum API methods
+    // Subjects API methods (courses & assignments)
     struct CoursesResponse: Decodable {
         let courses: [Course]
     }
@@ -133,13 +140,14 @@ final class APIClient {
     
     struct CreateCourseRequest: Encodable {
         let name: String
-        let studentUserId: String
+        let studentUserIds: [String]
         let grade: Double?
     }
     
     struct UpdateCourseRequest: Encodable {
         let name: String?
         let grade: Double?
+        let studentUserIds: [String]?
     }
     
     struct CreateAssignmentRequest: Encodable {
@@ -162,10 +170,10 @@ final class APIClient {
     }
     
     // Courses
-    func createCourse(name: String, studentUserId: String, grade: Double?) async throws -> Course {
-        let body = CreateCourseRequest(name: name, studentUserId: studentUserId, grade: grade)
+    func createCourse(name: String, studentUserIds: [String], grade: Double?) async throws -> Course {
+        let body = CreateCourseRequest(name: name, studentUserIds: studentUserIds, grade: grade)
         let response: CourseResponse = try await request(
-            Endpoint(path: "api/curriculum/courses", method: .post, body: body),
+            Endpoint(path: "api/subjects/courses", method: .post, body: body),
             responseType: CourseResponse.self
         )
         return response.course
@@ -173,16 +181,16 @@ final class APIClient {
     
     func fetchCourses() async throws -> [Course] {
         let response: CoursesResponse = try await request(
-            Endpoint(path: "api/curriculum/courses"),
+            Endpoint(path: "api/subjects/courses"),
             responseType: CoursesResponse.self
         )
         return response.courses
     }
     
-    func updateCourse(id: String, name: String?, grade: Double?) async throws -> Course {
-        let body = UpdateCourseRequest(name: name, grade: grade)
+    func updateCourse(id: String, name: String?, grade: Double?, studentUserIds: [String]? = nil) async throws -> Course {
+        let body = UpdateCourseRequest(name: name, grade: grade, studentUserIds: studentUserIds)
         let response: CourseResponse = try await request(
-            Endpoint(path: "api/curriculum/courses/\(id)", method: .patch, body: body),
+            Endpoint(path: "api/subjects/courses/\(id)", method: .patch, body: body),
             responseType: CourseResponse.self
         )
         return response.course
@@ -190,7 +198,7 @@ final class APIClient {
     
     func deleteCourse(id: String) async throws {
         _ = try await request(
-            Endpoint(path: "api/curriculum/courses/\(id)", method: .delete),
+            Endpoint(path: "api/subjects/courses/\(id)", method: .delete),
             responseType: SuccessResponse.self
         )
     }
@@ -199,7 +207,7 @@ final class APIClient {
     func createAssignment(title: String, studentId: String, dueDate: Date?, instructions: String?, pointsPossible: Double?, pointsAwarded: Double?, courseId: String?) async throws -> Assignment {
         let body = CreateAssignmentRequest(title: title, studentId: studentId, dueDate: dueDate, instructions: instructions, pointsPossible: pointsPossible, pointsAwarded: pointsAwarded, courseId: courseId)
         let response: AssignmentResponse = try await request(
-            Endpoint(path: "api/curriculum/assignments", method: .post, body: body),
+            Endpoint(path: "api/subjects/assignments", method: .post, body: body),
             responseType: AssignmentResponse.self
         )
         return response.assignment
@@ -207,7 +215,7 @@ final class APIClient {
     
     func fetchAssignments() async throws -> [Assignment] {
         let response: AssignmentsResponse = try await request(
-            Endpoint(path: "api/curriculum/assignments"),
+            Endpoint(path: "api/subjects/assignments"),
             responseType: AssignmentsResponse.self
         )
         return response.assignments
@@ -216,7 +224,7 @@ final class APIClient {
     func updateAssignment(id: String, title: String?, dueDate: Date?, instructions: String?, pointsPossible: Double?, pointsAwarded: Double?, courseId: String? = nil) async throws -> Assignment {
         let body = UpdateAssignmentRequest(title: title, dueDate: dueDate, instructions: instructions, pointsPossible: pointsPossible, pointsAwarded: pointsAwarded, courseId: courseId)
         let response: AssignmentResponse = try await request(
-            Endpoint(path: "api/curriculum/assignments/\(id)", method: .patch, body: body),
+            Endpoint(path: "api/subjects/assignments/\(id)", method: .patch, body: body),
             responseType: AssignmentResponse.self
         )
         return response.assignment
@@ -224,7 +232,7 @@ final class APIClient {
     
     func deleteAssignment(id: String) async throws {
         _ = try await request(
-            Endpoint(path: "api/curriculum/assignments/\(id)", method: .delete),
+            Endpoint(path: "api/subjects/assignments/\(id)", method: .delete),
             responseType: SuccessResponse.self
         )
     }
@@ -432,6 +440,80 @@ final class APIClient {
         }
     }
     
+    // Add Child (parent invite flow)
+    struct CreateChildRequest: Encodable {
+        let name: String
+        let email: String?
+    }
+    struct CreateChildResponse: Decodable {
+        let child: User
+        let inviteLink: String
+        let inviteToken: String
+    }
+    struct AcceptInviteResponse: Decodable {
+        let token: String
+        let user: User
+    }
+    func createChild(name: String, email: String?) async throws -> CreateChildResponse {
+        let body = CreateChildRequest(name: name, email: email)
+        return try await request(
+            Endpoint(path: "api/users/me/children", method: .post, body: body),
+            responseType: CreateChildResponse.self
+        )
+    }
+    func acceptInvite(token: String) async throws -> AcceptInviteResponse {
+        let body = ["token": token]
+        return try await request(
+            Endpoint(path: "api/invite/accept", method: .post, body: body),
+            responseType: AcceptInviteResponse.self
+        )
+    }
+
+    struct ChildInviteResponse: Decodable {
+        let inviteLink: String
+        let inviteToken: String
+    }
+    func fetchChildInvite(childId: String) async throws -> ChildInviteResponse {
+        try await request(
+            Endpoint(path: "api/users/me/children/\(childId)/invite"),
+            responseType: ChildInviteResponse.self
+        )
+    }
+
+    func deleteChild(childId: String) async throws {
+        _ = try await request(
+            Endpoint(path: "api/users/me/children/\(childId)", method: .delete),
+            responseType: EmptyResponse.self
+        )
+    }
+
+    /// Link Apple ID to the current user (e.g. student after first login via invite).
+    func linkApple(identityToken: String) async throws -> UserResponse {
+        try await request(
+            Endpoint(path: "api/users/me/link-apple", method: .post, body: ["identityToken": identityToken]),
+            responseType: UserResponse.self
+        )
+    }
+
+    /// Link Google account to the current user.
+    func linkGoogle(idToken: String) async throws -> UserResponse {
+        try await request(
+            Endpoint(path: "api/users/me/link-google", method: .post, body: ["idToken": idToken]),
+            responseType: UserResponse.self
+        )
+    }
+
+    /// Set username and/or password for the current user (e.g. student adding sign-in method).
+    func setUsernamePassword(username: String?, password: String?) async throws -> UserResponse {
+        var body: [String: String] = [:]
+        if let u = username, !u.isEmpty { body["username"] = u }
+        if let p = password, !p.isEmpty { body["password"] = p }
+        return try await request(
+            Endpoint(path: "api/users/me/set-username-password", method: .post, body: body),
+            responseType: UserResponse.self
+        )
+    }
+
     // Two-Factor Authentication API methods
     struct TwoFactorSetupResponse: Decodable {
         let secret: String

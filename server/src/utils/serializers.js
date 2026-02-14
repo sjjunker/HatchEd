@@ -2,7 +2,7 @@
 
 export function serializeUser (user) {
   if (!user) return null
-  return {
+  const payload = {
     id: user._id?.toString?.() ?? user._id,
     appleId: user.appleId,
     googleId: user.googleId,
@@ -11,9 +11,23 @@ export function serializeUser (user) {
     email: user.email ?? null,
     role: user.role ?? null,
     familyId: user.familyId ? user.familyId.toString() : null,
+    invitePending: !!(user.inviteToken != null),
     createdAt: user.createdAt,
     updatedAt: user.updatedAt
   }
+  return payload
+}
+
+/** Like serializeUser but adds inviteLink and inviteToken when user has a pending invite (for family students so parent can copy link later). */
+export function serializeUserWithInvite (user, baseUrl) {
+  const payload = serializeUser(user)
+  if (!payload) return null
+  if (user.inviteToken) {
+    const invitePath = `/invite?token=${encodeURIComponent(user.inviteToken)}`
+    payload.inviteLink = `${baseUrl}${invitePath}`
+    payload.inviteToken = user.inviteToken
+  }
+  return payload
 }
 
 export function serializeFamily (family) {
@@ -56,17 +70,25 @@ export function serializeAttendanceRecord (record) {
   }
 }
 
-export function serializeCourse (course, student) {
+/** Serialize a single student for course.students. */
+function serializeCourseStudent (student) {
+  if (!student) return null
+  return {
+    id: student._id?.toString?.() ?? student._id,
+    name: student.name ?? null,
+    email: student.email ?? null
+  }
+}
+
+/** Serialize course with students array. students is array of user objects. */
+export function serializeCourse (course, students) {
   if (!course) return null
+  const studentsList = Array.isArray(students) ? students : (students ? [students] : [])
   return {
     id: course._id?.toString?.() ?? course._id,
     name: course.name,
     grade: course.grade ?? null,
-    student: student ? {
-      id: student._id?.toString?.() ?? student._id,
-      name: student.name ?? null,
-      email: student.email ?? null
-    } : null,
+    students: studentsList.map(serializeCourseStudent).filter(Boolean),
     assignments: course.assignments ?? [],
     createdAt: course.createdAt,
     updatedAt: course.updatedAt

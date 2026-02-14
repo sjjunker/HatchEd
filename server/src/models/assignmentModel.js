@@ -81,3 +81,10 @@ export async function deleteAssignment (id) {
   return result.deletedCount > 0
 }
 
+export async function deleteAssignmentsByStudentId (studentId) {
+  const result = await assignmentsCollection().deleteMany({
+    studentId: new ObjectId(studentId)
+  })
+  return result.deletedCount
+}
+

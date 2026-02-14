@@ -110,7 +110,7 @@ struct AddAssignmentView: View {
         VStack(spacing: 12) {
             if let student = selectedStudent {
                 // Show courses for the selected student
-                let studentCourses = courses.filter { $0.student.id == student.id }
+                let studentCourses = courses.filter { $0.students.contains(where: { $0.id == student.id }) }
                 
                 if !studentCourses.isEmpty {
                     Picker("Course", selection: $selectedCourse) {

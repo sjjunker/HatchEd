@@ -1,5 +1,6 @@
 // Updated with assistance from Cursor (ChatGPT) on 11/7/25.
 
+import crypto from 'crypto'
 import { ObjectId } from 'mongodb'
 import { getCollection, pingDatabase } from '../lib/mongo.js'
 import { encrypt, decrypt, hashForLookup } from '../utils/piiCrypto.js'
@@ -52,6 +53,11 @@ export async function findUserByUsername (username) {
 export async function findUserById (id) {
   const doc = await usersCollection().findOne({ _id: new ObjectId(id) })
   return decryptUser(doc)
+}
+
+export async function deleteUserById (id) {
+  const result = await usersCollection().deleteOne({ _id: new ObjectId(id) })
+  return result.deletedCount === 1
 }
 
 export async function upsertUserByAppleId (appleId, userData) {
@@ -379,4 +385,87 @@ export async function updateUserProfile (userId, { role, name }) {
   )
   const doc = result?.value ?? await usersCollection().findOne({ _id: new ObjectId(userId) })
   return decryptUser(doc)
+}
+
+/** Create a child user for a family (invite flow). Child exists immediately; they use invite link to activate. */
+export async function createChildForFamily (familyId, parentUserId, { name, email }) {
+  const token = crypto.randomBytes(32).toString('base64url')
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+  const encryptedData = encryptUserPII({
+    name: name?.trim() || null,
+    email: email?.trim() || null
+  })
+  const newUser = {
+    ...encryptedData,
+    role: 'student',
+    familyId: new ObjectId(familyId),
+    inviteToken: token,
+    inviteTokenExpiresAt: expiresAt,
+    createdAt: new Date(),
+    updatedAt: new Date()
+  }
+  const result = await usersCollection().insertOne(newUser)
+  const created = await usersCollection().findOne({ _id: result.insertedId })
+  return { user: decryptUser(created), inviteToken: token }
+}
+
+/** Find user by valid invite token (for accepting invite). */
+export async function findUserByInviteToken (token) {
+  if (!token || !token.trim()) return null
+  const doc = await usersCollection().findOne({
+    inviteToken: token.trim(),
+    inviteTokenExpiresAt: { $gt: new Date() }
+  })
+  return decryptUser(doc)
+}
+
+/** Link Apple ID to an existing user (e.g. child after first login). Fails if another user already has this appleId. */
+export async function linkAppleIdToUser (userId, appleId) {
+  const existing = await usersCollection().findOne({ appleId })
+  if (existing && existing._id.toString() !== userId) {
+    throw new Error('This Apple ID is already used by another account')
+  }
+  const update = { $set: { appleId, updatedAt: new Date() } }
+  await usersCollection().updateOne({ _id: new ObjectId(userId) }, update)
+  return findUserById(userId)
+}
+
+/** Link Google ID to an existing user. Fails if another user already has this googleId. */
+export async function linkGoogleIdToUser (userId, googleId) {
+  const existing = await usersCollection().findOne({ googleId })
+  if (existing && existing._id.toString() !== userId) {
+    throw new Error('This Google account is already used by another account')
+  }
+  const update = { $set: { googleId, updatedAt: new Date() } }
+  await usersCollection().updateOne({ _id: new ObjectId(userId) }, update)
+  return findUserById(userId)
+}
+
+/** Set username and/or password for an existing user (e.g. child adding sign-in method). Username must be unique. */
+export async function setUsernamePasswordForUser (userId, { username, passwordHash }) {
+  const update = { $set: { updatedAt: new Date() } }
+  if (username != null && username.trim() !== '') {
+    const existing = await findUserByUsername(username.trim())
+    if (existing) {
+      const existingId = existing._id?.toString?.() ?? existing._id
+      if (existingId !== userId) throw new Error('Username already taken')
+    }
+    const encrypted = encryptUserPII({ username: username.trim() })
+    update.$set.username = encrypted.username
+    update.$set.usernameHash = encrypted.usernameHash
+  }
+  if (passwordHash) {
+    update.$set.password = passwordHash
+  }
+  await usersCollection().updateOne({ _id: new ObjectId(userId) }, update)
+  return findUserById(userId)
+}
+
+/** Clear invite token and expiry after child accepts (account activated). */
+export async function clearInviteToken (userId) {
+  await usersCollection().updateOne(
+    { _id: new ObjectId(userId) },
+    { $unset: { inviteToken: '', inviteTokenExpiresAt: '' }, $set: { updatedAt: new Date() } }
+  )
+  return findUserById(userId)
 }

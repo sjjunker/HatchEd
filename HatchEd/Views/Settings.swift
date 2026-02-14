@@ -10,14 +10,14 @@ import SwiftUI
 
 struct Settings: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
-    @State private var showingCreateFamily = false
     @State private var showingJoinFamily = false
-    @State private var newFamilyName = ""
     @State private var joinCode = ""
     @State private var errorMessage: String?
     @State private var isSubmitting = false
     @State private var showingTwoFactorSetup = false
     @State private var twoFactorEnabled = false
+    @State private var studentToDelete: User?
+    @State private var isDeletingStudent = false
     
     private var currentUser: User? {
         authViewModel.currentUser
@@ -36,6 +36,7 @@ struct Settings: View {
             Form {
                 if isParent {
                     familySection
+                    studentsSection
                 } else {
                     Text("Family settings are only available for parent accounts.")
                         .foregroundColor(.hatchEdSecondaryText)
@@ -48,18 +49,29 @@ struct Settings: View {
             }
             .navigationTitle("Settings")
         }
-        .sheet(isPresented: $showingCreateFamily) {
-            createFamilySheet
-        }
         .sheet(isPresented: $showingJoinFamily) {
             joinFamilySheet
         }
         .sheet(isPresented: $showingTwoFactorSetup) {
             TwoFactorSetupView(isPresented: $showingTwoFactorSetup, twoFactorEnabled: $twoFactorEnabled)
         }
-        .onAppear {
-            // Check if 2FA is enabled (would need to fetch from user model)
-            // For now, we'll assume it's false and update when we add the field to User model
+        .alert("Remove student?", isPresented: Binding(
+            get: { studentToDelete != nil },
+            set: { if !$0 { studentToDelete = nil } }
+        )) {
+            Button("Cancel", role: .cancel) {
+                studentToDelete = nil
+            }
+            Button("Remove", role: .destructive) {
+                if let student = studentToDelete {
+                    Task { await performDeleteChild(student) }
+                }
+                studentToDelete = nil
+            }
+        } message: {
+            if let student = studentToDelete {
+                Text("\(student.name ?? "This student") will no longer have access to this family. Their account will be removed. This cannot be undone.")
+            }
         }
     }
     
@@ -76,19 +88,51 @@ struct Settings: View {
                     familyDetailRow(title: "Linked Students", value: "\(authViewModel.students.count)")
                 }
             } else {
-                Button {
-                    showingCreateFamily = true
-                } label: {
-                    Label("Create New Family", systemImage: "plus.circle.fill")
-                        .foregroundColor(.hatchEdAccent)
-                }
-                
+                Text("A family is created for you when you sign in. If you don't see one, pull to refresh on the dashboard.")
+                    .font(.subheadline)
+                    .foregroundColor(.hatchEdSecondaryText)
                 Button {
                     showingJoinFamily = true
                 } label: {
                     Label("Join Existing Family", systemImage: "person.2.badge.plus")
                         .foregroundColor(.hatchEdAccent)
                 }
+            }
+        }
+    }
+    
+    // MARK: - Students Section (parents only)
+    
+    private var studentsSection: some View {
+        Section(header: Text("Students"), footer: Text("Removing a student deletes their account. They will no longer be able to sign in or see family content.")) {
+            ForEach(authViewModel.students) { student in
+                HStack {
+                    Text(student.name ?? "Student")
+                        .foregroundColor(.hatchEdText)
+                    Spacer()
+                    Button(role: .destructive) {
+                        studentToDelete = student
+                    } label: {
+                        Text("Remove")
+                    }
+                    .disabled(isDeletingStudent)
+                }
+            }
+        }
+    }
+    
+    private func performDeleteChild(_ student: User) async {
+        isDeletingStudent = true
+        errorMessage = nil
+        defer { isDeletingStudent = false }
+        do {
+            try await APIClient.shared.deleteChild(childId: student.id)
+            await MainActor.run {
+                authViewModel.updateUserFromDatabase()
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
             }
         }
     }
@@ -117,34 +161,6 @@ struct Settings: View {
                 .padding(.vertical, monospaced ? 6 : 0)
                 .background(monospaced ? Color.hatchEdAccentBackground : Color.clear)
                 .cornerRadius(8)
-        }
-    }
-    
-    // MARK: - Create Family Sheet
-    
-    private var createFamilySheet: some View {
-        NavigationView {
-            Form {
-                Section(header: Text("Create New Family")) {
-                    TextField("Family Name", text: $newFamilyName)
-                }
-            }
-            .navigationTitle("Create Family")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        showingCreateFamily = false
-                        newFamilyName = ""
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
-                        Task { await performCreateFamily() }
-                    }
-                    .disabled(newFamilyName.trimmingCharacters(in: .whitespaces).isEmpty || isSubmitting)
-                }
-            }
         }
     }
     
@@ -177,28 +193,6 @@ struct Settings: View {
     }
     
     // MARK: - Actions
-    
-    private func performCreateFamily() async {
-        guard isParent else { return }
-        isSubmitting = true
-        defer { isSubmitting = false }
-        do {
-            try await authViewModel.createFamily(named: newFamilyName.trimmingCharacters(in: .whitespacesAndNewlines))
-            await MainActor.run {
-                showingCreateFamily = false
-                newFamilyName = ""
-                errorMessage = nil
-            }
-        } catch let error as AuthViewModel.FamilyJoinError {
-            await MainActor.run {
-                errorMessage = error.localizedDescription
-            }
-        } catch {
-            await MainActor.run {
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
     
     private func performJoinFamily() async {
         guard isParent else { return }
@@ -586,6 +580,77 @@ struct TwoFactorSetupView: View {
             await MainActor.run {
                 errorMessage = "Invalid verification code. Please try again."
                 isLoading = false
+            }
+        }
+    }
+}
+
+// MARK: - Set username & password (for invite-only accounts)
+
+struct SetUsernamePasswordSheet: View {
+    let currentUsername: String?
+    let onSave: (String?, String?) -> Void
+    let onDismiss: () -> Void
+    
+    @State private var username = ""
+    @State private var password = ""
+    @State private var confirmPassword = ""
+    @State private var errorMessage: String?
+    
+    private var needsUsername: Bool {
+        (currentUsername ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+    }
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                if needsUsername {
+                    Section(header: Text("Username")) {
+                        TextField("Username", text: $username)
+                            .textContentType(.username)
+                            .autocapitalization(.none)
+                            .autocorrectionDisabled()
+                    }
+                }
+                Section(header: Text("Password"), footer: Text("At least 6 characters.")) {
+                    SecureField("Password", text: $password)
+                        .textContentType(.newPassword)
+                    SecureField("Confirm password", text: $confirmPassword)
+                        .textContentType(.newPassword)
+                }
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .foregroundColor(.hatchEdCoralAccent)
+                    }
+                }
+            }
+            .navigationTitle("Set sign-in")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { onDismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        let u = username.trimmingCharacters(in: .whitespaces)
+                        if needsUsername && u.isEmpty {
+                            errorMessage = "Enter a username."
+                            return
+                        }
+                        if password.count < 6 {
+                            errorMessage = "Password must be at least 6 characters."
+                            return
+                        }
+                        if password != confirmPassword {
+                            errorMessage = "Passwords do not match."
+                            return
+                        }
+                        errorMessage = nil
+                        onSave(needsUsername ? u : nil, password)
+                    }
+                    .disabled(needsUsername && username.trimmingCharacters(in: .whitespaces).isEmpty || password.isEmpty || confirmPassword.isEmpty)
+                }
             }
         }
     }

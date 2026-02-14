@@ -3,6 +3,8 @@
 //  HatchEdTests
 //
 //  Created by Sandi Junker on 5/6/25.
+//  Uses Swift Testing (Testing framework). See ModelTests.swift, ViewModelTests.swift for more tests.
+//  For XCTest-style tests see HatchEdXCTests.swift.
 //
 
 import Testing
@@ -11,7 +13,10 @@ import Testing
 struct HatchEdTests {
 
     @Test func example() async throws {
-        // Write your test here and use APIs like `#expect(...)` to check expected conditions.
+        #expect(1 + 1 == 2)
     }
 
+    @Test func appImportsSucceed() {
+        #expect(PortfolioDesignPattern.general.rawValue == "General")
+    }
 }

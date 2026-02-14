@@ -12,6 +12,9 @@ struct StudentDetail: View {
     @StateObject private var viewModel: StudentDetailViewModel
     @State private var viewModelState: StudentDetailViewModel.StateSnapshot
     @State private var hasLoadedAttendance = false
+    @State private var fetchedInviteLink: String?
+    @State private var fetchedInviteToken: String?
+    @State private var isLoadingInvite = false
 
     init(student: User, courses: [Course] = [], assignments: [Assignment] = [], attendanceRecords: [AttendanceRecordDTO] = []) {
         let model = StudentDetailViewModel(student: student, courses: courses, assignments: assignments, attendanceRecords: attendanceRecords)
@@ -28,6 +31,9 @@ struct StudentDetail: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
+                if viewModel.student.invitePending == true {
+                    invitePendingSection
+                }
                 attendanceSection
                 attendanceHistorySection
                 coursesSection
@@ -54,6 +60,61 @@ struct StudentDetail: View {
             await viewModel.loadAttendance()
             await MainActor.run {
                 viewModelState = viewModel.makeSnapshot()
+            }
+        }
+        .task(id: viewModel.student.id) {
+            guard viewModel.student.invitePending == true else { return }
+            let hasLink = viewModel.student.inviteLink != nil
+            let hasToken = viewModel.student.inviteToken != nil && !(viewModel.student.inviteToken?.isEmpty ?? true)
+            guard !hasLink && !hasToken else { return }
+            isLoadingInvite = true
+            defer { isLoadingInvite = false }
+            do {
+                let response = try await APIClient.shared.fetchChildInvite(childId: viewModel.student.id)
+                fetchedInviteLink = response.inviteLink
+                fetchedInviteToken = response.inviteToken
+            } catch {
+                // Leave fetched state nil; section will show nothing or loading
+            }
+        }
+    }
+
+    private var invitePendingSection: some View {
+        Group {
+            let link = viewModel.student.inviteLink ?? fetchedInviteLink
+            let token = viewModel.student.inviteToken ?? fetchedInviteToken
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Invite link")
+                    .font(.headline)
+                    .foregroundColor(.hatchEdText)
+                if isLoadingInvite {
+                    HStack {
+                        ProgressView()
+                            .tint(.hatchEdAccent)
+                        Text("Loading…")
+                            .font(.subheadline)
+                            .foregroundColor(.hatchEdSecondaryText)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 16).fill(Color.hatchEdCardBackground))
+                } else if let link, !link.isEmpty {
+                    Text(link)
+                        .font(.caption)
+                        .foregroundColor(.hatchEdText)
+                        .textSelection(.enabled)
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 16).fill(Color.hatchEdCardBackground))
+                } else if let token, !token.isEmpty {
+                    Text("hatched://invite?token=\(token)")
+                        .font(.caption)
+                        .foregroundColor(.hatchEdText)
+                        .textSelection(.enabled)
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 16).fill(Color.hatchEdCardBackground))
+                }
             }
         }
     }

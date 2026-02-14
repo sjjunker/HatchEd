@@ -54,3 +54,10 @@ export async function deleteStudentWorkFile (id) {
   return result.deletedCount > 0
 }
 
+export async function deleteStudentWorkFilesByStudentId (studentId) {
+  const result = await studentWorkFilesCollection().deleteMany({
+    studentId: new ObjectId(studentId)
+  })
+  return result.deletedCount
+}
+

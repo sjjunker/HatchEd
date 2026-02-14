@@ -217,8 +217,8 @@ private enum SampleData {
         ]
 
         let courses = [
-            Course(name: "Algebra II", assignments: algebraAssignments, grade: 93.5, student: student),
-            Course(name: "Biology", assignments: biologyAssignments, grade: 90.0, student: student)
+            Course(name: "Algebra II", assignments: algebraAssignments, grade: 93.5, students: [student]),
+            Course(name: "Biology", assignments: biologyAssignments, grade: 90.0, students: [student])
         ]
 
         let assignments = (algebraAssignments + biologyAssignments).sorted { ($0.dueDate ?? .distantPast) > ($1.dueDate ?? .distantPast) }

@@ -94,3 +94,10 @@ export async function deleteNotificationForUser (notificationId, userId) {
   )
   return result.modifiedCount === 1
 }
+
+export async function deleteNotificationsByUserId (userId) {
+  const result = await notificationsCollection().deleteMany({
+    userId: new ObjectId(userId)
+  })
+  return result.deletedCount
+}

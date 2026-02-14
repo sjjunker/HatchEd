@@ -4,6 +4,8 @@
 <dict>
 	<key>API_BASE_URL</key>
 	<string>https://hatched-46ar.onrender.com</string>
+	<key>API_BASE_URL_DEV</key>
+	<string>http://localhost:4000</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
@@ -15,6 +17,16 @@
 	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>hatched</string>
+			</array>
+			<key>CFBundleURLName</key>
+			<string>justApps.HatchEd</string>
+			<key>CFBundleURLRole</key>
+			<string>Editor</string>
+		</dict>
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>

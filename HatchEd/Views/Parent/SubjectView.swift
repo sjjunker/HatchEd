@@ -1,5 +1,5 @@
 //
-//  CurriculumView.swift
+//  SubjectView.swift
 //  HatchEd
 //
 //  Created by Sandi Junker on 11/7/25.
@@ -7,7 +7,7 @@
 //
 import SwiftUI
 
-struct CurriculumView: View {
+struct SubjectView: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var courses: [Course] = []
     @State private var assignments: [Assignment] = []
@@ -75,15 +75,15 @@ struct CurriculumView: View {
                 }
             }
         }
-        .navigationTitle("Curriculum")
+        .navigationTitle("Subjects")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             Task {
-                await loadCurriculum()
+                await loadSubjects()
             }
         }
         .refreshable {
-            await loadCurriculum()
+            await loadSubjects()
         }
         .alert("Error", isPresented: Binding(
             get: { errorMessage != nil },
@@ -126,7 +126,7 @@ struct CurriculumView: View {
                 onTaskUpdated: {},
                 onAssignmentUpdated: {
                     Task {
-                        await loadCurriculum()
+                        await loadSubjects()
                     }
                 },
                 onTaskDeleted: {}
@@ -139,7 +139,7 @@ struct CurriculumView: View {
                     students: authViewModel.students,
                     onCourseUpdated: {
                         Task {
-                            await loadCurriculum()
+                            await loadSubjects()
                         }
                     },
                     errorMessage: $errorMessage
@@ -149,7 +149,7 @@ struct CurriculumView: View {
     }
     
     @MainActor
-    private func loadCurriculum() async {
+    private func loadSubjects() async {
         isLoading = true
         errorMessage = nil
         do {
@@ -188,7 +188,7 @@ struct CurriculumView: View {
             Image(systemName: "book.closed")
                 .font(.system(size: 64))
                 .foregroundColor(.hatchEdSecondaryText)
-            Text("No curriculum items yet")
+            Text("No subjects yet")
                 .font(.headline)
                 .foregroundColor(.hatchEdSecondaryText)
             Text("Tap the + button to add courses or assignments")
@@ -328,7 +328,7 @@ private struct CourseRow: View {
                         .cornerRadius(8)
                 }
             }
-            Text(course.student.name ?? "Student")
+            Text(course.students.map { $0.name ?? "Student" }.joined(separator: ", "))
                 .font(.caption)
                 .foregroundColor(.hatchEdSecondaryText)
             }
@@ -420,7 +420,7 @@ private struct AssignmentRow: View {
 }
 
 private struct AddItemView: View {
-    let type: CurriculumView.AddType
+    let type: SubjectView.AddType
     @Binding var courses: [Course]
     @Binding var assignments: [Assignment]
     let students: [User]
@@ -428,7 +428,7 @@ private struct AddItemView: View {
     @Environment(\.dismiss) private var dismiss
     
     @State private var courseName = ""
-    @State private var selectedStudentForCourse: User?
+    @State private var selectedStudentIdsForCourse: Set<String> = []
     @State private var assignmentTitle = ""
     @State private var assignmentDueDate = Date()
     @State private var selectedCourseForAssignment: Course?
@@ -441,17 +441,15 @@ private struct AddItemView: View {
             case .course:
                 Section(header: Text("Course Details")) {
                     TextField("Enter course name", text: $courseName)
-                    
                     if !students.isEmpty {
-                        Picker("Student", selection: Binding(
-                            get: { selectedStudentForCourse?.id },
-                            set: { id in
-                                selectedStudentForCourse = students.first { $0.id == id }
-                            }
-                        )) {
-                            Text("Select a student").tag(nil as String?)
+                        Section(header: Text("Students")) {
                             ForEach(students) { student in
-                                Text(student.name ?? "Student").tag(student.id as String?)
+                                Toggle(isOn: Binding(
+                                    get: { selectedStudentIdsForCourse.contains(student.id) },
+                                    set: { selectedStudentIdsForCourse = $0 ? selectedStudentIdsForCourse.union([student.id]) : selectedStudentIdsForCourse.subtracting([student.id]) }
+                                )) {
+                                    Text(student.name ?? "Student")
+                                }
                             }
                         }
                     }
@@ -519,7 +517,7 @@ private struct AddItemView: View {
     private var isValid: Bool {
         switch type {
         case .course:
-            return !courseName.trimmingCharacters(in: .whitespaces).isEmpty && selectedStudentForCourse != nil
+            return !courseName.trimmingCharacters(in: .whitespaces).isEmpty && !selectedStudentIdsForCourse.isEmpty
         case .assignment:
             return !assignmentTitle.trimmingCharacters(in: .whitespaces).isEmpty && selectedStudentForAssignment != nil
         }
@@ -531,10 +529,10 @@ private struct AddItemView: View {
         do {
             switch type {
             case .course:
-                guard let student = selectedStudentForCourse else { return }
+                guard !selectedStudentIdsForCourse.isEmpty else { return }
                 let newCourse = try await api.createCourse(
                     name: courseName.trimmingCharacters(in: .whitespaces),
-                    studentUserId: student.id,
+                    studentUserIds: Array(selectedStudentIdsForCourse),
                     grade: nil
                 )
                 courses.append(newCourse)
@@ -568,6 +566,7 @@ private struct EditCourseView: View {
     
     @State private var courseName: String
     @State private var grade: String
+    @State private var selectedStudentIds: Set<String>
     @State private var isSaving = false
     
     private let api = APIClient.shared
@@ -578,6 +577,7 @@ private struct EditCourseView: View {
         self.onCourseUpdated = onCourseUpdated
         self._errorMessage = errorMessage
         _courseName = State(initialValue: course.name)
+        _selectedStudentIds = State(initialValue: Set(course.students.map(\.id)))
         if let grade = course.grade {
             _grade = State(initialValue: String(format: "%.1f", grade))
         } else {
@@ -589,17 +589,19 @@ private struct EditCourseView: View {
         Form {
             Section(header: Text("Course Details")) {
                 TextField("Course name", text: $courseName)
-                
                 TextField("Grade (%)", text: $grade)
                     .keyboardType(.decimalPad)
-                
-                // Show student as read-only since it can't be changed
-                HStack {
-                    Text("Student")
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Text(course.student.name ?? "Student")
-                        .foregroundColor(.hatchEdText)
+            }
+            if !students.isEmpty {
+                Section(header: Text("Students")) {
+                    ForEach(students) { student in
+                        Toggle(isOn: Binding(
+                            get: { selectedStudentIds.contains(student.id) },
+                            set: { selectedStudentIds = $0 ? selectedStudentIds.union([student.id]) : selectedStudentIds.subtracting([student.id]) }
+                        )) {
+                            Text(student.name ?? "Student")
+                        }
+                    }
                 }
             }
         }
@@ -631,7 +633,7 @@ private struct EditCourseView: View {
                 }
                 .fontWeight(.semibold)
                 .foregroundColor(.hatchEdAccent)
-                .disabled(isSaving || courseName.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(isSaving || courseName.trimmingCharacters(in: .whitespaces).isEmpty || selectedStudentIds.isEmpty)
             }
         }
     }
@@ -661,11 +663,17 @@ private struct EditCourseView: View {
             }
         }
         
+        guard !selectedStudentIds.isEmpty else {
+            errorMessage = "At least one student is required"
+            isSaving = false
+            return
+        }
         do {
             _ = try await api.updateCourse(
                 id: course.id,
                 name: trimmedName,
-                grade: gradeValue
+                grade: gradeValue,
+                studentUserIds: Array(selectedStudentIds)
             )
             onCourseUpdated()
             dismiss()
@@ -687,7 +695,6 @@ private struct EditCourseView: View {
 
 #Preview {
     NavigationView {
-        CurriculumView()
+        SubjectView()
     }
 }
-

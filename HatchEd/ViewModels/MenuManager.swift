@@ -16,7 +16,7 @@ class MenuManager: ObservableObject {
     let parentMenuItems: [NavigationDestination] = [
         .dashboard,
         .planner,
-        .curriculum,
+        .subjects,
         .reportCard,
         .portfolio,
         .resources,

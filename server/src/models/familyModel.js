@@ -49,6 +49,16 @@ export async function addMemberToFamily ({ familyId, userId }) {
   )
 }
 
+export async function removeMemberFromFamily ({ familyId, userId }) {
+  await familiesCollection().updateOne(
+    { _id: new ObjectId(familyId) },
+    {
+      $pull: { members: new ObjectId(userId) },
+      $set: { updatedAt: new Date() }
+    }
+  )
+}
+
 export async function listAllFamilies () {
   const docs = await familiesCollection().find({}).toArray()
   return docs.map(decryptFamily)

@@ -8,6 +8,14 @@
 import Foundation
 import SwiftUI
 
+/// Pure helper; not on any actor so it can be called from any context (views, tests).
+enum GradeHelper {
+    static func percentage(pointsAwarded: Double, pointsPossible: Double) -> Double? {
+        guard pointsPossible > 0 else { return nil }
+        return (pointsAwarded / pointsPossible) * 100
+    }
+}
+
 enum AttendanceSubmissionState: Equatable {
     case idle
     case success(message: String)
@@ -115,10 +123,5 @@ final class ParentDashboardViewModel: ObservableObject {
 
     func updateUserName(_ name: String) {
         authViewModel?.updateUserName(name)
-    }
-
-    static func percentage(pointsAwarded: Double, pointsPossible: Double) -> Double? {
-        guard pointsPossible > 0 else { return nil }
-        return (pointsAwarded / pointsPossible) * 100
     }
 }

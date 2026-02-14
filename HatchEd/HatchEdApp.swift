@@ -25,6 +25,18 @@ struct HatchEdApp: App {
                 .onAppear {
                     requestNotificationPermission()
                 }
+                .onOpenURL { url in
+                    handleInviteURL(url)
+                }
+        }
+    }
+    
+    private func handleInviteURL(_ url: URL) {
+        guard url.scheme == "hatched", url.host == "invite" else { return }
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let token = components?.queryItems?.first(where: { $0.name == "token" })?.value
+        if let token, !token.isEmpty {
+            authViewModel.pendingInviteToken = token
         }
     }
     
@@ -66,8 +78,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         completionHandler()
     }
     
-    // Handle URL callbacks for Google Sign-In
+    // Handle URL callbacks for Google Sign-In (don't pass invite URLs to Google)
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
+        if url.scheme == "hatched" { return true }
         return GIDSignIn.sharedInstance.handle(url)
     }
 }

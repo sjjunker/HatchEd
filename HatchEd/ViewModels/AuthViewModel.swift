@@ -22,6 +22,8 @@ class AuthViewModel: NSObject, ObservableObject {
     @Published var notifications: [Notification] = []
     @Published var signInState: SignInState = .notSignedIn
     @Published var isOffline: Bool = false
+    /// Set when app is opened via invite link (hatched://invite?token=...). Cleared after accept or dismiss.
+    @Published var pendingInviteToken: String?
 
     private let appleIDProvider = ASAuthorizationAppleIDProvider()
     private let api = APIClient.shared
@@ -37,6 +39,14 @@ class AuthViewModel: NSObject, ObservableObject {
     var userRole: String? { currentUser?.role }
     var needsRoleSelection: Bool { currentUser != nil && (currentUser?.role?.isEmpty ?? true) }
     var studentRequiresFamily: Bool { currentUser?.role == "student" && currentUser?.familyId == nil }
+    /// True when the user has no linked sign-in method (e.g. signed in only via invite). Used to force sign-in setup.
+    var needsSignInMethod: Bool {
+        let u = currentUser
+        let hasApple = (u?.appleId ?? "").isEmpty == false
+        let hasGoogle = (u?.googleId ?? "").isEmpty == false
+        let hasUsername = (u?.username ?? "").isEmpty == false
+        return !hasApple && !hasGoogle && !hasUsername
+    }
 
     func checkExistingSignIn() {
         guard let storedUserID = getStoredUserID(), !storedUserID.isEmpty else {
@@ -97,8 +107,10 @@ class AuthViewModel: NSObject, ObservableObject {
         do {
             let response: UserResponse = try await api.request(Endpoint(path: "api/users/me"))
             applyUser(response.user)
-            await fetchFamilyIfNeeded()
-            await fetchNotifications()
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await self.fetchFamilyIfNeeded() }
+                group.addTask { await self.fetchNotifications() }
+            }
             isOffline = false
         } catch {
             if let cachedUser: User = cache.load(User.self, from: "user.json") {
@@ -164,6 +176,32 @@ class AuthViewModel: NSObject, ObservableObject {
         }
     }
 
+    /// Call after accepting an invite link; signs in the child with the token returned by the API.
+    func completeInviteSignIn(token: String, user: User) {
+        pendingInviteToken = nil
+        api.setAuthToken(token)
+        currentUser = user
+        cache.save(user, as: "user.json")
+        updateSignInState()
+        Task {
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await self.fetchFamilyIfNeeded() }
+                group.addTask { await self.fetchNotifications() }
+            }
+        }
+    }
+
+    func clearPendingInviteToken() {
+        pendingInviteToken = nil
+    }
+
+    /// Update the current user (e.g. after linking Apple/Google or setting username-password).
+    func updateCurrentUser(_ user: User) {
+        currentUser = user
+        cache.save(user, as: "user.json")
+        updateSignInState()
+    }
+
     func handleSignIn(result: Result<ASAuthorization, Error>) {
         switch result {
         case .success(let authResults):
@@ -192,10 +230,11 @@ class AuthViewModel: NSObject, ObservableObject {
         api.setAuthToken(token)
         if let userId = user.id as String? { storeUserID(userId) }
         applyUser(user)
-        try? await Task.sleep(nanoseconds: 100_000_000)
         cache.save(token, as: "token.json")
-        await fetchFamilyIfNeeded()
-        await fetchNotifications()
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.fetchFamilyIfNeeded() }
+            group.addTask { await self.fetchNotifications() }
+        }
     }
 
     func handleUsernamePasswordSignUp(username: String, password: String, email: String?, name: String?) async throws {
@@ -209,10 +248,11 @@ class AuthViewModel: NSObject, ObservableObject {
         api.setAuthToken(token)
         if let userId = user.id as String? { storeUserID(userId) }
         applyUser(user)
-        try? await Task.sleep(nanoseconds: 100_000_000)
         cache.save(token, as: "token.json")
-        await fetchFamilyIfNeeded()
-        await fetchNotifications()
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.fetchFamilyIfNeeded() }
+            group.addTask { await self.fetchNotifications() }
+        }
     }
 
     private func processGoogleSignIn(idToken: String, fullName: String?, email: String?) async {
@@ -227,10 +267,11 @@ class AuthViewModel: NSObject, ObservableObject {
             api.setAuthToken(token)
             if let userId = user.id as String? { storeUserID(userId) }
             applyUser(user)
-            try? await Task.sleep(nanoseconds: 100_000_000)
             cache.save(token, as: "token.json")
-            await fetchFamilyIfNeeded()
-            await fetchNotifications()
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await self.fetchFamilyIfNeeded() }
+                group.addTask { await self.fetchNotifications() }
+            }
         } catch {
             print("Google sign-in failed: \(error.localizedDescription)")
             signInState = .notSignedIn
@@ -261,10 +302,11 @@ class AuthViewModel: NSObject, ObservableObject {
             api.setAuthToken(token)
             storeUserID(userId)
             applyUser(user)
-            try? await Task.sleep(nanoseconds: 100_000_000)
             cache.save(token, as: "token.json")
-            await fetchFamilyIfNeeded()
-            await fetchNotifications()
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await self.fetchFamilyIfNeeded() }
+                group.addTask { await self.fetchNotifications() }
+            }
         } catch {
             print("Apple sign-in failed: \(error.localizedDescription)")
             signInState = .notSignedIn

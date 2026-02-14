@@ -10,7 +10,7 @@ import SwiftUI
 enum NavigationDestination: String, Identifiable {
     case planner = "Planner"
     case studentList = "Students"
-    case curriculum = "Curriculum"
+    case subjects = "Subjects"
     case reportCard = "Report Cards"
     case portfolio = "Portfolio"
     case resources = "Resources"
@@ -23,7 +23,7 @@ enum NavigationDestination: String, Identifiable {
         switch self {
         case .planner: return "calendar"
         case .studentList: return "person.2"
-        case .curriculum: return "book.closed"
+        case .subjects: return "book.closed"
         case .reportCard: return "doc.text"
         case .portfolio: return "folder"
         case .resources: return "book"
@@ -37,7 +37,7 @@ enum NavigationDestination: String, Identifiable {
         switch self {
         case .planner: Planner()
         case .studentList: StudentList()
-        case .curriculum: CurriculumView()
+        case .subjects: SubjectView()
         case .reportCard: ReportCard()
         case .portfolio: PortfolioView()
         case .resources: Resources()
@@ -53,6 +53,8 @@ struct ParentDashboard: View {
     @State private var showingNameEditor = false
     @State private var editedName = ""
     @State private var showMenu = false
+    @State private var showingAddChild = false
+    @State private var addChildDidSucceed = false
     @State private var selectedDestination: NavigationDestination? = nil
     @State private var selectedNotification: Notification?
     
@@ -162,6 +164,7 @@ struct ParentDashboard: View {
                 )
                 completedAssignmentsSection
                 attendanceSection
+                addChildSection
                 inspirationalQuoteSection
                 studentsSection
             }
@@ -191,6 +194,36 @@ struct ParentDashboard: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showingAddChild) {
+            AddChildView(didAddChild: $addChildDidSucceed)
+        }
+        .onChange(of: addChildDidSucceed) { _, newValue in
+            if newValue {
+                authViewModel.updateUserFromDatabase()
+                addChildDidSucceed = false
+            }
+        }
+    }
+    
+    private var addChildSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Image(systemName: "person.badge.plus")
+                    .foregroundColor(.hatchEdAccent)
+                Text("Add Child")
+                    .font(.headline)
+                    .foregroundColor(.hatchEdText)
+            }
+            Text("Add a child to your family. They'll get a link to open the app and access their account.")
+                .font(.subheadline)
+                .foregroundColor(.hatchEdSecondaryText)
+            Button(action: { showingAddChild = true }) {
+                Label("Add Child", systemImage: "plus.circle.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.hatchEdAccent)
         }
     }
     
@@ -249,7 +282,7 @@ struct ParentDashboard: View {
                     ForEach(authViewModel.students) { student in
                         NavigationLink(destination: StudentDetail(
                             student: student,
-                            courses: dashboardVM.courses.filter { $0.student.id == student.id },
+                            courses: dashboardVM.courses.filter { $0.students.contains(where: { $0.id == student.id }) },
                             assignments: dashboardVM.assignments.filter { $0.studentId == student.id }
                         )) {
                             HStack {
@@ -259,6 +292,14 @@ struct ParentDashboard: View {
                                 Text(student.name ?? "Student")
                                     .foregroundColor(.hatchEdText)
                                     .fontWeight(.medium)
+                                if student.invitePending == true {
+                                    Text("Pending")
+                                        .font(.caption)
+                                        .foregroundColor(.hatchEdSecondaryText)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Capsule().fill(Color.hatchEdSecondaryBackground))
+                                }
                                 Spacer()
                                 Image(systemName: "chevron.right")
                                     .font(.footnote)
@@ -417,7 +458,7 @@ struct ParentDashboard: View {
                                             .font(.subheadline)
                                             .fontWeight(.semibold)
                                             .foregroundColor(.hatchEdSuccess)
-                                        if let percentage = ParentDashboardViewModel.percentage(pointsAwarded: pointsAwarded, pointsPossible: pointsPossible) {
+                                        if let percentage = GradeHelper.percentage(pointsAwarded: pointsAwarded, pointsPossible: pointsPossible) {
                                             Text(String(format: "%.0f%%", percentage))
                                                 .font(.caption2)
                                                 .foregroundColor(.hatchEdSecondaryText)

@@ -62,7 +62,7 @@ final class AddPortfolioViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             let courses = try await api.fetchCourses()
-            let studentCourses = courses.filter { $0.student.id == student.id }
+            let studentCourses = courses.filter { $0.students.contains(where: { $0.id == student.id }) }
             let reportCardData = try? JSONEncoder().encode(studentCourses)
             let reportCardSnapshot = reportCardData.flatMap { String(data: $0, encoding: .utf8) }
             let sectionData = PortfolioSectionData(

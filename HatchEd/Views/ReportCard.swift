@@ -29,6 +29,15 @@ struct ReportCard: View {
     }
     
     private let api = APIClient.shared
+
+    /// Groups courses by student (a course can appear under multiple students).
+    private var coursesByStudent: [String: [Course]] {
+        courses.reduce(into: [String: [Course]]()) { result, course in
+            for s in course.students {
+                result[s.id, default: []].append(course)
+            }
+        }
+    }
     
     var body: some View {
         ScrollView {
@@ -45,16 +54,13 @@ struct ReportCard: View {
                         Text("No courses found")
                             .font(.headline)
                             .foregroundColor(.hatchEdSecondaryText)
-                        Text("Add courses in the Curriculum section to see report cards")
+                        Text("Add courses in the Subjects section to see report cards")
                             .font(.subheadline)
                             .foregroundColor(.hatchEdSecondaryText)
                             .multilineTextAlignment(.center)
                     }
                     .padding()
                 } else {
-                    // Group courses by student
-                    let coursesByStudent = Dictionary(grouping: courses) { $0.student.id }
-                    
                     ForEach(authViewModel.students) { student in
                         if let studentCourses = coursesByStudent[student.id], !studentCourses.isEmpty {
                             studentReportCard(student: student, courses: studentCourses)
@@ -404,9 +410,13 @@ class ReportCardPDFCreator {
         let data = renderer.pdfData { context in
             var currentPage = 0
             
-            // Group courses by student
-            let coursesByStudent = Dictionary(grouping: courses) { $0.student.id }
-            
+            // Group courses by student (a course can appear under multiple students)
+            var coursesByStudent: [String: [Course]] = [:]
+            for course in courses {
+                for s in course.students {
+                    coursesByStudent[s.id, default: []].append(course)
+                }
+            }
             // Check if we have any students with courses
             let studentsWithCourses = students.filter { student in
                 guard let studentCourses = coursesByStudent[student.id] else { return false }
@@ -809,9 +819,14 @@ private struct StudentSelectionSheet: View {
     
     @Environment(\.dismiss) private var dismiss
     
-    // Group courses by student to show which students have courses
+    // Group courses by student (a course can appear under multiple students)
     private var studentsWithCourses: [User] {
-        let coursesByStudent = Dictionary(grouping: courses) { $0.student.id }
+        var coursesByStudent: [String: [Course]] = [:]
+        for course in courses {
+            for s in course.students {
+                coursesByStudent[s.id, default: []].append(course)
+            }
+        }
         return students.filter { student in
             guard let studentCourses = coursesByStudent[student.id] else { return false }
             return !studentCourses.isEmpty

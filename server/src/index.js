@@ -14,9 +14,10 @@ import userRoutes from './routes/users.js'
 import familyRoutes from './routes/families.js'
 import notificationRoutes from './routes/notifications.js'
 import attendanceRoutes from './routes/attendance.js'
-import curriculumRoutes from './routes/curriculum.js'
+import subjectsRoutes from './routes/subjects.js'
 import portfolioRoutes from './routes/portfolios.js'
 import plannerRoutes from './routes/planner.js'
+import inviteRoutes from './routes/invite.js'
 import { errorHandler } from './middleware/errorHandler.js'
 import { notFoundHandler } from './middleware/notFoundHandler.js'
 
@@ -97,9 +98,10 @@ app.get('/', (_req, res) => {
       families: '/api/families',
       notifications: '/api/notifications',
       attendance: '/api/attendance',
-      curriculum: '/api/curriculum',
+      subjects: '/api/subjects',
       portfolios: '/api/portfolios',
-      planner: '/api/planner'
+      planner: '/api/planner',
+      invite: '/api/invite'
     }
   })
 })
@@ -117,9 +119,10 @@ app.use('/api/users', userRoutes)
 app.use('/api/families', familyRoutes)
 app.use('/api/notifications', notificationRoutes)
 app.use('/api/attendance', attendanceRoutes)
-app.use('/api/curriculum', curriculumRoutes)
+app.use('/api/subjects', subjectsRoutes)
 app.use('/api/portfolios', portfolioRoutes)
 app.use('/api/planner', plannerRoutes)
+app.use('/api/invite', inviteRoutes)
 
 // Serve uploaded files
 app.use('/uploads', express.static('uploads'))
@@ -189,11 +192,8 @@ async function start () {
         accessibleAt: [
           `http://localhost:${port}`,
           `http://127.0.0.1:${port}`,
-          `https://hatched-46ar.onrender.com`,
           ...(process.env.NODE_ENV === 'production' ? [] : [
-            `http://192.168.1.40:${port}`,
-            `http://74.220.49.0/24:${port}`,
-            `http://74.220.57.0/24:${port}`
+            `https://hatched-46ar.onrender.com`
           ])
         ]
       })

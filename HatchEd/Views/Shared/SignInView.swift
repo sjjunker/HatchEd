@@ -11,6 +11,7 @@ import GoogleSignIn
 struct SignInView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     @State private var showUsernamePasswordSignIn = false
+    @State private var showInviteLinkEntry = false
     
     var body: some View {
         VStack(spacing: 32) {
@@ -73,10 +74,37 @@ struct SignInView: View {
                     .background(Color.hatchEdSecondaryBackground)
                     .cornerRadius(12)
                 }
+                
+                Button(action: {
+                    showInviteLinkEntry = true
+                }) {
+                    HStack {
+                        Image(systemName: "link")
+                            .font(.system(size: 18))
+                        Text("I have an invite link")
+                            .font(.system(size: 17, weight: .medium))
+                    }
+                    .foregroundColor(.hatchEdAccent)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(Color.hatchEdAccentBackground)
+                    .cornerRadius(12)
+                }
             }
             .sheet(isPresented: $showUsernamePasswordSignIn) {
                 UsernamePasswordSignInView()
                     .environmentObject(authViewModel)
+            }
+            .sheet(isPresented: $showInviteLinkEntry) {
+                InviteLinkEntryView(
+                    onTokenEntered: { token in
+                        showInviteLinkEntry = false
+                        authViewModel.pendingInviteToken = token
+                    },
+                    onDismiss: {
+                        showInviteLinkEntry = false
+                    }
+                )
             }
         }
         .padding()
@@ -127,6 +155,69 @@ struct SignInView: View {
                     fullName: fullName,
                     email: email
                 )
+            }
+        }
+    }
+}
+
+// MARK: - Invite link entry (paste link or token on sign-in page)
+private func parseInviteToken(from input: String) -> String? {
+    let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+    // URL format: hatched://invite?token=... or https://.../invite?token=...
+    if let url = URL(string: trimmed),
+       let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+       let token = components.queryItems?.first(where: { $0.name == "token" })?.value, !token.isEmpty {
+        return token
+    }
+    // Otherwise treat as raw token (code or full link that didn't parse as URL with token=)
+    return trimmed
+}
+
+struct InviteLinkEntryView: View {
+    @State private var linkOrTokenInput = ""
+    @State private var errorMessage: String?
+    var onTokenEntered: (String) -> Void
+    var onDismiss: () -> Void
+    
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Paste the invite link your parent sent you, or paste just the invite code.")
+                    .font(.subheadline)
+                    .foregroundColor(.hatchEdSecondaryText)
+                
+                TextField("Invite link or code", text: $linkOrTokenInput, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(3...6)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
+                
+                Spacer()
+            }
+            .padding()
+            .navigationTitle("Sign in with invite")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { onDismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Continue") {
+                        guard let token = parseInviteToken(from: linkOrTokenInput) else {
+                            errorMessage = "Please paste a valid invite link or code."
+                            return
+                        }
+                        errorMessage = nil
+                        onTokenEntered(token)
+                    }
+                }
             }
         }
     }

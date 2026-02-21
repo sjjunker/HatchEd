@@ -75,7 +75,12 @@ struct PlannerTask: Identifiable, Codable, Equatable {
         ("Pink", .systemPink),
         ("Purple", .systemIndigo),
         ("Red", .systemRed),
-        ("Teal", .teal)
+        ("Teal", .teal),
+        ("Yellow", .yellow),
+        ("Mint", .mint),
+        ("Cyan", .cyan),
+        ("Brown", .brown),
+        ("Gray", .gray)
     ]
 }
 

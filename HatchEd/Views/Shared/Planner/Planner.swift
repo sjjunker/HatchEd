@@ -333,7 +333,7 @@ struct Planner: View {
                             title: "DUE: \(assignment.title)",
                             startDate: dueDate,
                             durationMinutes: 30,
-                            colorName: "Red",
+                            colorName: workColor,
                             subject: assignment.courseId.flatMap { id in courses.first(where: { $0.id == id })?.name },
                             studentIds: [assignment.studentId]
                         )

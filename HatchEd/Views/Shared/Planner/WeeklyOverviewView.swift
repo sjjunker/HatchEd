@@ -302,16 +302,12 @@ private struct TasksForDay: View {
                                 onSelectTask?(task)
                             } label: {
                                 HStack(spacing: 6) {
+                                    dueAwareAssignmentSymbol(isDue: task.id.hasPrefix("assignment-due-"), baseColor: .white)
                                     Text(task.title)
                                         .font(.caption2.bold())
                                         .foregroundColor(.white)
                                         .lineLimit(2)
                                         .frame(maxWidth: .infinity, alignment: .leading)
-                                    if task.id.hasPrefix("assignment-due-") {
-                                        Image(systemName: "exclamationmark.circle.fill")
-                                            .font(.caption2)
-                                            .foregroundColor(.white.opacity(0.95))
-                                    }
                                 }
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 6)
@@ -408,7 +404,7 @@ private struct TasksForDay: View {
 
     @ViewBuilder
     private func markerView(for slot: TaskSlot, isCluster: Bool) -> some View {
-        let strokeColor = slot.hasDueItem ? Color.white.opacity(0.95) : Color.clear
+        let strokeColor = Color.clear
         switch slot.markerKind {
         case .task:
             Image(systemName: "checkmark.circle")
@@ -416,9 +412,7 @@ private struct TasksForDay: View {
                 .foregroundColor(slot.primary.color)
                 .frame(width: markerSize(for: slot).width, height: markerSize(for: slot).height)
         case .assignment:
-            Image(systemName: "doc.text")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(slot.hasDueItem ? .red : slot.primary.color)
+            dueAwareAssignmentSymbol(isDue: slot.hasDueItem, baseColor: slot.primary.color)
                 .frame(width: markerSize(for: slot).width, height: markerSize(for: slot).height)
         case .mixed:
             Capsule(style: .continuous)
@@ -432,9 +426,8 @@ private struct TasksForDay: View {
                         Image(systemName: "checkmark.circle")
                             .font(.system(size: 7, weight: .semibold))
                             .foregroundColor(.white.opacity(0.95))
-                        Image(systemName: "doc.text")
-                            .font(.system(size: 7, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.95))
+                        dueAwareAssignmentSymbol(isDue: slot.hasDueItem, baseColor: .white.opacity(0.95))
+                            .scaleEffect(0.55)
                         if isCluster {
                             Text("\(slot.tasks.count)")
                                 .font(.system(size: 7, weight: .bold))
@@ -454,6 +447,20 @@ private struct TasksForDay: View {
             return CGSize(width: 17, height: 17)
         case .mixed:
             return CGSize(width: 24, height: 14)
+        }
+    }
+
+    private func dueAwareAssignmentSymbol(isDue: Bool, baseColor: Color) -> some View {
+        ZStack(alignment: .topTrailing) {
+            Image(systemName: "doc.text")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(baseColor)
+            if isDue {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(.red)
+                    .offset(x: 3, y: -3)
+            }
         }
     }
 }
@@ -497,10 +504,18 @@ private struct AssignmentsListForDay: View {
                     onSelectTask?(assignment)
                 } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: isDue ? "exclamationmark.circle.fill" : "doc.text.fill")
-                            .font(.caption2)
-                            .foregroundColor(assignment.color)
-                            .frame(width: 12)
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: "doc.text.fill")
+                                .font(.caption2)
+                                .foregroundColor(assignment.color)
+                            if isDue {
+                                Image(systemName: "exclamationmark.circle.fill")
+                                    .font(.system(size: 7))
+                                    .foregroundColor(.red)
+                                    .offset(x: 3, y: -3)
+                            }
+                        }
+                        .frame(width: 12)
                         
                         Text(assignment.title)
                             .font(.caption2)
@@ -513,10 +528,10 @@ private struct AssignmentsListForDay: View {
                     .frame(width: columnWidth - 12, alignment: .leading)
                     .background(
                         RoundedRectangle(cornerRadius: 6)
-                            .fill((isDue ? Color.red : assignment.color).opacity(0.15))
+                            .fill(assignment.color.opacity(0.15))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 6)
-                                    .stroke((isDue ? Color.red : assignment.color).opacity(0.4), lineWidth: 1)
+                                    .stroke(assignment.color.opacity(0.4), lineWidth: 1)
                             )
                     )
                 }

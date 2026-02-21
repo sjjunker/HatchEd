@@ -410,6 +410,11 @@ private struct AssignmentRow: View {
     }
 }
 
+private let coursePickerColorOptions: [(name: String, color: Color)] = PlannerTask.colorOptions
+    .filter { option in
+        option.name != "Blue" && option.name != "Red"
+    }
+
 private struct AddItemView: View {
     let type: SubjectView.AddType
     @Binding var courses: [Course]
@@ -419,7 +424,7 @@ private struct AddItemView: View {
     @Environment(\.dismiss) private var dismiss
     
     @State private var courseName = ""
-    @State private var selectedCourseColorName: String = "Blue"
+    @State private var selectedCourseColorName: String = "Green"
     @State private var selectedStudentIdsForCourse: Set<String> = []
     @State private var assignmentTitle = ""
     @State private var assignmentWorkDates: [Date] = [Date()]
@@ -542,7 +547,7 @@ private struct AddItemView: View {
                 .font(.caption)
                 .foregroundColor(.hatchEdSecondaryText)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
-                ForEach(PlannerTask.colorOptions, id: \.name) { option in
+                ForEach(coursePickerColorOptions, id: \.name) { option in
                     Button {
                         selectedCourseColorName = option.name
                     } label: {
@@ -679,7 +684,7 @@ private struct EditCourseView: View {
                 .font(.caption)
                 .foregroundColor(.hatchEdSecondaryText)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
-                ForEach(PlannerTask.colorOptions, id: \.name) { option in
+                ForEach(coursePickerColorOptions, id: \.name) { option in
                     Button {
                         selectedCourseColorName = option.name
                     } label: {

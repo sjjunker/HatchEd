@@ -78,7 +78,7 @@ struct Planner: View {
                     tasks: {
                         let regularTasks = taskStore.tasks(for: selectedDate)
                         let assignmentTasks = assignmentsToTasks(for: selectedDate)
-                        return regularTasks + assignmentTasks
+                        return (regularTasks + assignmentTasks).sorted { $0.startDate < $1.startDate }
                     }(),
                     onDelete: { task in
                         // Only allow deletion of regular tasks, not assignments
@@ -135,11 +135,8 @@ struct Planner: View {
             AddAssignmentView(
                 initialDate: selectedDate,
                 students: authViewModel.students,
-                onSaveAssignment: {
-                    // Reload assignments when a new assignment is created
-                    Task {
-                        await loadAssignments()
-                    }
+                onSaveAssignment: { assignment in
+                    upsertAssignment(assignment)
                 }
             )
             .presentationDetents([.fraction(0.75), .large])
@@ -150,15 +147,13 @@ struct Planner: View {
                 assignment: assignmentForTask(task),
                 students: authViewModel.students,
                 courses: courses,
-                onTaskUpdated: {
-                    Task {
-                        await taskStore.refresh()
+                onTaskUpdated: { updatedTask in
+                    Task { @MainActor in
+                        taskStore.upsert(updatedTask)
                     }
                 },
-                onAssignmentUpdated: {
-                    Task {
-                        await loadAssignments()
-                    }
+                onAssignmentUpdated: { assignment in
+                    upsertAssignment(assignment)
                 },
                 onTaskDeleted: {
                     Task {
@@ -299,47 +294,65 @@ struct Planner: View {
     }
     
     private func assignmentsToTasks(for date: Date) -> [PlannerTask] {
-        let startOfDay = calendar.startOfDay(for: date)
-        guard let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) else {
-            return []
-        }
-        
         return assignments
-            .filter { assignment in
-                guard let dueDate = assignment.dueDate else { return false }
-                let dueDateStart = calendar.startOfDay(for: dueDate)
-                return dueDateStart >= startOfDay && dueDateStart < endOfDay
-            }
-            .map { assignment in
-                // Use the filtered date's day at end of day (22:30 = 10:30pm) instead of 3pm
-                // This ensures the taskDate is on the correct day
-                let taskDate = calendar.date(bySettingHour: 22, minute: 30, second: 0, of: startOfDay) ?? startOfDay
-                
-                // Assignments inherit color from their linked course (fallback blue)
+            .flatMap { assignment -> [PlannerTask] in
                 let linkedCourseColor = assignment.courseId.flatMap { id in
                     courses.first(where: { $0.id == id })?.colorName
                 }
-                let colorName = linkedCourseColor ?? "Blue"
-                
-                return PlannerTask(
-                    id: "assignment-\(assignment.id)",
-                    title: assignment.title,
-                    startDate: taskDate,
-                    durationMinutes: 60, // Default 1 hour duration for assignments
-                    colorName: colorName
-                )
+                let workColor = linkedCourseColor ?? "Blue"
+                var tasks: [PlannerTask] = []
+
+                for (index, workDate) in assignment.workDates.enumerated() where calendar.isDate(workDate, inSameDayAs: date) {
+                    tasks.append(
+                        PlannerTask(
+                            id: "assignment-work-\(assignment.id)::\(index)",
+                            title: assignment.title,
+                            startDate: workDate,
+                            durationMinutes: 60,
+                            colorName: workColor,
+                            subject: assignment.courseId.flatMap { id in courses.first(where: { $0.id == id })?.name }
+                        )
+                    )
+                }
+
+                if let dueDate = assignment.dueDate, calendar.isDate(dueDate, inSameDayAs: date) {
+                    tasks.append(
+                        PlannerTask(
+                            id: "assignment-due-\(assignment.id)",
+                            title: "DUE: \(assignment.title)",
+                            startDate: dueDate,
+                            durationMinutes: 30,
+                            colorName: "Red",
+                            subject: assignment.courseId.flatMap { id in courses.first(where: { $0.id == id })?.name }
+                        )
+                    )
+                }
+
+                return tasks
             }
     }
     
     private func assignmentForTask(_ task: PlannerTask) -> Assignment? {
-        // Check if this is an assignment-based task
         guard task.id.hasPrefix("assignment-") else { return nil }
-        
-        // Extract assignment ID from task ID
-        let assignmentId = String(task.id.dropFirst("assignment-".count))
-        
-        // Find the assignment in the assignments array
+        let assignmentId: String
+        if task.id.hasPrefix("assignment-work-") {
+            let suffix = String(task.id.dropFirst("assignment-work-".count))
+            assignmentId = suffix.components(separatedBy: "::").first ?? suffix
+        } else if task.id.hasPrefix("assignment-due-") {
+            assignmentId = String(task.id.dropFirst("assignment-due-".count))
+        } else {
+            assignmentId = String(task.id.dropFirst("assignment-".count))
+        }
         return assignments.first { $0.id == assignmentId }
+    }
+
+    @MainActor
+    private func upsertAssignment(_ assignment: Assignment) {
+        if let index = assignments.firstIndex(where: { $0.id == assignment.id }) {
+            assignments[index] = assignment
+        } else {
+            assignments.append(assignment)
+        }
     }
 }
 

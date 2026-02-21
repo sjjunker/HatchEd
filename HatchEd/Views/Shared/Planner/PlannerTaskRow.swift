@@ -20,13 +20,17 @@ struct PlannerTaskRow: View {
     private var isAssignment: Bool {
         task.id.hasPrefix("assignment-")
     }
+
+    private var isDueAssignment: Bool {
+        task.id.hasPrefix("assignment-due-")
+    }
     
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             if isAssignment {
-                Image(systemName: "doc.text.fill")
+                Image(systemName: isDueAssignment ? "exclamationmark.circle.fill" : "doc.text.fill")
                     .font(.caption)
-                    .foregroundColor(task.color)
+                    .foregroundColor(isDueAssignment ? .red : task.color)
                     .padding(.top, 6)
             } else {
                 Circle()
@@ -38,13 +42,13 @@ struct PlannerTaskRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     if isAssignment {
-                        Text("Assignment")
+                        Text(isDueAssignment ? "Due" : "Assignment")
                             .font(.caption2)
                             .fontWeight(.semibold)
                             .foregroundColor(.white)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(task.color)
+                            .background(isDueAssignment ? Color.red : task.color)
                             .cornerRadius(4)
                     }
                     Text(task.title)
@@ -53,9 +57,9 @@ struct PlannerTaskRow: View {
                 }
 
                 HStack(spacing: 8) {
-                    Image(systemName: isAssignment ? "calendar" : "clock")
+                    Image(systemName: isDueAssignment ? "exclamationmark.triangle.fill" : (isAssignment ? "calendar" : "clock"))
                         .font(.caption2)
-                        .foregroundColor(.hatchEdAccent)
+                        .foregroundColor(isDueAssignment ? .red : .hatchEdAccent)
                     Text(formatter.string(from: task.startDate))
                     Text("•")
                     Text(durationString)
@@ -77,9 +81,9 @@ struct PlannerTaskRow: View {
                 .fill(Color.hatchEdCardBackground)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(isAssignment ? task.color.opacity(0.5) : Color.clear, lineWidth: 2)
+                        .stroke(isAssignment ? (isDueAssignment ? Color.red.opacity(0.6) : task.color.opacity(0.5)) : Color.clear, lineWidth: 2)
                 )
-                .shadow(color: task.color.opacity(isAssignment ? 0.3 : 0.2), radius: 4, x: 0, y: 2)
+                .shadow(color: (isDueAssignment ? Color.red : task.color).opacity(isAssignment ? 0.3 : 0.2), radius: 4, x: 0, y: 2)
         )
     }
 

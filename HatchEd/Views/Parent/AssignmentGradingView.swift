@@ -302,7 +302,8 @@ struct AssignmentGradingView: View {
             let updatedAssignment = try await api.updateAssignment(
                 id: assignment.id,
                 title: nil,
-                dueDate: nil,
+                workDates: assignment.workDates,
+                dueDate: assignment.dueDate,
                 instructions: nil,
                 pointsPossible: pointsPossibleValue,
                 pointsAwarded: pointsAwardedValue

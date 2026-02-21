@@ -12,9 +12,10 @@ struct AddAssignmentView: View {
 
     let initialDate: Date
     let students: [User]
-    let onSaveAssignment: () -> Void
+    let onSaveAssignment: (Assignment) -> Void
 
     @State private var title: String = ""
+    @State private var workDates: [Date]
     @State private var dueDate: Date
     @State private var hasDueDate: Bool = true
     @State private var selectedStudent: User? = nil
@@ -26,10 +27,11 @@ struct AddAssignmentView: View {
 
     private let api = APIClient.shared
 
-    init(initialDate: Date, students: [User] = [], onSaveAssignment: @escaping () -> Void) {
+    init(initialDate: Date, students: [User] = [], onSaveAssignment: @escaping (Assignment) -> Void) {
         self.initialDate = initialDate
         self.students = students
         self.onSaveAssignment = onSaveAssignment
+        _workDates = State(initialValue: [initialDate])
         _dueDate = State(initialValue: initialDate)
     }
 
@@ -38,6 +40,25 @@ struct AddAssignmentView: View {
             Form {
                 Section(header: Text("Assignment Details")) {
                     TextField("Title", text: $title)
+
+                    if workDates.isEmpty {
+                        Button("Add Work Date & Time") {
+                            workDates.append(initialDate)
+                        }
+                    } else {
+                        ForEach(workDates.indices, id: \.self) { index in
+                            DatePicker("Work Time \(index + 1)", selection: Binding(
+                                get: { workDates[index] },
+                                set: { workDates[index] = $0 }
+                            ), displayedComponents: [.date, .hourAndMinute])
+                        }
+                        .onDelete { offsets in
+                            workDates.remove(atOffsets: offsets)
+                        }
+                        Button("Add Another Work Time") {
+                            workDates.append(workDates.last ?? initialDate)
+                        }
+                    }
                     
                     Toggle("Has Due Date", isOn: $hasDueDate)
                     
@@ -162,16 +183,17 @@ struct AddAssignmentView: View {
         errorMessage = nil
         
         do {
-            _ = try await api.createAssignment(
+            let assignment = try await api.createAssignment(
                 title: trimmedTitle,
                 studentId: student.id,
+                workDates: workDates.isEmpty ? nil : workDates,
                 dueDate: hasDueDate ? dueDate : nil,
                 instructions: nil,
                 pointsPossible: nil,
                 pointsAwarded: nil,
                 courseId: selectedCourse?.id
             )
-            onSaveAssignment()
+            onSaveAssignment(assignment)
             dismiss()
         } catch {
             errorMessage = "Failed to create assignment: \(error.localizedDescription)"
@@ -181,6 +203,6 @@ struct AddAssignmentView: View {
 }
 
 #Preview {
-    AddAssignmentView(initialDate: Date(), students: [], onSaveAssignment: {})
+    AddAssignmentView(initialDate: Date(), students: [], onSaveAssignment: { _ in })
 }
 

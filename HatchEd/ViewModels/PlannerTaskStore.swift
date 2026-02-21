@@ -39,6 +39,16 @@ final class PlannerTaskStore: ObservableObject {
         tasks.sort { $0.startDate < $1.startDate }
         saveToCache()
     }
+
+    func upsert(_ task: PlannerTask) {
+        if let index = tasks.firstIndex(where: { $0.id == task.id }) {
+            tasks[index] = task
+        } else {
+            tasks.append(task)
+        }
+        tasks.sort { $0.startDate < $1.startDate }
+        saveToCache()
+    }
     
     func remove(_ task: PlannerTask) async {
         // Delete from server first

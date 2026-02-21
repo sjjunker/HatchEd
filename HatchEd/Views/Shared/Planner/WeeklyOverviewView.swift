@@ -15,6 +15,7 @@ struct WeeklyOverviewView: View {
     let onSelectDay: (Date) -> Void
     let onSelectTask: ((PlannerTask) -> Void)?
     let selectedDate: Date
+    @State private var expandedTasksColumn: Int? = nil
     
     init(weekDates: [Date], tasksProvider: @escaping (Date) -> [PlannerTask], assignmentsProvider: @escaping (Date) -> [PlannerTask], onSelectDay: @escaping (Date) -> Void, selectedDate: Date, onSelectTask: ((PlannerTask) -> Void)? = nil) {
         self.weekDates = weekDates
@@ -167,9 +168,25 @@ struct WeeklyOverviewView: View {
             ForEach(weekDates.indices, id: \.self) { column in
                 let date = weekDates[column]
                 let tasks = tasksProvider(date)
-                // Only show non-assignment tasks (regular planner tasks)
                 let regularTasks = tasks.filter { !$0.id.hasPrefix("assignment-") }
-                TasksForDay(date: date, tasks: regularTasks, column: column, columnWidth: columnWidth, rowHeight: rowHeight, hours: hours, onSelectTask: onSelectTask)
+                let inScopeAssignments = assignmentsProvider(date).filter { isInVisibleHours($0.startDate) }
+                TasksForDay(
+                    date: date,
+                    tasks: regularTasks + inScopeAssignments,
+                    column: column,
+                    columnWidth: columnWidth,
+                    rowHeight: rowHeight,
+                    hours: hours,
+                    onExpansionChanged: { isExpanded in
+                        if isExpanded {
+                            expandedTasksColumn = column
+                        } else if expandedTasksColumn == column {
+                            expandedTasksColumn = nil
+                        }
+                    },
+                    onSelectTask: onSelectTask
+                )
+                .zIndex(expandedTasksColumn == column ? 50 : 1)
             }
         }
     }
@@ -178,7 +195,7 @@ struct WeeklyOverviewView: View {
         ZStack(alignment: .topLeading) {
             ForEach(weekDates.indices, id: \.self) { column in
                 let date = weekDates[column]
-                let assignments = assignmentsProvider(date)
+                let assignments = assignmentsProvider(date).filter { !isInVisibleHours($0.startDate) }
                 
                 if !assignments.isEmpty {
                     AssignmentsListForDay(
@@ -193,6 +210,15 @@ struct WeeklyOverviewView: View {
             }
         }
     }
+
+    private func isInVisibleHours(_ date: Date) -> Bool {
+        let hour = calendar.component(.hour, from: date)
+        let minute = calendar.component(.minute, from: date)
+        let minutesSinceMidnight = hour * 60 + minute
+        let visibleStart = 6 * 60
+        let visibleEnd = 22 * 60
+        return minutesSinceMidnight >= visibleStart && minutesSinceMidnight <= visibleEnd
+    }
 }
 
 private struct TasksForDay: View {
@@ -202,7 +228,9 @@ private struct TasksForDay: View {
     let columnWidth: CGFloat
     let rowHeight: CGFloat
     let hours: [Int]
+    let onExpansionChanged: (Bool) -> Void
     let onSelectTask: ((PlannerTask) -> Void)?
+    @State private var expandedSlotKey: Int? = nil
 
     private var dayStart: Date {
         Calendar.current.startOfDay(for: date)
@@ -215,36 +243,118 @@ private struct TasksForDay: View {
     }
 
     var body: some View {
-        ForEach(tasks) { task in
-            let rect = rectForTask(task)
-            Button {
-                onSelectTask?(task)
-            } label: {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(task.color.opacity(0.8))
-                    .frame(width: columnWidth - 12, height: max(rect.height, 24), alignment: .leading)
-                    .overlay(
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(task.title)
-                                .font(.caption2.bold())
-                                .foregroundColor(.white)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
-                                .padding(.horizontal, 6)
-                                .padding(.top, 6)
-                            Spacer(minLength: 4)
+        let slots = groupedSlots()
+        ZStack(alignment: .topLeading) {
+            Color.clear
+                .contentShape(Rectangle())
+                .allowsHitTesting(expandedSlotKey != nil)
+                .onTapGesture {
+                    if expandedSlotKey != nil {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
+                            expandedSlotKey = nil
                         }
+                    }
+                }
+
+            ForEach(slots, id: \.key) { slot in
+                let rect = rectForSlot(slot)
+                let isExpanded = expandedSlotKey == slot.key
+                let isCluster = slot.tasks.count > 1
+
+                Button {
+                    if isCluster {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+                            expandedSlotKey = isExpanded ? nil : slot.key
+                        }
+                    } else if let single = slot.tasks.first {
+                        onSelectTask?(single)
+                    }
+                } label: {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(slot.primary.color.opacity(0.85))
+                        .frame(width: rect.width, height: max(rect.height, 24), alignment: .leading)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(slot.hasDueItem ? Color.white.opacity(0.9) : Color.clear, lineWidth: 2)
+                        )
+                        .overlay(
+                            HStack(spacing: 4) {
+                                if isCluster {
+                                    Image(systemName: "square.stack.3d.up.fill")
+                                        .font(.caption2)
+                                        .foregroundColor(.white.opacity(0.95))
+                                }
+                                Text(isCluster ? "\(slot.tasks.count) items" : slot.primary.title)
+                                    .font(.caption2.bold())
+                                    .foregroundColor(.white)
+                                    .lineLimit(2)
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, 6)
+                        )
+                        .shadow(color: slot.primary.color.opacity(isExpanded ? 0.45 : 0.22), radius: isExpanded ? 8 : 3, x: 0, y: 2)
+                        .scaleEffect(isExpanded ? 1.06 : 1.0)
+                }
+                .buttonStyle(.plain)
+                .zIndex(isExpanded ? 1000 : 100)
+                .position(x: rect.midX, y: rect.midY)
+
+                if isExpanded && isCluster {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(slot.tasks) { task in
+                            Button {
+                                onSelectTask?(task)
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Text(task.title)
+                                        .font(.caption2.bold())
+                                        .foregroundColor(.white)
+                                        .lineLimit(2)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    if task.id.hasPrefix("assignment-due-") {
+                                        Image(systemName: "exclamationmark.circle.fill")
+                                            .font(.caption2)
+                                            .foregroundColor(.white.opacity(0.95))
+                                    }
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(task.color.opacity(0.88))
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(6)
+                    .frame(width: 170)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.hatchEdBackground)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(slot.primary.color.opacity(0.5), lineWidth: 1)
+                            )
+                            .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 3)
                     )
+                    .position(x: rect.maxX + 90, y: rect.minY + 14 + CGFloat(min(slot.tasks.count, 4)) * 10)
+                    .zIndex(1001)
+                }
             }
-            .buttonStyle(.plain)
-            .position(x: rect.midX, y: rect.midY)
+        }
+        .onChange(of: expandedSlotKey) { _, newValue in
+            onExpansionChanged(newValue != nil)
         }
     }
 
-    private func rectForTask(_ task: PlannerTask) -> CGRect {
+    private func rectForSlot(_ slot: TaskSlot) -> CGRect {
+        let task = slot.primary
         let totalInterval = max(visibleEnd.timeIntervalSince(visibleStart), 60 * 60)
         let clampedStart = max(task.startDate, visibleStart)
-        let clampedEnd = min(task.startDate.addingTimeInterval(TimeInterval(task.durationMinutes * 60)), visibleEnd)
+        let maxDuration = slot.tasks.map(\.durationMinutes).max() ?? task.durationMinutes
+        let clampedEnd = min(task.startDate.addingTimeInterval(TimeInterval(maxDuration * 60)), visibleEnd)
         let startOffset = clampedStart.timeIntervalSince(visibleStart)
         let duration = max(clampedEnd.timeIntervalSince(clampedStart), 30 * 60)
         let normalizedOffset = CGFloat(startOffset / totalInterval)
@@ -254,6 +364,38 @@ private struct TasksForDay: View {
         let y = normalizedOffset * (rowHeight * CGFloat(hours.count))
         let height = normalizedHeight * (rowHeight * CGFloat(hours.count))
         return CGRect(x: columnStart + 8, y: y, width: barWidth, height: height)
+    }
+    
+    private func timeKey(for date: Date) -> Int {
+        let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: date)
+        let dayHash = ((components.year ?? 0) * 10000) + ((components.month ?? 0) * 100) + (components.day ?? 0)
+        return dayHash * 10000 + ((components.hour ?? 0) * 100) + (components.minute ?? 0)
+    }
+
+    private func groupedSlots() -> [TaskSlot] {
+        var grouped: [Int: [PlannerTask]] = [:]
+        for task in tasks {
+            grouped[timeKey(for: task.startDate), default: []].append(task)
+        }
+
+        return grouped.keys.sorted().compactMap { key in
+            guard let group = grouped[key], !group.isEmpty else { return nil }
+            let sortedGroup = group.sorted { lhs, rhs in
+                if lhs.startDate == rhs.startDate {
+                    return lhs.id < rhs.id
+                }
+                return lhs.startDate < rhs.startDate
+            }
+            return TaskSlot(key: key, tasks: sortedGroup)
+        }
+    }
+
+    private struct TaskSlot {
+        let key: Int
+        let tasks: [PlannerTask]
+
+        var primary: PlannerTask { tasks[0] }
+        var hasDueItem: Bool { tasks.contains(where: { $0.id.hasPrefix("assignment-due-") }) }
     }
 }
 
@@ -291,11 +433,12 @@ private struct AssignmentsListForDay: View {
             
             // Assignment list
             ForEach(assignments) { assignment in
+                let isDue = assignment.id.hasPrefix("assignment-due-")
                 Button {
                     onSelectTask?(assignment)
                 } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "doc.text.fill")
+                        Image(systemName: isDue ? "exclamationmark.circle.fill" : "doc.text.fill")
                             .font(.caption2)
                             .foregroundColor(assignment.color)
                             .frame(width: 12)
@@ -311,10 +454,10 @@ private struct AssignmentsListForDay: View {
                     .frame(width: columnWidth - 12, alignment: .leading)
                     .background(
                         RoundedRectangle(cornerRadius: 6)
-                            .fill(assignment.color.opacity(0.15))
+                            .fill((isDue ? Color.red : assignment.color).opacity(0.15))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 6)
-                                    .stroke(assignment.color.opacity(0.3), lineWidth: 1)
+                                    .stroke((isDue ? Color.red : assignment.color).opacity(0.4), lineWidth: 1)
                             )
                     )
                 }

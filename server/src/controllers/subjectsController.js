@@ -143,7 +143,7 @@ export async function deleteCourseHandler (req, res) {
 
 // Assignments
 export async function createAssignmentHandler (req, res) {
-  const { title, studentId, dueDate, instructions, pointsPossible, pointsAwarded, courseId } = req.body
+  const { title, studentId, workDates, dueDate, instructions, pointsPossible, pointsAwarded, courseId } = req.body
   if (!title || !title.trim()) {
     return res.status(400).json({ error: { message: 'Assignment title is required' } })
   }
@@ -161,6 +161,7 @@ export async function createAssignmentHandler (req, res) {
     familyId: user.familyId,
     title: title.trim(),
     studentId,
+    workDates,
     dueDate,
     instructions,
     pointsPossible,
@@ -189,7 +190,7 @@ export async function getAssignmentsHandler (req, res) {
 
 export async function updateAssignmentHandler (req, res) {
   const { id } = req.params
-  const { title, dueDate, instructions, pointsPossible, pointsAwarded, courseId } = req.body
+  const { title, workDates, dueDate, clearDueDate, instructions, pointsPossible, pointsAwarded, courseId } = req.body
 
   const user = await findUserById(req.user.userId)
   if (!user || !user.familyId) {
@@ -205,7 +206,7 @@ export async function updateAssignmentHandler (req, res) {
     return res.status(403).json({ error: { message: 'Not authorized' } })
   }
 
-  const updated = await updateAssignment(id, { title, dueDate, instructions, pointsPossible, pointsAwarded, courseId })
+  const updated = await updateAssignment(id, { title, workDates, dueDate, clearDueDate, instructions, pointsPossible, pointsAwarded, courseId })
   if (!updated) {
     return res.status(404).json({ error: { message: 'Assignment not found or could not be updated' } })
   }

@@ -9,11 +9,12 @@ function assignmentsCollection () {
   return getCollection(ASSIGNMENTS_COLLECTION)
 }
 
-export async function createAssignment ({ familyId, title, studentId, dueDate, instructions, pointsPossible, pointsAwarded, courseId }) {
+export async function createAssignment ({ familyId, title, studentId, workDates, dueDate, instructions, pointsPossible, pointsAwarded, courseId }) {
   const assignment = {
     familyId: new ObjectId(familyId),
     title,
     studentId: new ObjectId(studentId),
+    workDates: Array.isArray(workDates) ? workDates.filter(Boolean).map(date => new Date(date)) : [],
     dueDate: dueDate ? new Date(dueDate) : null,
     instructions: instructions ?? null,
     pointsPossible: pointsPossible ?? null,
@@ -47,10 +48,17 @@ export async function findAssignmentById (id) {
   return assignmentsCollection().findOne({ _id: new ObjectId(id) })
 }
 
-export async function updateAssignment (id, { title, dueDate, instructions, pointsPossible, pointsAwarded, courseId }) {
+export async function updateAssignment (id, { title, workDates, dueDate, clearDueDate, instructions, pointsPossible, pointsAwarded, courseId }) {
   const update = {}
   if (title !== undefined) update.title = title
-  if (dueDate !== undefined) update.dueDate = dueDate ? new Date(dueDate) : null
+  if (workDates !== undefined) {
+    update.workDates = Array.isArray(workDates) ? workDates.filter(Boolean).map(date => new Date(date)) : []
+  }
+  if (clearDueDate === true) {
+    update.dueDate = null
+  } else if (dueDate !== undefined) {
+    update.dueDate = dueDate ? new Date(dueDate) : null
+  }
   if (instructions !== undefined) update.instructions = instructions
   if (pointsPossible !== undefined) update.pointsPossible = pointsPossible
   if (pointsAwarded !== undefined) {

@@ -13,14 +13,17 @@ struct TaskDetailSheetView: View {
     let assignment: Assignment?
     let students: [User]
     let courses: [Course]
-    let onTaskUpdated: () -> Void
-    let onAssignmentUpdated: () -> Void
+    let onTaskUpdated: (PlannerTask) -> Void
+    let onAssignmentUpdated: (Assignment) -> Void
     let onTaskDeleted: () -> Void
     
     @Environment(\.dismiss) private var dismiss
     @State private var isEditing: Bool = false
     @State private var editedTitle: String = ""
     @State private var editedDate: Date = Date()
+    @State private var editedWorkDates: [Date] = []
+    @State private var editedDueDate: Date = Date()
+    @State private var hasDueDate: Bool = false
     @State private var editedDurationMinutes: Int = 60
     @State private var editedCourse: Course? = nil
     @State private var editedStudent: User? = nil
@@ -46,7 +49,7 @@ struct TaskDetailSheetView: View {
     }()
     
     
-    init(task: PlannerTask, assignment: Assignment?, students: [User] = [], courses: [Course] = [], onTaskUpdated: @escaping () -> Void = {}, onAssignmentUpdated: @escaping () -> Void = {}, onTaskDeleted: @escaping () -> Void = {}) {
+    init(task: PlannerTask, assignment: Assignment?, students: [User] = [], courses: [Course] = [], onTaskUpdated: @escaping (PlannerTask) -> Void = { _ in }, onAssignmentUpdated: @escaping (Assignment) -> Void = { _ in }, onTaskDeleted: @escaping () -> Void = {}) {
         self.task = task
         self.assignment = assignment
         self.students = students
@@ -56,10 +59,13 @@ struct TaskDetailSheetView: View {
         self.onTaskDeleted = onTaskDeleted
         
         // Initialize edit state from task or assignment
-        _editedTitle = State(initialValue: task.title)
+        _editedTitle = State(initialValue: assignment?.title ?? task.title)
         // For assignments, use the assignment's dueDate; for tasks, use task.startDate
         let initialDate = assignment?.dueDate ?? task.startDate
         _editedDate = State(initialValue: initialDate)
+        _editedWorkDates = State(initialValue: assignment?.workDates ?? [])
+        _editedDueDate = State(initialValue: assignment?.dueDate ?? task.startDate)
+        _hasDueDate = State(initialValue: assignment?.dueDate != nil)
         _editedDurationMinutes = State(initialValue: task.durationMinutes)
         
         // Initialize course - try to find from assignment's courseId, task.subject, or courses array
@@ -303,6 +309,29 @@ struct TaskDetailSheetView: View {
                     
                     // Assignment-specific information
                     if let assignment = assignment {
+                        if !assignment.workDates.isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Work Time")
+                                    .font(.headline)
+                                    .foregroundColor(.hatchEdText)
+
+                                ForEach(Array(assignment.workDates.sorted().enumerated()), id: \.offset) { _, workDate in
+                                    HStack {
+                                        Image(systemName: "hammer.fill")
+                                            .foregroundColor(.hatchEdAccent)
+                                        Text(dateFormatter.string(from: workDate))
+                                            .font(.body)
+                                            .foregroundColor(.hatchEdText)
+                                    }
+                                }
+                            }
+                            .padding()
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color.hatchEdCardBackground)
+                            )
+                        }
+
                         // Due Date
                         if let dueDate = assignment.dueDate {
                             VStack(alignment: .leading, spacing: 12) {
@@ -311,17 +340,22 @@ struct TaskDetailSheetView: View {
                                     .foregroundColor(.hatchEdText)
                                 
                                 HStack {
-                                    Image(systemName: "calendar.badge.clock")
-                                        .foregroundColor(.hatchEdWarning)
+                                    Image(systemName: "exclamationmark.circle.fill")
+                                        .foregroundColor(.red)
                                     Text(dateFormatter.string(from: dueDate))
                                         .font(.body)
+                                        .fontWeight(.semibold)
                                         .foregroundColor(.hatchEdText)
                                 }
                             }
                             .padding()
                             .background(
                                 RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color.hatchEdCardBackground)
+                                    .fill(Color.red.opacity(0.10))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(Color.red.opacity(0.45), lineWidth: 1)
+                                    )
                             )
                         }
                         
@@ -482,9 +516,34 @@ struct TaskDetailSheetView: View {
         List {
             Section(header: Text("Task")) {
                 TextField("Title", text: $editedTitle)
-                DatePicker("Date & Time", selection: $editedDate, displayedComponents: [.date, .hourAndMinute])
-                Stepper(value: $editedDurationMinutes, in: 15...480, step: 15) {
-                    Text("Duration: \(formattedDuration)")
+                if assignment != nil {
+                    if editedWorkDates.isEmpty {
+                        Button("Add Work Date & Time") {
+                            editedWorkDates.append(editedDate)
+                        }
+                    } else {
+                        ForEach(editedWorkDates.indices, id: \.self) { index in
+                            DatePicker("Work Time \(index + 1)", selection: Binding(
+                                get: { editedWorkDates[index] },
+                                set: { editedWorkDates[index] = $0 }
+                            ), displayedComponents: [.date, .hourAndMinute])
+                        }
+                        .onDelete { offsets in
+                            editedWorkDates.remove(atOffsets: offsets)
+                        }
+                        Button("Add Another Work Time") {
+                            editedWorkDates.append(editedWorkDates.last ?? editedDate)
+                        }
+                    }
+                    Toggle("Has Due Date", isOn: $hasDueDate)
+                    if hasDueDate {
+                        DatePicker("Due Date & Time", selection: $editedDueDate, displayedComponents: [.date, .hourAndMinute])
+                    }
+                } else {
+                    DatePicker("Date & Time", selection: $editedDate, displayedComponents: [.date, .hourAndMinute])
+                    Stepper(value: $editedDurationMinutes, in: 15...480, step: 15) {
+                        Text("Duration: \(formattedDuration)")
+                    }
                 }
             }
             
@@ -652,9 +711,12 @@ struct TaskDetailSheetView: View {
     private func startEditing() {
         isEditing = true
         // Reset edit state to current task or assignment values
-        editedTitle = task.title
+        editedTitle = assignment?.title ?? task.title
         // For assignments, use the assignment's dueDate; for tasks, use task.startDate
         editedDate = assignment?.dueDate ?? task.startDate
+        editedWorkDates = assignment?.workDates ?? []
+        editedDueDate = assignment?.dueDate ?? task.startDate
+        hasDueDate = assignment?.dueDate != nil
         editedDurationMinutes = task.durationMinutes
         
         // Initialize course - prefer course from task.subject, otherwise try to find from assignment
@@ -691,8 +753,11 @@ struct TaskDetailSheetView: View {
     private func cancelEditing() {
         isEditing = false
         // Reset to original values
-        editedTitle = task.title
+        editedTitle = assignment?.title ?? task.title
         editedDate = assignment?.dueDate ?? task.startDate
+        editedWorkDates = assignment?.workDates ?? []
+        editedDueDate = assignment?.dueDate ?? task.startDate
+        hasDueDate = assignment?.dueDate != nil
         editedDurationMinutes = task.durationMinutes
         
         // Reset course - find course from task.subject if it exists
@@ -726,16 +791,18 @@ struct TaskDetailSheetView: View {
         if let assignment = assignment {
             // Update assignment
             do {
-                _ = try await api.updateAssignment(
+                let updatedAssignment = try await api.updateAssignment(
                     id: assignment.id,
                     title: trimmedTitle,
-                    dueDate: editedDate,
+                    workDates: editedWorkDates.isEmpty ? nil : editedWorkDates,
+                    dueDate: hasDueDate ? editedDueDate : nil,
+                    clearDueDate: hasDueDate ? nil : true,
                     instructions: nil,
                     pointsPossible: nil,
                     pointsAwarded: nil,
                     courseId: editedCourse?.id
                 )
-                onAssignmentUpdated()
+                onAssignmentUpdated(updatedAssignment)
                 dismiss()
             } catch {
                 errorMessage = "Failed to update assignment: \(error.localizedDescription)"
@@ -761,10 +828,11 @@ struct TaskDetailSheetView: View {
                 // Create assignment and delete planner task
                 do {
                     // Use the selected course
-                    _ = try await api.createAssignment(
+                    let createdAssignment = try await api.createAssignment(
                         title: trimmedTitle,
                         studentId: student.id,
-                        dueDate: editedDate,
+                        workDates: [editedDate],
+                        dueDate: nil,
                         instructions: nil,
                         pointsPossible: nil,
                         pointsAwarded: nil,
@@ -775,7 +843,7 @@ struct TaskDetailSheetView: View {
                     try await api.deletePlannerTask(id: task.id)
                     
                     onTaskDeleted()
-                    onAssignmentUpdated()
+                    onAssignmentUpdated(createdAssignment)
                     dismiss()
                 } catch {
                     errorMessage = "Failed to convert task to assignment: \(error.localizedDescription)"
@@ -784,7 +852,7 @@ struct TaskDetailSheetView: View {
             } else {
                 // Regular update of planner task
                 do {
-                    _ = try await api.updatePlannerTask(
+                    let updatedTask = try await api.updatePlannerTask(
                         id: task.id,
                         title: trimmedTitle,
                         startDate: editedDate,
@@ -792,7 +860,7 @@ struct TaskDetailSheetView: View {
                         colorName: "Blue",
                         subject: newSubject
                     )
-                    onTaskUpdated()
+                    onTaskUpdated(updatedTask)
                     dismiss()
                 } catch {
                     errorMessage = "Failed to update task: \(error.localizedDescription)"

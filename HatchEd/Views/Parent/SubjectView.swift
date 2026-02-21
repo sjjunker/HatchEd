@@ -123,8 +123,8 @@ struct SubjectView: View {
                 assignment: assignment,
                 students: authViewModel.students,
                 courses: courses,
-                onTaskUpdated: {},
-                onAssignmentUpdated: {
+                onTaskUpdated: { _ in },
+                onAssignmentUpdated: { _ in
                     Task {
                         await loadSubjects()
                     }
@@ -422,6 +422,7 @@ private struct AddItemView: View {
     @State private var selectedCourseColorName: String = "Blue"
     @State private var selectedStudentIdsForCourse: Set<String> = []
     @State private var assignmentTitle = ""
+    @State private var assignmentWorkDates: [Date] = [Date()]
     @State private var assignmentDueDate = Date()
     @State private var selectedCourseForAssignment: Course?
     @State private var selectedStudentForAssignment: User?
@@ -463,6 +464,25 @@ private struct AddItemView: View {
                             ForEach(students) { student in
                                 Text(student.name ?? "Student").tag(student.id as String?)
                             }
+                        }
+                    }
+                    
+                    if assignmentWorkDates.isEmpty {
+                        Button("Add Work Date & Time") {
+                            assignmentWorkDates.append(Date())
+                        }
+                    } else {
+                        ForEach(assignmentWorkDates.indices, id: \.self) { index in
+                            DatePicker("Work Time \(index + 1)", selection: Binding(
+                                get: { assignmentWorkDates[index] },
+                                set: { assignmentWorkDates[index] = $0 }
+                            ), displayedComponents: [.date, .hourAndMinute])
+                        }
+                        .onDelete { offsets in
+                            assignmentWorkDates.remove(atOffsets: offsets)
+                        }
+                        Button("Add Another Work Time") {
+                            assignmentWorkDates.append(assignmentWorkDates.last ?? Date())
                         }
                     }
                     
@@ -561,6 +581,7 @@ private struct AddItemView: View {
                 let newAssignment = try await api.createAssignment(
                     title: assignmentTitle.trimmingCharacters(in: .whitespaces),
                     studentId: student.id,
+                    workDates: assignmentWorkDates.isEmpty ? nil : assignmentWorkDates,
                     dueDate: hasDueDate ? assignmentDueDate : nil,
                     instructions: nil,
                     pointsPossible: nil,

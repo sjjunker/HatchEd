@@ -9,7 +9,7 @@ function plannerTasksCollection () {
   return getCollection(PLANNER_TASKS_COLLECTION)
 }
 
-export async function createPlannerTask ({ familyId, userId, title, startDate, durationMinutes, colorName, subject }) {
+export async function createPlannerTask ({ familyId, userId, title, startDate, durationMinutes, colorName, subject, studentIds }) {
   const task = {
     familyId: new ObjectId(familyId),
     userId: new ObjectId(userId),
@@ -18,6 +18,7 @@ export async function createPlannerTask ({ familyId, userId, title, startDate, d
     durationMinutes,
     colorName: 'Blue',
     subject: subject || null,
+    studentIds: Array.isArray(studentIds) ? studentIds.filter(Boolean).map(id => new ObjectId(id)) : [],
     createdAt: new Date(),
     updatedAt: new Date()
   }
@@ -38,13 +39,16 @@ export async function findPlannerTaskById (id) {
   return plannerTasksCollection().findOne({ _id: new ObjectId(id) })
 }
 
-export async function updatePlannerTask (id, { title, startDate, durationMinutes, colorName, subject }) {
+export async function updatePlannerTask (id, { title, startDate, durationMinutes, colorName, subject, studentIds }) {
   const update = {}
   if (title !== undefined) update.title = title
   if (startDate !== undefined) update.startDate = new Date(startDate)
   if (durationMinutes !== undefined) update.durationMinutes = durationMinutes
   if (colorName !== undefined) update.colorName = 'Blue'
   if (subject !== undefined) update.subject = subject || null
+  if (studentIds !== undefined) {
+    update.studentIds = Array.isArray(studentIds) ? studentIds.filter(Boolean).map(id => new ObjectId(id)) : []
+  }
   update.updatedAt = new Date()
 
   const result = await plannerTasksCollection().findOneAndUpdate(

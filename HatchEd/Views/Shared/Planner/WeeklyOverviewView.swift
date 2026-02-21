@@ -270,30 +270,26 @@ private struct TasksForDay: View {
                         onSelectTask?(single)
                     }
                 } label: {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(slot.primary.color.opacity(0.85))
-                        .frame(width: rect.width, height: max(rect.height, 24), alignment: .leading)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(slot.hasDueItem ? Color.white.opacity(0.9) : Color.clear, lineWidth: 2)
-                        )
-                        .overlay(
-                            HStack(spacing: 4) {
-                                if isCluster {
-                                    Image(systemName: "square.stack.3d.up.fill")
-                                        .font(.caption2)
-                                        .foregroundColor(.white.opacity(0.95))
-                                }
-                                Text(isCluster ? "\(slot.tasks.count) items" : slot.primary.title)
-                                    .font(.caption2.bold())
-                                    .foregroundColor(.white)
-                                    .lineLimit(2)
-                                Spacer(minLength: 0)
-                            }
-                            .padding(.horizontal, 6)
-                        )
-                        .shadow(color: slot.primary.color.opacity(isExpanded ? 0.45 : 0.22), radius: isExpanded ? 8 : 3, x: 0, y: 2)
-                        .scaleEffect(isExpanded ? 1.06 : 1.0)
+                    ZStack {
+                        markerView(for: slot, isCluster: isCluster)
+
+                        if isCluster && slot.markerKind != .mixed {
+                            Text("\(slot.tasks.count)")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(slot.primary.color.opacity(0.95))
+                                )
+                                .offset(x: 8, y: -8)
+                        }
+                    }
+                    .frame(width: rect.width, height: max(rect.height, 24), alignment: .center)
+                    .contentShape(Rectangle())
+                    .shadow(color: slot.primary.color.opacity(isExpanded ? 0.45 : 0.22), radius: isExpanded ? 8 : 3, x: 0, y: 2)
+                    .scaleEffect(isExpanded ? 1.08 : 1.0)
                 }
                 .buttonStyle(.plain)
                 .zIndex(isExpanded ? 1000 : 100)
@@ -396,6 +392,69 @@ private struct TasksForDay: View {
 
         var primary: PlannerTask { tasks[0] }
         var hasDueItem: Bool { tasks.contains(where: { $0.id.hasPrefix("assignment-due-") }) }
+        var hasAssignment: Bool { tasks.contains(where: { $0.id.hasPrefix("assignment-") }) }
+        var hasTask: Bool { tasks.contains(where: { !$0.id.hasPrefix("assignment-") }) }
+        var markerKind: MarkerKind {
+            if hasAssignment && hasTask { return .mixed }
+            return hasAssignment ? .assignment : .task
+        }
+    }
+
+    private enum MarkerKind {
+        case task
+        case assignment
+        case mixed
+    }
+
+    @ViewBuilder
+    private func markerView(for slot: TaskSlot, isCluster: Bool) -> some View {
+        let strokeColor = slot.hasDueItem ? Color.white.opacity(0.95) : Color.clear
+        switch slot.markerKind {
+        case .task:
+            Image(systemName: "checkmark.circle")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(slot.primary.color)
+                .frame(width: markerSize(for: slot).width, height: markerSize(for: slot).height)
+        case .assignment:
+            Image(systemName: "doc.text")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(slot.hasDueItem ? .red : slot.primary.color)
+                .frame(width: markerSize(for: slot).width, height: markerSize(for: slot).height)
+        case .mixed:
+            Capsule(style: .continuous)
+                .fill(slot.primary.color.opacity(0.9))
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(strokeColor, lineWidth: 2)
+                )
+                .overlay(
+                    HStack(spacing: 3) {
+                        Image(systemName: "checkmark.circle")
+                            .font(.system(size: 7, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.95))
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 7, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.95))
+                        if isCluster {
+                            Text("\(slot.tasks.count)")
+                                .font(.system(size: 7, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                    }
+                )
+                .frame(width: markerSize(for: slot).width, height: markerSize(for: slot).height)
+        }
+    }
+
+    private func markerSize(for slot: TaskSlot) -> CGSize {
+        switch slot.markerKind {
+        case .task:
+            return CGSize(width: 17, height: 17)
+        case .assignment:
+            return CGSize(width: 17, height: 17)
+        case .mixed:
+            return CGSize(width: 24, height: 14)
+        }
     }
 }
 

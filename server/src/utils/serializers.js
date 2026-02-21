@@ -214,6 +214,7 @@ export function serializePlannerTask (task) {
     durationMinutes: task.durationMinutes,
     colorName: task.colorName,
     subject: task.subject ?? null,
+    studentIds: (task.studentIds ?? []).map(id => id?.toString?.() ?? id),
     createdAt: task.createdAt,
     updatedAt: task.updatedAt
   }

@@ -7,7 +7,7 @@ import { serializePlannerTask } from '../utils/serializers.js'
 
 // Planner Tasks (for tasks without subjects)
 export async function createPlannerTaskHandler (req, res) {
-  const { title, startDate, durationMinutes, subject } = req.body
+  const { title, startDate, durationMinutes, subject, studentIds } = req.body
   if (!title || !title.trim()) {
     return res.status(400).json({ error: { message: 'Title is required' } })
   }
@@ -32,7 +32,8 @@ export async function createPlannerTaskHandler (req, res) {
     startDate,
     durationMinutes: durationMinutes || 60,
     colorName: 'Blue',
-    subject: null
+    subject: null,
+    studentIds: Array.isArray(studentIds) ? studentIds : []
   })
   res.status(201).json({ task: serializePlannerTask(task) })
 }
@@ -49,7 +50,7 @@ export async function getPlannerTasksHandler (req, res) {
 
 export async function updatePlannerTaskHandler (req, res) {
   const { id } = req.params
-  const { title, startDate, durationMinutes, subject } = req.body
+  const { title, startDate, durationMinutes, subject, studentIds } = req.body
 
   const user = await findUserById(req.user.userId)
   if (!user || !user.familyId) {
@@ -70,7 +71,7 @@ export async function updatePlannerTaskHandler (req, res) {
     return res.status(400).json({ error: { message: 'Cannot add subject to planner task. Convert to assignment instead.' } })
   }
 
-  const updated = await updatePlannerTask(id, { title, startDate, durationMinutes, colorName: 'Blue', subject: subject || null })
+  const updated = await updatePlannerTask(id, { title, startDate, durationMinutes, colorName: 'Blue', subject: subject || null, studentIds })
   res.json({ task: serializePlannerTask(updated) })
 }
 

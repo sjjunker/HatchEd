@@ -27,6 +27,7 @@ struct TaskDetailSheetView: View {
     @State private var editedDurationMinutes: Int = 60
     @State private var editedCourse: Course? = nil
     @State private var editedStudent: User? = nil
+    @State private var editedStudentIds: Set<String> = []
     @State private var isSaving: Bool = false
     @State private var errorMessage: String? = nil
     @State private var linkedResources: [Resource] = []
@@ -67,6 +68,7 @@ struct TaskDetailSheetView: View {
         _editedDueDate = State(initialValue: assignment?.dueDate ?? task.startDate)
         _hasDueDate = State(initialValue: assignment?.dueDate != nil)
         _editedDurationMinutes = State(initialValue: task.durationMinutes)
+        _editedStudentIds = State(initialValue: Set(task.studentIds))
         
         // Initialize course - try to find from assignment's courseId, task.subject, or courses array
         var initialCourse: Course? = nil
@@ -115,7 +117,7 @@ struct TaskDetailSheetView: View {
                         }
                         .fontWeight(.semibold)
                         .foregroundColor(.hatchEdAccent)
-                        .disabled(isSaving || editedTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (editedCourse != nil && editedStudent == nil))
+                        .disabled(isSaving || editedTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (editedCourse != nil && primaryEditedStudent == nil))
                     }
                 } else {
                     ToolbarItem(placement: .cancellationAction) {
@@ -547,8 +549,8 @@ struct TaskDetailSheetView: View {
                 }
             }
             
-            // Show Student section if it's an assignment (always has student) OR if subject exists
-            if assignment != nil || task.subject != nil || displayCourse != nil {
+            // Show Student section for assignments and planner tasks when students exist.
+            if assignment != nil || !students.isEmpty {
                 Section(header: Text("Student")) {
                     if !students.isEmpty {
                         if assignment != nil {
@@ -566,16 +568,21 @@ struct TaskDetailSheetView: View {
                                 }
                             }
                         } else {
-                            // For planner tasks, allow selection
-                            Picker("Select Student", selection: $editedStudent) {
-                                Text("Select a student").tag(nil as User?)
-                                ForEach(students) { student in
-                                    Text(student.name ?? "Student").tag(student as User?)
+                            // For planner tasks, allow multi-student selection
+                            ForEach(students) { student in
+                                Toggle(isOn: Binding(
+                                    get: { editedStudentIds.contains(student.id) },
+                                    set: { isSelected in
+                                        if isSelected {
+                                            editedStudentIds.insert(student.id)
+                                        } else {
+                                            editedStudentIds.remove(student.id)
+                                        }
+                                        editedStudent = primaryEditedStudent
+                                    }
+                                )) {
+                                    Text(student.name ?? "Student")
                                 }
-                            }
-                            .onChange(of: editedStudent) { oldValue, newValue in
-                                // Clear course selection when student changes
-                                editedCourse = nil
                             }
                         }
                     } else {
@@ -587,7 +594,7 @@ struct TaskDetailSheetView: View {
             }
             
             // Show Course section if student is selected or if it's an assignment
-            if editedStudent != nil || assignment != nil || editedCourse != nil || task.subject != nil || displayCourse != nil {
+            if primaryEditedStudent != nil || assignment != nil || editedCourse != nil || task.subject != nil || displayCourse != nil {
                 Section(header: Text("Course")) {
                     courseSelection
                 }
@@ -598,7 +605,7 @@ struct TaskDetailSheetView: View {
     
     private var courseSelection: some View {
         VStack(spacing: 12) {
-            if let student = editedStudent ?? displayStudent {
+            if let student = primaryEditedStudent ?? displayStudent {
                 // Show courses for the selected student
                 let studentCourses = courses.filter { $0.students.contains(where: { $0.id == student.id }) }
                 
@@ -700,7 +707,17 @@ struct TaskDetailSheetView: View {
         if let course = displayCourse {
             return course.student
         }
-        return editedStudent
+        return primaryEditedStudent ?? editedStudent
+    }
+
+    private var primaryEditedStudent: User? {
+        if let editedStudent {
+            return editedStudent
+        }
+        if let firstSelectedId = editedStudentIds.first {
+            return students.first(where: { $0.id == firstSelectedId })
+        }
+        return nil
     }
     
     private func calculatePercentage(pointsAwarded: Double, pointsPossible: Double) -> Double? {
@@ -718,6 +735,7 @@ struct TaskDetailSheetView: View {
         editedDueDate = assignment?.dueDate ?? task.startDate
         hasDueDate = assignment?.dueDate != nil
         editedDurationMinutes = task.durationMinutes
+        editedStudentIds = Set(task.studentIds)
         
         // Initialize course - prefer course from task.subject, otherwise try to find from assignment
         var courseToSet: Course? = nil
@@ -746,6 +764,8 @@ struct TaskDetailSheetView: View {
         // If this is an assignment, set student
         if let assignment = assignment {
             editedStudent = students.first { $0.id == assignment.studentId }
+        } else {
+            editedStudent = primaryEditedStudent
         }
         errorMessage = nil
     }
@@ -759,6 +779,7 @@ struct TaskDetailSheetView: View {
         editedDueDate = assignment?.dueDate ?? task.startDate
         hasDueDate = assignment?.dueDate != nil
         editedDurationMinutes = task.durationMinutes
+        editedStudentIds = Set(task.studentIds)
         
         // Reset course - find course from task.subject if it exists
         if let subject = task.subject {
@@ -771,7 +792,7 @@ struct TaskDetailSheetView: View {
         if let assignment = assignment {
             editedStudent = students.first { $0.id == assignment.studentId }
         } else {
-            editedStudent = nil
+            editedStudent = primaryEditedStudent
         }
         errorMessage = nil
     }
@@ -819,7 +840,7 @@ struct TaskDetailSheetView: View {
             
             if !hadCourseBefore && hasCourseNow {
                 // Converting planner task to assignment - need student
-                guard let student = editedStudent ?? newCourse?.student else {
+                guard let student = primaryEditedStudent ?? newCourse?.student else {
                     errorMessage = "Please select a student when adding a course"
                     isSaving = false
                     return
@@ -858,7 +879,8 @@ struct TaskDetailSheetView: View {
                         startDate: editedDate,
                         durationMinutes: editedDurationMinutes,
                         colorName: "Blue",
-                        subject: newSubject
+                        subject: newSubject,
+                        studentIds: Array(editedStudentIds)
                     )
                     onTaskUpdated(updatedTask)
                     dismiss()

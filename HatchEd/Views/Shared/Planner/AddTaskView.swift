@@ -12,18 +12,22 @@ struct AddTaskView: View {
     @Environment(\.dismiss) private var dismiss
 
     let initialDate: Date
+    let students: [User]
     let onSaveTask: (PlannerTask) -> Void
 
     @State private var title: String = ""
     @State private var date: Date
     @State private var durationMinutes: Int = 60
+    @State private var selectedStudentIds: Set<String>
     @State private var isSaving: Bool = false
     @State private var errorMessage: String? = nil
 
-    init(initialDate: Date, onSaveTask: @escaping (PlannerTask) -> Void) {
+    init(initialDate: Date, students: [User] = [], onSaveTask: @escaping (PlannerTask) -> Void) {
         self.initialDate = initialDate
+        self.students = students
         self.onSaveTask = onSaveTask
         _date = State(initialValue: initialDate)
+        _selectedStudentIds = State(initialValue: students.count == 1 ? [students[0].id] : [])
     }
 
     var body: some View {
@@ -36,6 +40,25 @@ struct AddTaskView: View {
                     
                     Stepper(value: $durationMinutes, in: 15...480, step: 15) {
                         Text("Duration: \(formattedDuration)")
+                    }
+                }
+                
+                if !students.isEmpty {
+                    Section(header: Text("Students")) {
+                        ForEach(students) { student in
+                            Toggle(isOn: Binding(
+                                get: { selectedStudentIds.contains(student.id) },
+                                set: { isSelected in
+                                    if isSelected {
+                                        selectedStudentIds.insert(student.id)
+                                    } else {
+                                        selectedStudentIds.remove(student.id)
+                                    }
+                                }
+                            )) {
+                                Text(student.name ?? "Student")
+                            }
+                        }
                     }
                 }
 
@@ -61,7 +84,7 @@ struct AddTaskView: View {
                     }
                     .fontWeight(.semibold)
                     .foregroundColor(.hatchEdAccent)
-                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving || (!students.isEmpty && selectedStudentIds.isEmpty))
                 }
             }
         }
@@ -93,7 +116,8 @@ struct AddTaskView: View {
                 startDate: date,
                 durationMinutes: durationMinutes,
                 colorName: "Blue",
-                subject: nil
+                subject: nil,
+                studentIds: Array(selectedStudentIds)
             )
             onSaveTask(task)
             dismiss()
@@ -105,5 +129,5 @@ struct AddTaskView: View {
 }
 
 #Preview {
-    AddTaskView(initialDate: Date(), onSaveTask: { _ in })
+    AddTaskView(initialDate: Date(), students: [], onSaveTask: { _ in })
 }

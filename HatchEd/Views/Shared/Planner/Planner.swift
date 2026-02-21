@@ -17,6 +17,7 @@ struct Planner: View {
     @State private var showingAddAssignment = false
     @State private var selectedTask: PlannerTask?
     @State private var weekOffset: Int = 0
+    @State private var selectedStudentFilterId: String? = nil
     @State private var assignments: [Assignment] = []
     @State private var courses: [Course] = []
     @State private var isLoadingAssignments = false
@@ -33,12 +34,10 @@ struct Planner: View {
                 WeeklyOverviewView(
                     weekDates: currentWeekDates,
                     tasksProvider: { date in
-                        // Only regular planner tasks (not assignments)
-                        taskStore.tasks(for: date)
+                        filteredPlannerTasks(for: date)
                     },
                     assignmentsProvider: { date in
-                        // Only assignments for this day
-                        assignmentsToTasks(for: date)
+                        filteredAssignmentTasks(for: date)
                     },
                     onSelectDay: { date in
                         selectedDate = date
@@ -76,8 +75,8 @@ struct Planner: View {
                 DayDetailSheetView(
                     date: selectedDate,
                     tasks: {
-                        let regularTasks = taskStore.tasks(for: selectedDate)
-                        let assignmentTasks = assignmentsToTasks(for: selectedDate)
+                        let regularTasks = filteredPlannerTasks(for: selectedDate)
+                        let assignmentTasks = filteredAssignmentTasks(for: selectedDate)
                         return (regularTasks + assignmentTasks).sorted { $0.startDate < $1.startDate }
                     }(),
                     onDelete: { task in
@@ -123,6 +122,7 @@ struct Planner: View {
         .sheet(isPresented: $showingAddTask) {
             AddTaskView(
                 initialDate: selectedDate,
+                students: availableStudentsForFilter,
                 onSaveTask: { task in
                     Task { @MainActor in
                         taskStore.add(task)
@@ -165,6 +165,9 @@ struct Planner: View {
         }
         .task {
             // Load data when view appears
+            if selectedStudentFilterId == nil, authViewModel.currentUser?.role == "student" {
+                selectedStudentFilterId = authViewModel.currentUser?.id
+            }
             await loadAssignments()
             await loadCourses()
             await taskStore.refresh()
@@ -198,9 +201,16 @@ struct Planner: View {
                         .fontWeight(.bold)
                         .foregroundColor(.hatchEdText)
                 }
-                Text("Tap a day to see all tasks • Swipe to navigate weeks")
-                    .font(.subheadline)
-                    .foregroundColor(.hatchEdSecondaryText)
+                if !availableStudentsForFilter.isEmpty {
+                    Picker("Student", selection: $selectedStudentFilterId) {
+                        Text("All Students").tag(nil as String?)
+                        ForEach(availableStudentsForFilter) { student in
+                            Text(student.name ?? "Student").tag(student.id as String?)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .font(.caption)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
@@ -310,7 +320,8 @@ struct Planner: View {
                             startDate: workDate,
                             durationMinutes: 60,
                             colorName: workColor,
-                            subject: assignment.courseId.flatMap { id in courses.first(where: { $0.id == id })?.name }
+                            subject: assignment.courseId.flatMap { id in courses.first(where: { $0.id == id })?.name },
+                            studentIds: [assignment.studentId]
                         )
                     )
                 }
@@ -323,13 +334,36 @@ struct Planner: View {
                             startDate: dueDate,
                             durationMinutes: 30,
                             colorName: "Red",
-                            subject: assignment.courseId.flatMap { id in courses.first(where: { $0.id == id })?.name }
+                            subject: assignment.courseId.flatMap { id in courses.first(where: { $0.id == id })?.name },
+                            studentIds: [assignment.studentId]
                         )
                     )
                 }
 
                 return tasks
             }
+    }
+
+    private func filteredPlannerTasks(for date: Date) -> [PlannerTask] {
+        taskStore.tasks(for: date).filter { task in
+            guard let selectedStudentFilterId else { return true }
+            return task.studentIds.isEmpty || task.studentIds.contains(selectedStudentFilterId)
+        }
+    }
+
+    private func filteredAssignmentTasks(for date: Date) -> [PlannerTask] {
+        assignmentsToTasks(for: date).filter { task in
+            guard let selectedStudentFilterId else { return true }
+            guard let assignment = assignmentForTask(task) else { return true }
+            return assignment.studentId == selectedStudentFilterId
+        }
+    }
+
+    private var availableStudentsForFilter: [User] {
+        if authViewModel.currentUser?.role == "student", let currentUser = authViewModel.currentUser {
+            return [authViewModel.students.first(where: { $0.id == currentUser.id }) ?? currentUser]
+        }
+        return authViewModel.students
     }
     
     private func assignmentForTask(_ task: PlannerTask) -> Assignment? {

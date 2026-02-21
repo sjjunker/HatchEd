@@ -255,6 +255,7 @@ final class APIClient {
         let durationMinutes: Int
         let colorName: String
         let subject: String?
+        let studentIds: [String]
     }
     
     struct UpdatePlannerTaskRequest: Encodable {
@@ -263,10 +264,11 @@ final class APIClient {
         let durationMinutes: Int?
         let colorName: String?
         let subject: String?
+        let studentIds: [String]?
     }
     
-    func createPlannerTask(title: String, startDate: Date, durationMinutes: Int, colorName: String, subject: String?) async throws -> PlannerTask {
-        let body = CreatePlannerTaskRequest(title: title, startDate: startDate, durationMinutes: durationMinutes, colorName: colorName, subject: subject)
+    func createPlannerTask(title: String, startDate: Date, durationMinutes: Int, colorName: String, subject: String?, studentIds: [String] = []) async throws -> PlannerTask {
+        let body = CreatePlannerTaskRequest(title: title, startDate: startDate, durationMinutes: durationMinutes, colorName: colorName, subject: subject, studentIds: studentIds)
         let response: PlannerTaskResponse = try await request(
             Endpoint(path: "api/planner/tasks", method: .post, body: body),
             responseType: PlannerTaskResponse.self
@@ -282,8 +284,8 @@ final class APIClient {
         return response.tasks
     }
     
-    func updatePlannerTask(id: String, title: String?, startDate: Date?, durationMinutes: Int?, colorName: String?, subject: String?) async throws -> PlannerTask {
-        let body = UpdatePlannerTaskRequest(title: title, startDate: startDate, durationMinutes: durationMinutes, colorName: colorName, subject: subject)
+    func updatePlannerTask(id: String, title: String?, startDate: Date?, durationMinutes: Int?, colorName: String?, subject: String?, studentIds: [String]? = nil) async throws -> PlannerTask {
+        let body = UpdatePlannerTaskRequest(title: title, startDate: startDate, durationMinutes: durationMinutes, colorName: colorName, subject: subject, studentIds: studentIds)
         let response: PlannerTaskResponse = try await request(
             Endpoint(path: "api/planner/tasks/\(id)", method: .patch, body: body),
             responseType: PlannerTaskResponse.self

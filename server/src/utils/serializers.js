@@ -87,7 +87,6 @@ export function serializeCourse (course, students) {
   return {
     id: course._id?.toString?.() ?? course._id,
     name: course.name,
-    grade: course.grade ?? null,
     students: studentsList.map(serializeCourseStudent).filter(Boolean),
     assignments: course.assignments ?? [],
     createdAt: course.createdAt,

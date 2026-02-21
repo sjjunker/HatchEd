@@ -187,7 +187,7 @@ struct StudentDetail: View {
             Text("Courses")
                 .font(.headline)
             ForEach(viewModelState.courses) { course in
-                CourseRow(course: course)
+                CourseRow(course: course, studentId: viewModel.student.id)
             }
         }
     }
@@ -243,6 +243,7 @@ private struct AttendanceHistoryRow: View {
 
 private struct CourseRow: View {
     let course: Course
+    let studentId: String
 
     private let gradeFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
@@ -258,7 +259,7 @@ private struct CourseRow: View {
                 .fontWeight(.medium)
                 .foregroundColor(.hatchEdText)
             Spacer()
-            if let grade = course.grade {
+            if let grade = course.calculatedGrade(for: studentId) {
                 Text(String(format: "%.1f%%", grade))
                     .font(.title3)
                     .fontWeight(.bold)

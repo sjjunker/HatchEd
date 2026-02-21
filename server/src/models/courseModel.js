@@ -28,7 +28,7 @@ function normalizeStudentUserIds (studentUserId, studentUserIds) {
   return []
 }
 
-export async function createCourse ({ familyId, name, studentUserId, studentUserIds, grade }) {
+export async function createCourse ({ familyId, name, studentUserId, studentUserIds }) {
   const ids = normalizeStudentUserIds(studentUserId, studentUserIds)
   if (ids.length === 0) {
     throw new Error('At least one student is required')
@@ -37,7 +37,6 @@ export async function createCourse ({ familyId, name, studentUserId, studentUser
     familyId: new ObjectId(familyId),
     name: name ? encrypt(name) : name,
     studentUserIds: ids,
-    grade: grade ?? null,
     assignments: [],
     createdAt: new Date(),
     updatedAt: new Date()
@@ -69,10 +68,9 @@ export async function findCourseById (id) {
   return decryptCourse(doc)
 }
 
-export async function updateCourse (id, { name, grade, studentUserIds }) {
+export async function updateCourse (id, { name, studentUserIds }) {
   const update = { updatedAt: new Date() }
   if (name !== undefined) update.name = name ? encrypt(name) : name
-  if (grade !== undefined) update.grade = grade
   if (studentUserIds !== undefined) {
     const ids = Array.isArray(studentUserIds) && studentUserIds.length > 0
       ? studentUserIds.map(sid => new ObjectId(sid))
@@ -91,7 +89,6 @@ export async function updateCourse (id, { name, grade, studentUserIds }) {
     const course = await findCourseById(id)
     if (course) {
       if (name !== undefined) course.name = typeof name === 'string' ? name : course.name
-      if (grade !== undefined) course.grade = grade
       if (studentUserIds !== undefined) course.studentUserIds = (studentUserIds || []).map(sid => new ObjectId(sid))
       course.updatedAt = new Date()
       return course

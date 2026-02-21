@@ -220,10 +220,14 @@ private struct BestWorkSectionView: View {
     let onAdd: () -> Void
     let onDelete: (StudentWorkFile) async -> Void
 
+    private var studentDisplayName: String {
+        student.name ?? "Student"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Best work: \(student.name)")
+                Text("Best work: \(studentDisplayName)")
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .foregroundColor(.hatchEdText)
@@ -237,7 +241,7 @@ private struct BestWorkSectionView: View {
                 }
             }
             if files.isEmpty {
-                Text("No files yet. Add photos or documents to represent \(student.name)'s best work.")
+                Text("No files yet. Add photos or documents to represent \(studentDisplayName)'s best work.")
                     .font(.caption)
                     .foregroundColor(.hatchEdSecondaryText)
                     .padding(.vertical, 8)
@@ -293,11 +297,15 @@ private struct UploadBestWorkSheet: View {
     @State private var showingFilePicker = false
     @State private var isUploading = false
     @State private var errorMessage: String?
+    
+    private var studentDisplayName: String {
+        student.name ?? "Student"
+    }
 
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
-                Text("Add a file or photo for \(student.name)'s best work.")
+                Text("Add a file or photo for \(studentDisplayName)'s best work.")
                     .font(.body)
                     .foregroundColor(.hatchEdText)
                     .multilineTextAlignment(.center)

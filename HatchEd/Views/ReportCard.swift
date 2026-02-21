@@ -181,7 +181,7 @@ struct ReportCard: View {
             // Courses List
             VStack(spacing: 12) {
                 ForEach(courses.sorted(by: { $0.name < $1.name })) { course in
-                    CourseGradeRow(course: course)
+                    CourseGradeRow(course: course, studentId: student.id)
                 }
             }
         }
@@ -199,13 +199,6 @@ struct ReportCard: View {
         errorMessage = nil
         do {
             courses = try await api.fetchCourses()
-            // Calculate grade for each course based on its assignments
-            courses = courses.map { course in
-                var updatedCourse = course
-                // Always calculate from assignments
-                updatedCourse.grade = calculateCourseGrade(for: course)
-                return updatedCourse
-            }
             
             // Load attendance for each student
             await loadAttendanceForStudents()
@@ -231,29 +224,6 @@ struct ReportCard: View {
         }
         
         attendanceRecords = recordsDict
-    }
-    
-    private func calculateCourseGrade(for course: Course) -> Double? {
-        // Filter to only graded assignments (have both pointsAwarded and pointsPossible)
-        let gradedAssignments = course.assignments.filter { assignment in
-            assignment.pointsAwarded != nil && assignment.pointsPossible != nil && assignment.pointsPossible! > 0
-        }
-        guard !gradedAssignments.isEmpty else { return nil }
-        
-        // Sum all pointsAwarded
-        let totalPointsAwarded = gradedAssignments.reduce(0.0) { sum, assignment in
-            sum + (assignment.pointsAwarded ?? 0)
-        }
-        
-        // Sum all pointsPossible
-        let totalPointsPossible = gradedAssignments.reduce(0.0) { sum, assignment in
-            sum + (assignment.pointsPossible ?? 0)
-        }
-        
-        guard totalPointsPossible > 0 else { return nil }
-        
-        // Calculate percentage: (total earned / total possible) * 100
-        return (totalPointsAwarded / totalPointsPossible) * 100
     }
     
     @MainActor
@@ -582,7 +552,7 @@ class ReportCardPDFCreator {
                     courseName.draw(in: courseNameRect, withAttributes: courseNameAttributes)
                     
                     // Draw grade on the right side - calculate actual height with proper padding
-                    if let grade = course.grade {
+                    if let grade = course.calculatedGrade(for: student.id) {
                         let gradeString = String(format: "%.1f%%", grade)
                         let gradeFont = UIFont.boldSystemFont(ofSize: 14)
                         let gradeAttributes: [NSAttributedString.Key: Any] = [
@@ -900,6 +870,7 @@ private struct StudentSelectionSheet: View {
 
 private struct CourseGradeRow: View {
     let course: Course
+    let studentId: String
     
     var body: some View {
         HStack {
@@ -912,7 +883,7 @@ private struct CourseGradeRow: View {
             
             Spacer()
             
-            if let grade = course.grade {
+            if let grade = course.calculatedGrade(for: studentId) {
                 Text(String(format: "%.1f%%", grade))
                     .font(.title3)
                     .fontWeight(.bold)

@@ -317,16 +317,6 @@ private struct CourseRow: View {
                     .foregroundColor(.hatchEdText)
                     .fontWeight(.medium)
                 Spacer()
-                if let grade = course.grade {
-                    Text(String(format: "%.1f%%", grade))
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.hatchEdSuccess)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.hatchEdSuccess.opacity(0.15))
-                        .cornerRadius(8)
-                }
             }
             Text(course.students.map { $0.name ?? "Student" }.joined(separator: ", "))
                 .font(.caption)
@@ -532,8 +522,7 @@ private struct AddItemView: View {
                 guard !selectedStudentIdsForCourse.isEmpty else { return }
                 let newCourse = try await api.createCourse(
                     name: courseName.trimmingCharacters(in: .whitespaces),
-                    studentUserIds: Array(selectedStudentIdsForCourse),
-                    grade: nil
+                    studentUserIds: Array(selectedStudentIdsForCourse)
                 )
                 courses.append(newCourse)
                 
@@ -565,7 +554,6 @@ private struct EditCourseView: View {
     @Environment(\.dismiss) private var dismiss
     
     @State private var courseName: String
-    @State private var grade: String
     @State private var selectedStudentIds: Set<String>
     @State private var isSaving = false
     
@@ -578,19 +566,12 @@ private struct EditCourseView: View {
         self._errorMessage = errorMessage
         _courseName = State(initialValue: course.name)
         _selectedStudentIds = State(initialValue: Set(course.students.map(\.id)))
-        if let grade = course.grade {
-            _grade = State(initialValue: String(format: "%.1f", grade))
-        } else {
-            _grade = State(initialValue: "")
-        }
     }
     
     var body: some View {
         Form {
             Section(header: Text("Course Details")) {
                 TextField("Course name", text: $courseName)
-                TextField("Grade (%)", text: $grade)
-                    .keyboardType(.decimalPad)
             }
             if !students.isEmpty {
                 Section(header: Text("Students")) {
@@ -650,19 +631,6 @@ private struct EditCourseView: View {
             return
         }
         
-        // Parse grade if provided - handle empty strings and invalid values
-        var gradeValue: Double? = nil
-        let trimmedGrade = grade.trimmingCharacters(in: .whitespaces)
-        if !trimmedGrade.isEmpty {
-            if let parsedGrade = Double(trimmedGrade) {
-                gradeValue = parsedGrade
-            } else {
-                errorMessage = "Invalid grade value. Please enter a number."
-                isSaving = false
-                return
-            }
-        }
-        
         guard !selectedStudentIds.isEmpty else {
             errorMessage = "At least one student is required"
             isSaving = false
@@ -672,7 +640,6 @@ private struct EditCourseView: View {
             _ = try await api.updateCourse(
                 id: course.id,
                 name: trimmedName,
-                grade: gradeValue,
                 studentUserIds: Array(selectedStudentIds)
             )
             onCourseUpdated()

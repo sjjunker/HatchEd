@@ -308,39 +308,6 @@ struct AssignmentGradingView: View {
                 pointsAwarded: pointsAwardedValue
             )
             
-            // Update course grade if assignment is part of a course (non-blocking)
-            if let course = relatedCourse {
-                Task {
-                    do {
-                        // Recalculate course grade with updated assignment
-                        // First, fetch fresh course data to ensure we have all assignments
-                        let allCourses = try await api.fetchCourses()
-                        if let freshCourse = allCourses.first(where: { $0.id == course.id }) {
-                            var updatedCourseAssignments = freshCourse.assignments
-                            // Update the assignment in the list if it exists, otherwise add it
-                            if let index = updatedCourseAssignments.firstIndex(where: { $0.id == assignment.id }) {
-                                updatedCourseAssignments[index] = updatedAssignment
-                            } else {
-                                updatedCourseAssignments.append(updatedAssignment)
-                            }
-                            let courseGrade = calculateCourseGradeFromAssignments(updatedCourseAssignments)
-                            
-                            // Update course grade on server
-                            if let courseGrade = courseGrade {
-                                _ = try await api.updateCourse(
-                                    id: course.id,
-                                    name: nil,
-                                    grade: courseGrade
-                                )
-                            }
-                        }
-                    } catch {
-                        // Log error but don't block the assignment save
-                        print("Failed to update course grade: \(error.localizedDescription)")
-                    }
-                }
-            }
-            
             onGradeSaved(updatedAssignment)
             dismiss()
         } catch {

@@ -93,13 +93,6 @@ final class StudentDetailViewModel: ObservableObject {
             attendanceStatus = .loaded
         }
         
-        // Calculate grades for each course based on assignments
-        let coursesWithCalculatedGrades = courses.map { course in
-            var updatedCourse = course
-            updatedCourse.grade = calculateCourseGrade(for: course)
-            return updatedCourse
-        }
-
         return StateSnapshot(
             studentName: student.name ?? "Student",
             attendanceAverage: attendanceAverage,
@@ -109,32 +102,9 @@ final class StudentDetailViewModel: ObservableObject {
             attendanceStreakText: attendanceStreakText,
             attendanceStatus: attendanceStatus,
             attendanceRecords: attendanceRecords,
-            courses: coursesWithCalculatedGrades,
+            courses: courses,
             recentAssignments: recentAssignments
         )
-    }
-    
-    private func calculateCourseGrade(for course: Course) -> Double? {
-        // Filter to only graded assignments (have both pointsAwarded and pointsPossible)
-        let gradedAssignments = course.assignments.filter { assignment in
-            assignment.pointsAwarded != nil && assignment.pointsPossible != nil && assignment.pointsPossible! > 0
-        }
-        guard !gradedAssignments.isEmpty else { return nil }
-        
-        // Sum all pointsAwarded
-        let totalPointsAwarded = gradedAssignments.reduce(0.0) { sum, assignment in
-            sum + (assignment.pointsAwarded ?? 0)
-        }
-        
-        // Sum all pointsPossible
-        let totalPointsPossible = gradedAssignments.reduce(0.0) { sum, assignment in
-            sum + (assignment.pointsPossible ?? 0)
-        }
-        
-        guard totalPointsPossible > 0 else { return nil }
-        
-        // Calculate percentage: (total earned / total possible) * 100
-        return (totalPointsAwarded / totalPointsPossible) * 100
     }
 
     var attendanceAverage: Double {
@@ -217,8 +187,8 @@ private enum SampleData {
         ]
 
         let courses = [
-            Course(name: "Algebra II", assignments: algebraAssignments, grade: 93.5, students: [student]),
-            Course(name: "Biology", assignments: biologyAssignments, grade: 90.0, students: [student])
+            Course(name: "Algebra II", assignments: algebraAssignments, students: [student]),
+            Course(name: "Biology", assignments: biologyAssignments, students: [student])
         ]
 
         let assignments = (algebraAssignments + biologyAssignments).sorted { ($0.dueDate ?? .distantPast) > ($1.dueDate ?? .distantPast) }

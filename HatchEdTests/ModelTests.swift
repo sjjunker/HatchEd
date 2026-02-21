@@ -261,9 +261,10 @@ struct ModelTests {
 
     @Test func courseInitAndProperties() {
         let student = User(id: "s1", appleId: nil, googleId: nil, username: nil, name: "S", email: nil, role: "student", familyId: "f1", createdAt: nil, updatedAt: nil)
-        let course = Course(name: "Math", assignments: [], grade: 90, students: [student])
+        let assignment = Assignment(title: "Quiz", studentId: "s1", pointsPossible: 100, pointsAwarded: 90, completed: true)
+        let course = Course(name: "Math", assignments: [assignment], students: [student])
         #expect(course.name == "Math")
-        #expect(course.grade == 90)
+        #expect(course.calculatedGrade(for: "s1") == 90)
         #expect(course.student.id == "s1")
     }
 

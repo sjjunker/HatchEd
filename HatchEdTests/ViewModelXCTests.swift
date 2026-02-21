@@ -139,11 +139,11 @@ final class ViewModelXCTests: XCTestCase {
         let student = User(id: "s1", appleId: nil, googleId: nil, username: nil, name: "S", email: nil, role: "student", familyId: "f1", createdAt: nil, updatedAt: nil)
         let a1 = Assignment(title: "Q1", studentId: "s1", pointsPossible: 100, pointsAwarded: 80, completed: true)
         let a2 = Assignment(title: "Q2", studentId: "s1", pointsPossible: 100, pointsAwarded: 90, completed: true)
-        let course = Course(name: "Math", assignments: [a1, a2], grade: nil, students: [student])
+        let course = Course(name: "Math", assignments: [a1, a2], students: [student])
         let vm = StudentDetailViewModel(student: student, courses: [course], assignments: [a1, a2], attendanceRecords: [])
         let snapshot = vm.makeSnapshot()
         XCTAssertEqual(snapshot.courses.count, 1)
-        XCTAssertEqual(snapshot.courses[0].grade, 85.0)
+        XCTAssertEqual(snapshot.courses[0].calculatedGrade(for: "s1"), 85.0)
     }
 
     func testStudentDetailViewModel_RecentAssignments_OnlyCompletedSortedByDueDate() throws {

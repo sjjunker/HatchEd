@@ -111,9 +111,10 @@ final class HatchEdXCTests: XCTestCase {
 
     func testCourseInit() {
         let user = User(id: "s1", appleId: nil, googleId: nil, username: nil, name: "S", email: nil, role: "student", familyId: "f1", createdAt: nil, updatedAt: nil)
-        let course = Course(name: "Math", assignments: [], grade: 85, students: [user])
+        let assignment = Assignment(title: "Quiz", studentId: "s1", pointsPossible: 20, pointsAwarded: 17, completed: true)
+        let course = Course(name: "Math", assignments: [assignment], students: [user])
         XCTAssertEqual(course.name, "Math")
-        XCTAssertEqual(course.grade, 85)
+        XCTAssertEqual(course.calculatedGrade(for: "s1"), 85)
     }
 
     // MARK: - Family

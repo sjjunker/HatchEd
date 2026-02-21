@@ -9,6 +9,7 @@
 import SwiftUI
 import UserNotifications
 import GoogleSignIn
+import UIKit
 
 @main
 struct HatchEdApp: App {
@@ -52,9 +53,22 @@ struct HatchEdApp: App {
 }
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    static var orientationLock: UIInterfaceOrientationMask = .portrait
+
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         return true
+    }
+
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        AppDelegate.orientationLock
+    }
+
+    static func setOrientationLock(_ mask: UIInterfaceOrientationMask, rotateTo orientation: UIInterfaceOrientation? = nil) {
+        orientationLock = mask
+        guard let orientation else { return }
+        UIDevice.current.setValue(orientation.rawValue, forKey: "orientation")
+        UINavigationController.attemptRotationToDeviceOrientation()
     }
     
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {

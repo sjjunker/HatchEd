@@ -177,6 +177,12 @@ struct Planner: View {
             await loadCourses()
             await taskStore.refresh()
         }
+        .onAppear {
+            AppDelegate.setOrientationLock(.allButUpsideDown)
+        }
+        .onDisappear {
+            AppDelegate.setOrientationLock(.portrait, rotateTo: .portrait)
+        }
     }
 
     private var header: some View {

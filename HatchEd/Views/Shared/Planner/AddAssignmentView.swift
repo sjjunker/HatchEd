@@ -115,7 +115,7 @@ struct AddAssignmentView: View {
                     }
                     .fontWeight(.semibold)
                     .foregroundColor(.hatchEdAccent)
-                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving || selectedStudent == nil)
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving || selectedStudent == nil || selectedCourse == nil)
                 }
             }
         }
@@ -176,6 +176,11 @@ struct AddAssignmentView: View {
         
         guard let student = selectedStudent else {
             errorMessage = "Please select a student"
+            return
+        }
+
+        guard selectedCourse != nil else {
+            errorMessage = "Please select a course"
             return
         }
         

@@ -17,6 +17,9 @@ struct SubjectView: View {
     @State private var errorMessage: String?
     @State private var selectedAssignmentForEdit: Assignment? = nil
     @State private var selectedCourseForEdit: Course? = nil
+    @State private var expandedCourseStudentIds: Set<String> = []
+    @State private var expandedAssignmentStudentIds: Set<String> = []
+    @State private var expandedAssignmentCourseKeys: Set<String> = []
     
     private let api = APIClient.shared
     
@@ -219,13 +222,81 @@ struct SubjectView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 12).fill(Color.hatchEdSecondaryBackground))
             } else {
-                ForEach(courses) { course in
-                    CourseRow(course: course) {
-                        selectedCourseForEdit = course
+                if !multiStudentCourses.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Multi-Student Courses")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.hatchEdSecondaryText)
+                            .padding(.horizontal, 4)
+                        
+                        ForEach(multiStudentCourses) { course in
+                            CourseRow(course: course) {
+                                selectedCourseForEdit = course
+                            }
+                        }
                     }
+                }
+
+                ForEach(studentsWithSingleStudentCourses) { student in
+                    DisclosureGroup(
+                        isExpanded: Binding(
+                            get: { expandedCourseStudentIds.contains(student.id) },
+                            set: { isExpanded in
+                                if isExpanded {
+                                    expandedCourseStudentIds.insert(student.id)
+                                } else {
+                                    expandedCourseStudentIds.remove(student.id)
+                                }
+                            }
+                        )
+                    ) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(singleStudentCoursesByStudentId[student.id] ?? []) { course in
+                                CourseRow(course: course) {
+                                    selectedCourseForEdit = course
+                                }
+                            }
+                        }
+                        .padding(.top, 8)
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "person.fill")
+                                .foregroundColor(.hatchEdAccent)
+                            Text(student.name ?? "Student")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.hatchEdText)
+                        }
+                    }
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.hatchEdSecondaryBackground.opacity(0.5))
+                    )
                 }
             }
         }
+    }
+
+    private var multiStudentCourses: [Course] {
+        courses
+            .filter { $0.students.count > 1 || $0.students.isEmpty }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private var singleStudentCoursesByStudentId: [String: [Course]] {
+        let singles = courses.filter { $0.students.count == 1 }
+        return Dictionary(grouping: singles, by: { $0.students[0].id })
+            .mapValues { grouped in
+                grouped.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            }
+    }
+
+    private var studentsWithSingleStudentCourses: [User] {
+        authViewModel.students
+            .filter { singleStudentCoursesByStudentId[$0.id] != nil }
+            .sorted { ($0.name ?? "").localizedCaseInsensitiveCompare($1.name ?? "") == .orderedAscending }
     }
     
     private var assignmentsSection: some View {
@@ -246,57 +317,142 @@ struct SubjectView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 12).fill(Color.hatchEdSecondaryBackground))
             } else {
-                // Group assignments by course and sort by course name
-                ForEach(sortedAssignmentsByCourse) { group in
-                    VStack(alignment: .leading, spacing: 8) {
-                        // Course header
-                        Text(group.courseName)
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.hatchEdSecondaryText)
-                            .padding(.horizontal, 4)
-                            .padding(.top, 8)
-                        
-                        // Assignments for this course
-                        ForEach(group.assignments) { assignment in
-                            AssignmentRow(assignment: assignment) {
-                                selectedAssignmentForEdit = assignment
+                ForEach(assignmentStudentGroups) { studentGroup in
+                    DisclosureGroup(
+                        isExpanded: Binding(
+                            get: { expandedAssignmentStudentIds.contains(studentGroup.id) },
+                            set: { isExpanded in
+                                if isExpanded {
+                                    expandedAssignmentStudentIds.insert(studentGroup.id)
+                                } else {
+                                    expandedAssignmentStudentIds.remove(studentGroup.id)
+                                }
+                            }
+                        )
+                    ) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(studentGroup.courseGroups) { courseGroup in
+                                let courseKey = "\(studentGroup.id)::\(courseGroup.id)"
+                                DisclosureGroup(
+                                    isExpanded: Binding(
+                                        get: { expandedAssignmentCourseKeys.contains(courseKey) },
+                                        set: { isExpanded in
+                                            if isExpanded {
+                                                expandedAssignmentCourseKeys.insert(courseKey)
+                                            } else {
+                                                expandedAssignmentCourseKeys.remove(courseKey)
+                                            }
+                                        }
+                                    )
+                                ) {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        ForEach(courseGroup.assignments) { assignment in
+                                            AssignmentRow(assignment: assignment) {
+                                                selectedAssignmentForEdit = assignment
+                                            }
+                                        }
+                                    }
+                                    .padding(.top, 6)
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "book.fill")
+                                            .foregroundColor(assignmentCourseColor(for: courseGroup))
+                                        Text(courseGroup.courseName)
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+                                            .foregroundColor(.hatchEdText)
+                                    }
+                                }
+                                .padding()
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(Color.hatchEdCardBackground.opacity(0.9))
+                                )
                             }
                         }
+                        .padding(.top, 8)
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "person.fill")
+                                .foregroundColor(.hatchEdAccent)
+                            Text(studentGroup.studentName)
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.hatchEdText)
+                        }
                     }
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.hatchEdSecondaryBackground.opacity(0.5))
+                    )
                 }
             }
         }
     }
-    
-    // Computed property to group and sort assignments by course
-    private var sortedAssignmentsByCourse: [AssignmentGroup] {
-        // Group assignments by courseId
-        let grouped = Dictionary(grouping: assignments) { assignment in
-            assignment.courseId
+
+    private var assignmentStudentGroups: [StudentAssignmentGroup] {
+        let groupedByStudent = Dictionary(grouping: assignments, by: { $0.studentId })
+        var groups: [StudentAssignmentGroup] = []
+
+        for (studentId, studentAssignments) in groupedByStudent {
+            let studentName = authViewModel.students.first(where: { $0.id == studentId })?.name ?? "Student"
+            let courseGroups = buildCourseAssignmentGroups(studentAssignments)
+            groups.append(
+                StudentAssignmentGroup(
+                    studentId: studentId,
+                    studentName: studentName,
+                    courseGroups: courseGroups
+                )
+            )
         }
-        
-        // Create AssignmentGroup objects
-        var groups: [AssignmentGroup] = []
-        
-        for (courseId, assignments) in grouped {
+
+        return groups.sorted { $0.studentName.localizedCaseInsensitiveCompare($1.studentName) == .orderedAscending }
+    }
+
+    private func buildCourseAssignmentGroups(_ studentAssignments: [Assignment]) -> [CourseAssignmentGroup] {
+        let groupedByCourse = Dictionary(grouping: studentAssignments, by: { $0.courseId })
+        var courseGroups: [CourseAssignmentGroup] = []
+
+        for (courseId, groupedAssignments) in groupedByCourse {
             let courseName: String
-            if let courseId = courseId,
-               let course = courses.first(where: { $0.id == courseId }) {
+            if let courseId, let course = courses.first(where: { $0.id == courseId }) {
                 courseName = course.name
             } else {
                 courseName = "Unassigned"
             }
-            
-            groups.append(AssignmentGroup(
-                courseId: courseId,
-                courseName: courseName,
-                assignments: assignments.sorted { $0.title < $1.title }
-            ))
+
+            courseGroups.append(
+                CourseAssignmentGroup(
+                    courseId: courseId,
+                    courseName: courseName,
+                    assignments: sortedAssignments(groupedAssignments)
+                )
+            )
         }
-        
-        // Sort groups by course name
-        return groups.sorted { $0.courseName < $1.courseName }
+
+        return courseGroups.sorted { $0.courseName.localizedCaseInsensitiveCompare($1.courseName) == .orderedAscending }
+    }
+
+    private func assignmentCourseColor(for group: CourseAssignmentGroup) -> Color {
+        guard let courseId = group.courseId, let course = courses.first(where: { $0.id == courseId }) else {
+            return .hatchEdSuccess
+        }
+        return PlannerTask.color(for: course.colorName)
+    }
+
+    private func sortedAssignments(_ items: [Assignment]) -> [Assignment] {
+        items.sorted { lhs, rhs in
+            if lhs.isCompleted != rhs.isCompleted {
+                return !lhs.isCompleted && rhs.isCompleted
+            }
+            let lhsDue = lhs.dueDate ?? .distantFuture
+            let rhsDue = rhs.dueDate ?? .distantFuture
+            if lhsDue != rhsDue {
+                return lhsDue < rhsDue
+            }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
     }
 }
 
@@ -312,7 +468,7 @@ private struct CourseRow: View {
                     .foregroundColor(.hatchEdWhite)
                     .font(.title3)
                     .padding(8)
-                    .background(Color.hatchEdSuccess)
+                    .background(PlannerTask.color(for: course.colorName))
                     .clipShape(Circle())
                 Text(course.name)
                     .foregroundColor(.hatchEdText)
@@ -327,15 +483,14 @@ private struct CourseRow: View {
             .background(
                 RoundedRectangle(cornerRadius: 12)
                     .fill(Color.hatchEdCardBackground)
-                    .shadow(color: Color.hatchEdSuccess.opacity(0.15), radius: 4, x: 0, y: 2)
+                    .shadow(color: PlannerTask.color(for: course.colorName).opacity(0.2), radius: 4, x: 0, y: 2)
             )
         }
         .buttonStyle(.plain)
     }
 }
 
-// Helper struct to group assignments by course
-private struct AssignmentGroup: Identifiable {
+private struct CourseAssignmentGroup: Identifiable {
     let courseId: String?
     let courseName: String
     let assignments: [Assignment]
@@ -343,6 +498,14 @@ private struct AssignmentGroup: Identifiable {
     var id: String {
         courseId ?? "unassigned"
     }
+}
+
+private struct StudentAssignmentGroup: Identifiable {
+    let studentId: String
+    let studentName: String
+    let courseGroups: [CourseAssignmentGroup]
+
+    var id: String { studentId }
 }
 
 private struct AssignmentRow: View {
@@ -537,7 +700,7 @@ private struct AddItemView: View {
         case .course:
             return !courseName.trimmingCharacters(in: .whitespaces).isEmpty && !selectedStudentIdsForCourse.isEmpty
         case .assignment:
-            return !assignmentTitle.trimmingCharacters(in: .whitespaces).isEmpty && selectedStudentForAssignment != nil
+            return !assignmentTitle.trimmingCharacters(in: .whitespaces).isEmpty && selectedStudentForAssignment != nil && selectedCourseForAssignment != nil
         }
     }
 
@@ -583,6 +746,10 @@ private struct AddItemView: View {
                 
             case .assignment:
                 guard let student = selectedStudentForAssignment else { return }
+                guard selectedCourseForAssignment != nil else {
+                    errorMessage = "Please select a course"
+                    return
+                }
                 let newAssignment = try await api.createAssignment(
                     title: assignmentTitle.trimmingCharacters(in: .whitespaces),
                     studentId: student.id,

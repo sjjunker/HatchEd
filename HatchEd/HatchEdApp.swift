@@ -66,6 +66,13 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
     static func setOrientationLock(_ mask: UIInterfaceOrientationMask, rotateTo orientation: UIInterfaceOrientation? = nil) {
         orientationLock = mask
+        if #available(iOS 16.0, *) {
+            if let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene {
+                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: mask))
+                windowScene.windows.first?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+            }
+            return
+        }
         guard let orientation else { return }
         UIDevice.current.setValue(orientation.rawValue, forKey: "orientation")
         UINavigationController.attemptRotationToDeviceOrientation()

@@ -64,13 +64,16 @@ struct ParentDashboard: View {
                 ZStack {
                     if let destination = selectedDestination, destination != .dashboard {
                         destination.view
-                            .navigationTitle(destination.rawValue)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                            .navigationTitle(destination == .planner ? "" : destination.rawValue)
                     } else {
                         // Dashboard Content
                         dashboardContent
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                             .navigationTitle("Dashboard")
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
@@ -88,6 +91,7 @@ struct ParentDashboard: View {
                     }
                 }
             }
+            .navigationViewStyle(.stack)
             
             // Hamburger Menu Overlay - outside NavigationView
             if showMenu {
@@ -112,6 +116,7 @@ struct ParentDashboard: View {
             }
         }
         .onAppear {
+            updateOrientationLock(for: selectedDestination)
             dashboardVM.setAuthViewModel(authViewModel)
             authViewModel.updateUserFromDatabase()
             Task {
@@ -141,6 +146,9 @@ struct ParentDashboard: View {
         .onChange(of: authViewModel.students) { _, newValue in
             dashboardVM.initializeAttendanceStatusIfNeeded(with: newValue)
         }
+        .onChange(of: selectedDestination) { _, newValue in
+            updateOrientationLock(for: newValue)
+        }
         .sheet(item: $selectedNotification) { notification in
             NotificationDetailView(notification: notification) { toDelete in
                 Task {
@@ -150,6 +158,14 @@ struct ParentDashboard: View {
                     }
                 }
             }
+        }
+    }
+
+    private func updateOrientationLock(for destination: NavigationDestination?) {
+        if destination == .planner {
+            AppDelegate.setOrientationLock(.allButUpsideDown)
+        } else {
+            AppDelegate.setOrientationLock(.portrait, rotateTo: .portrait)
         }
     }
     

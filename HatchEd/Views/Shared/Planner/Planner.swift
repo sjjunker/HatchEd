@@ -27,98 +27,102 @@ struct Planner: View {
     private let api = APIClient.shared
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            VStack(spacing: 16) {
-                header
+        GeometryReader { geometry in
+            let isLandscape = geometry.size.width > geometry.size.height
+            ZStack(alignment: .bottomTrailing) {
+                VStack(spacing: isLandscape ? 4 : 16) {
+                    header(isLandscape: isLandscape)
 
-                WeeklyOverviewView(
-                    weekDates: currentWeekDates,
-                    tasksProvider: { date in
-                        filteredPlannerTasks(for: date)
-                    },
-                    assignmentsProvider: { date in
-                        filteredAssignmentTasks(for: date)
-                    },
-                    onSelectDay: { date in
-                        selectedDate = date
-                        showingDaySheet = true
-                    },
-                    selectedDate: selectedDate,
-                    onSelectTask: { task in
-                        selectedTask = task
-                    }
-                )
-                // Force re-render when data changes by using the data as part of the view identity
-                .id("planner-\(taskStore.tasks.count)-\(assignments.count)")
-                .gesture(
-                    DragGesture(minimumDistance: 50)
-                        .onEnded { value in
-                            if value.translation.width > 100 {
-                                // Swipe right - previous week
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    weekOffset -= 1
-                                }
-                            } else if value.translation.width < -100 {
-                                // Swipe left - next week
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    weekOffset += 1
+                    WeeklyOverviewView(
+                        weekDates: currentWeekDates,
+                        tasksProvider: { date in
+                            filteredPlannerTasks(for: date)
+                        },
+                        assignmentsProvider: { date in
+                            filteredAssignmentTasks(for: date)
+                        },
+                        onSelectDay: { date in
+                            selectedDate = date
+                            showingDaySheet = true
+                        },
+                        selectedDate: selectedDate,
+                        onSelectTask: { task in
+                            selectedTask = task
+                        }
+                    )
+                    // Force re-render when data changes by using the data as part of the view identity
+                    .id("planner-\(taskStore.tasks.count)-\(assignments.count)")
+                    .gesture(
+                        DragGesture(minimumDistance: 50)
+                            .onEnded { value in
+                                if value.translation.width > 100 {
+                                    // Swipe right - previous week
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        weekOffset -= 1
+                                    }
+                                } else if value.translation.width < -100 {
+                                    // Swipe left - next week
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        weekOffset += 1
+                                    }
                                 }
                             }
-                        }
-                )
-
-                Spacer()
-            }
-            .navigationTitle("Planner")
-            .navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $showingDaySheet) {
-                DayDetailSheetView(
-                    date: selectedDate,
-                    tasks: {
-                        let regularTasks = filteredPlannerTasks(for: selectedDate)
-                        let assignmentTasks = filteredAssignmentTasks(for: selectedDate)
-                        return (regularTasks + assignmentTasks).sorted { $0.startDate < $1.startDate }
-                    }(),
-                    onDelete: { task in
-                        // Only allow deletion of regular tasks, not assignments
-                        if !task.id.hasPrefix("assignment-") {
-                            Task {
-                                await taskStore.remove(task)
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .sheet(isPresented: $showingDaySheet) {
+                    DayDetailSheetView(
+                        date: selectedDate,
+                        tasks: {
+                            let regularTasks = filteredPlannerTasks(for: selectedDate)
+                            let assignmentTasks = filteredAssignmentTasks(for: selectedDate)
+                            return (regularTasks + assignmentTasks).sorted { $0.startDate < $1.startDate }
+                        }(),
+                        onDelete: { task in
+                            // Only allow deletion of regular tasks, not assignments
+                            if !task.id.hasPrefix("assignment-") {
+                                Task {
+                                    await taskStore.remove(task)
+                                }
                             }
+                        },
+                        onTaskSelected: { task in
+                            // Close day sheet and open task detail sheet
+                            showingDaySheet = false
+                            selectedTask = task
                         }
-                    },
-                    onTaskSelected: { task in
-                        // Close day sheet and open task detail sheet
-                        showingDaySheet = false
-                        selectedTask = task
-                    }
-                )
-                .presentationDetents([.fraction(0.4), .large])
-            }
-
-            Menu {
-                Button {
-                    showingAddTask = true
-                } label: {
-                    Label("Add Task", systemImage: "checkmark.circle")
+                    )
+                    .presentationDetents([.fraction(0.4), .large])
                 }
                 
-                Button {
-                    showingAddAssignment = true
+                Menu {
+                    Button {
+                        showingAddTask = true
+                    } label: {
+                        Label("Add Task", systemImage: "checkmark.circle")
+                    }
+                    
+                    Button {
+                        showingAddAssignment = true
+                    } label: {
+                        Label("Add Assignment", systemImage: "doc.text")
+                    }
                 } label: {
-                    Label("Add Assignment", systemImage: "doc.text")
+                    Image(systemName: "plus")
+                        .font(.title)
+                        .foregroundColor(.hatchEdWhite)
+                        .padding()
+                        .background(Color.hatchEdAccent)
+                        .clipShape(Circle())
+                        .shadow(radius: 6)
                 }
-            } label: {
-                Image(systemName: "plus")
-                    .font(.title)
-                    .foregroundColor(.hatchEdWhite)
-                    .padding()
-                    .background(Color.hatchEdAccent)
-                    .clipShape(Circle())
-                    .shadow(radius: 6)
+                .padding()
             }
-            .padding()
+            .toolbar(isLandscape ? .hidden : .visible, for: .navigationBar)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .ignoresSafeArea(.container, edges: .horizontal)
         .sheet(isPresented: $showingAddTask) {
             AddTaskView(
                 initialDate: selectedDate,
@@ -177,15 +181,37 @@ struct Planner: View {
             await loadCourses()
             await taskStore.refresh()
         }
-        .onAppear {
-            AppDelegate.setOrientationLock(.allButUpsideDown)
-        }
-        .onDisappear {
-            AppDelegate.setOrientationLock(.portrait, rotateTo: .portrait)
+    }
+
+    @ViewBuilder
+    private func header(isLandscape: Bool) -> some View {
+        if isLandscape {
+            HStack(spacing: 8) {
+                weekNavigationControls(isCompact: true)
+                if !availableStudentsForFilter.isEmpty {
+                    studentFilterControl
+                }
+                todayControl
+            }
+            .padding(.horizontal)
+            .padding(.top, 6)
+        } else {
+            VStack(spacing: 8) {
+                weekNavigationControls(isCompact: false)
+                HStack {
+                    if !availableStudentsForFilter.isEmpty {
+                        studentFilterControl
+                    }
+                    Spacer()
+                    todayControl
+                }
+            }
+            .padding(.horizontal)
+            .padding(.top, 0)
         }
     }
 
-    private var header: some View {
+    private func weekNavigationControls(isCompact: Bool) -> some View {
         HStack {
             Button {
                 withAnimation(.easeInOut(duration: 0.3)) {
@@ -198,28 +224,17 @@ struct Planner: View {
                     .padding(8)
             }
             
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Image(systemName: "calendar")
-                        .foregroundColor(.hatchEdAccent)
-                    Text(weekTitle)
-                        .font(.title)
-                        .fontWeight(.bold)
-                        .foregroundColor(.hatchEdText)
-                }
-                if !availableStudentsForFilter.isEmpty {
-                    Picker("Student", selection: $selectedStudentFilterId) {
-                        Text("All Students").tag(nil as String?)
-                        ForEach(availableStudentsForFilter) { student in
-                            Text(student.name ?? "Student").tag(student.id as String?)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .font(.caption)
-                }
+            HStack {
+                Image(systemName: "calendar")
+                    .foregroundColor(.hatchEdAccent)
+                Text(weekTitle)
+                    .font(isCompact ? .title2 : .title)
+                    .fontWeight(.bold)
+                    .foregroundColor(.hatchEdText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding()
+            .padding(.horizontal, isCompact ? 10 : 16)
+            .padding(.vertical, isCompact ? 8 : 12)
             .background(
                 RoundedRectangle(cornerRadius: 12)
                     .fill(Color.hatchEdAccentBackground)
@@ -235,24 +250,68 @@ struct Planner: View {
                     .foregroundColor(.hatchEdAccent)
                     .padding(8)
             }
-            
-            Button {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    weekOffset = 0
-                }
-            } label: {
-                Text("Today")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.hatchEdWhite)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.hatchEdAccent)
-                    .cornerRadius(8)
-            }
         }
-        .padding(.horizontal)
-        .padding(.top)
+    }
+
+    private var studentFilterControl: some View {
+        Menu {
+            Button {
+                selectedStudentFilterId = nil
+            } label: {
+                Label("All Students", systemImage: selectedStudentFilterId == nil ? "checkmark" : "")
+            }
+            ForEach(availableStudentsForFilter) { student in
+                Button {
+                    selectedStudentFilterId = student.id
+                } label: {
+                    Label(student.name ?? "Student", systemImage: selectedStudentFilterId == student.id ? "checkmark" : "")
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .foregroundColor(.hatchEdAccent)
+                Text(selectedStudentFilterLabel)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.hatchEdText)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.caption2.weight(.bold))
+                    .foregroundColor(.hatchEdSecondaryText)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.hatchEdCardBackground)
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(Color.hatchEdSecondaryBackground, lineWidth: 1)
+            )
+        }
+    }
+
+    private var todayControl: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                weekOffset = 0
+            }
+        } label: {
+            Text("Today")
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.hatchEdAccent)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(Color.hatchEdCardBackground)
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(Color.hatchEdSecondaryBackground, lineWidth: 1)
+                )
+        }
     }
     
     private var weekTitle: String {
@@ -370,6 +429,11 @@ struct Planner: View {
             return [authViewModel.students.first(where: { $0.id == currentUser.id }) ?? currentUser]
         }
         return authViewModel.students
+    }
+
+    private var selectedStudentFilterLabel: String {
+        guard let selectedStudentFilterId else { return "All Students" }
+        return availableStudentsForFilter.first(where: { $0.id == selectedStudentFilterId })?.name ?? "Student"
     }
     
     private func assignmentForTask(_ task: PlannerTask) -> Assignment? {

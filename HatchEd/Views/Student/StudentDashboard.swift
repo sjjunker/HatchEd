@@ -30,13 +30,16 @@ struct StudentDashboard: View {
                 ZStack {
                     if let destination = selectedDestination, destination != .dashboard {
                         destination.view
-                            .navigationTitle(destination.rawValue)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                            .navigationTitle(destination == .planner ? "" : destination.rawValue)
                     } else {
                         // Dashboard Content
                         studentDashboardContent
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                             .navigationTitle("Dashboard")
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
@@ -54,6 +57,7 @@ struct StudentDashboard: View {
                     }
                 }
             }
+            .navigationViewStyle(.stack)
             
             // Hamburger Menu Overlay - outside NavigationView
             if showMenu {
@@ -78,6 +82,7 @@ struct StudentDashboard: View {
             }
         }
         .onAppear {
+            updateOrientationLock(for: selectedDestination)
             authViewModel.updateUserFromDatabase()
             loadCompletionStatus()
             Task {
@@ -93,6 +98,9 @@ struct StudentDashboard: View {
         .refreshable {
             await authViewModel.fetchNotifications()
             await loadDailyAssignments()
+        }
+        .onChange(of: selectedDestination) { _, newValue in
+            updateOrientationLock(for: newValue)
         }
         .alert("Request Help", isPresented: $showingHelpConfirmation) {
             Button("Cancel", role: .cancel) {
@@ -146,6 +154,14 @@ struct StudentDashboard: View {
                     }
                 }
             }
+        }
+    }
+
+    private func updateOrientationLock(for destination: NavigationDestination?) {
+        if destination == .planner {
+            AppDelegate.setOrientationLock(.allButUpsideDown)
+        } else {
+            AppDelegate.setOrientationLock(.portrait, rotateTo: .portrait)
         }
     }
     

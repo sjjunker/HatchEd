@@ -41,9 +41,9 @@ struct PlannerTaskRow: View {
                 }
                 .padding(.top, 6)
             } else {
-                Circle()
-                    .fill(task.color)
-                    .frame(width: 12, height: 12)
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundColor(task.color)
                     .padding(.top, 6)
             }
 

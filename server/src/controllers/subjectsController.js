@@ -152,6 +152,10 @@ export async function createAssignmentHandler (req, res) {
     return res.status(400).json({ error: { message: 'Student ID is required' } })
   }
 
+  if (!courseId) {
+    return res.status(400).json({ error: { message: 'Course ID is required' } })
+  }
+
   const user = await findUserById(req.user.userId)
   if (!user || !user.familyId) {
     return res.status(400).json({ error: { message: 'User must belong to a family' } })

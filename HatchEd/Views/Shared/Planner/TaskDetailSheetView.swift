@@ -48,6 +48,14 @@ struct TaskDetailSheetView: View {
         formatter.timeStyle = .short
         return formatter
     }()
+
+    private var isAssignmentTask: Bool {
+        task.id.hasPrefix("assignment-")
+    }
+
+    private var isDueAssignmentTask: Bool {
+        task.id.hasPrefix("assignment-due-")
+    }
     
     
     init(task: PlannerTask, assignment: Assignment?, students: [User] = [], courses: [Course] = [], onTaskUpdated: @escaping (PlannerTask) -> Void = { _ in }, onAssignmentUpdated: @escaping (Assignment) -> Void = { _ in }, onTaskDeleted: @escaping () -> Void = {}) {
@@ -210,12 +218,27 @@ struct TaskDetailSheetView: View {
     
     private var readOnlyView: some View {
         VStack(alignment: .leading, spacing: 24) {
-            // Header with color indicator
+            // Header with task/assignment symbol indicator
             HStack(alignment: .top, spacing: 16) {
-                Circle()
-                    .fill(task.color)
-                    .frame(width: 20, height: 20)
+                if isAssignmentTask {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: "doc.text.fill")
+                            .font(.system(size: 18))
+                            .foregroundColor(task.color)
+                        if isDueAssignmentTask {
+                            Image(systemName: "exclamationmark.circle.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(.red)
+                                .offset(x: 4, y: -4)
+                        }
+                    }
                     .padding(.top, 4)
+                } else {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(task.color)
+                        .padding(.top, 4)
+                }
                 
                 VStack(alignment: .leading, spacing: 8) {
                     Text(task.title)

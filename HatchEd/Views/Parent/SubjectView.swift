@@ -169,16 +169,17 @@ struct SubjectView: View {
         // Use dueDate as startDate, or current date if no dueDate
         let startDate = assignment.dueDate ?? Date()
         // Get course name if available
-        let courseName = assignment.courseId.flatMap { courseId in
-            courses.first { $0.id == courseId }?.name
+        let linkedCourse = assignment.courseId.flatMap { courseId in
+            courses.first { $0.id == courseId }
         }
+        let courseName = linkedCourse?.name
         
         return PlannerTask(
             id: assignment.id,
             title: assignment.title,
             startDate: startDate,
             durationMinutes: 60, // Default duration
-            colorName: "Blue", // Default color
+            colorName: linkedCourse?.colorName ?? "Blue",
             subject: courseName
         )
     }
@@ -418,6 +419,7 @@ private struct AddItemView: View {
     @Environment(\.dismiss) private var dismiss
     
     @State private var courseName = ""
+    @State private var selectedCourseColorName: String = "Blue"
     @State private var selectedStudentIdsForCourse: Set<String> = []
     @State private var assignmentTitle = ""
     @State private var assignmentDueDate = Date()
@@ -431,6 +433,7 @@ private struct AddItemView: View {
             case .course:
                 Section(header: Text("Course Details")) {
                     TextField("Enter course name", text: $courseName)
+                    courseColorSelection
                     if !students.isEmpty {
                         Section(header: Text("Students")) {
                             ForEach(students) { student in
@@ -512,6 +515,32 @@ private struct AddItemView: View {
             return !assignmentTitle.trimmingCharacters(in: .whitespaces).isEmpty && selectedStudentForAssignment != nil
         }
     }
+
+    private var courseColorSelection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Course Color")
+                .font(.caption)
+                .foregroundColor(.hatchEdSecondaryText)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
+                ForEach(PlannerTask.colorOptions, id: \.name) { option in
+                    Button {
+                        selectedCourseColorName = option.name
+                    } label: {
+                        Circle()
+                            .fill(option.color)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.primary.opacity(selectedCourseColorName == option.name ? 0.9 : 0), lineWidth: 3)
+                            )
+                            .frame(width: 30, height: 30)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(option.name)
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
     
     @MainActor
     private func saveItem() async {
@@ -522,7 +551,8 @@ private struct AddItemView: View {
                 guard !selectedStudentIdsForCourse.isEmpty else { return }
                 let newCourse = try await api.createCourse(
                     name: courseName.trimmingCharacters(in: .whitespaces),
-                    studentUserIds: Array(selectedStudentIdsForCourse)
+                    studentUserIds: Array(selectedStudentIdsForCourse),
+                    colorName: selectedCourseColorName
                 )
                 courses.append(newCourse)
                 
@@ -554,6 +584,7 @@ private struct EditCourseView: View {
     @Environment(\.dismiss) private var dismiss
     
     @State private var courseName: String
+    @State private var selectedCourseColorName: String
     @State private var selectedStudentIds: Set<String>
     @State private var isSaving = false
     
@@ -565,6 +596,7 @@ private struct EditCourseView: View {
         self.onCourseUpdated = onCourseUpdated
         self._errorMessage = errorMessage
         _courseName = State(initialValue: course.name)
+        _selectedCourseColorName = State(initialValue: course.colorName)
         _selectedStudentIds = State(initialValue: Set(course.students.map(\.id)))
     }
     
@@ -572,6 +604,7 @@ private struct EditCourseView: View {
         Form {
             Section(header: Text("Course Details")) {
                 TextField("Course name", text: $courseName)
+                courseColorSelection
             }
             if !students.isEmpty {
                 Section(header: Text("Students")) {
@@ -618,6 +651,32 @@ private struct EditCourseView: View {
             }
         }
     }
+
+    private var courseColorSelection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Course Color")
+                .font(.caption)
+                .foregroundColor(.hatchEdSecondaryText)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
+                ForEach(PlannerTask.colorOptions, id: \.name) { option in
+                    Button {
+                        selectedCourseColorName = option.name
+                    } label: {
+                        Circle()
+                            .fill(option.color)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.primary.opacity(selectedCourseColorName == option.name ? 0.9 : 0), lineWidth: 3)
+                            )
+                            .frame(width: 30, height: 30)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(option.name)
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
     
     @MainActor
     private func saveCourse() async {
@@ -640,6 +699,7 @@ private struct EditCourseView: View {
             _ = try await api.updateCourse(
                 id: course.id,
                 name: trimmedName,
+                colorName: selectedCourseColorName,
                 studentUserIds: Array(selectedStudentIds)
             )
             onCourseUpdated()

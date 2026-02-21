@@ -87,6 +87,7 @@ export function serializeCourse (course, students) {
   return {
     id: course._id?.toString?.() ?? course._id,
     name: course.name,
+    colorName: course.colorName || 'Blue',
     students: studentsList.map(serializeCourseStudent).filter(Boolean),
     assignments: course.assignments ?? [],
     createdAt: course.createdAt,

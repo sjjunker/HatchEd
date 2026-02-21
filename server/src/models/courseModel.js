@@ -28,7 +28,7 @@ function normalizeStudentUserIds (studentUserId, studentUserIds) {
   return []
 }
 
-export async function createCourse ({ familyId, name, studentUserId, studentUserIds }) {
+export async function createCourse ({ familyId, name, colorName, studentUserId, studentUserIds }) {
   const ids = normalizeStudentUserIds(studentUserId, studentUserIds)
   if (ids.length === 0) {
     throw new Error('At least one student is required')
@@ -36,6 +36,7 @@ export async function createCourse ({ familyId, name, studentUserId, studentUser
   const course = {
     familyId: new ObjectId(familyId),
     name: name ? encrypt(name) : name,
+    colorName: colorName || 'Blue',
     studentUserIds: ids,
     assignments: [],
     createdAt: new Date(),
@@ -68,9 +69,10 @@ export async function findCourseById (id) {
   return decryptCourse(doc)
 }
 
-export async function updateCourse (id, { name, studentUserIds }) {
+export async function updateCourse (id, { name, colorName, studentUserIds }) {
   const update = { updatedAt: new Date() }
   if (name !== undefined) update.name = name ? encrypt(name) : name
+  if (colorName !== undefined) update.colorName = colorName || 'Blue'
   if (studentUserIds !== undefined) {
     const ids = Array.isArray(studentUserIds) && studentUserIds.length > 0
       ? studentUserIds.map(sid => new ObjectId(sid))
@@ -89,6 +91,7 @@ export async function updateCourse (id, { name, studentUserIds }) {
     const course = await findCourseById(id)
     if (course) {
       if (name !== undefined) course.name = typeof name === 'string' ? name : course.name
+      if (colorName !== undefined) course.colorName = colorName || 'Blue'
       if (studentUserIds !== undefined) course.studentUserIds = (studentUserIds || []).map(sid => new ObjectId(sid))
       course.updatedAt = new Date()
       return course

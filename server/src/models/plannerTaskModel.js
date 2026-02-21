@@ -16,7 +16,7 @@ export async function createPlannerTask ({ familyId, userId, title, startDate, d
     title,
     startDate: new Date(startDate),
     durationMinutes,
-    colorName,
+    colorName: 'Blue',
     subject: subject || null,
     createdAt: new Date(),
     updatedAt: new Date()
@@ -43,7 +43,7 @@ export async function updatePlannerTask (id, { title, startDate, durationMinutes
   if (title !== undefined) update.title = title
   if (startDate !== undefined) update.startDate = new Date(startDate)
   if (durationMinutes !== undefined) update.durationMinutes = durationMinutes
-  if (colorName !== undefined) update.colorName = colorName
+  if (colorName !== undefined) update.colorName = 'Blue'
   if (subject !== undefined) update.subject = subject || null
   update.updatedAt = new Date()
 

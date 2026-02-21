@@ -315,8 +315,11 @@ struct Planner: View {
                 // This ensures the taskDate is on the correct day
                 let taskDate = calendar.date(bySettingHour: 22, minute: 30, second: 0, of: startOfDay) ?? startOfDay
                 
-                // Use orange as default color for assignments
-                let colorName = "Orange"
+                // Assignments inherit color from their linked course (fallback blue)
+                let linkedCourseColor = assignment.courseId.flatMap { id in
+                    courses.first(where: { $0.id == id })?.colorName
+                }
+                let colorName = linkedCourseColor ?? "Blue"
                 
                 return PlannerTask(
                     id: "assignment-\(assignment.id)",

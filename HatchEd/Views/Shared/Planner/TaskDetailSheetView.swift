@@ -22,7 +22,6 @@ struct TaskDetailSheetView: View {
     @State private var editedTitle: String = ""
     @State private var editedDate: Date = Date()
     @State private var editedDurationMinutes: Int = 60
-    @State private var editedColorName: String = "Blue"
     @State private var editedCourse: Course? = nil
     @State private var editedStudent: User? = nil
     @State private var isSaving: Bool = false
@@ -62,7 +61,6 @@ struct TaskDetailSheetView: View {
         let initialDate = assignment?.dueDate ?? task.startDate
         _editedDate = State(initialValue: initialDate)
         _editedDurationMinutes = State(initialValue: task.durationMinutes)
-        _editedColorName = State(initialValue: task.colorName)
         
         // Initialize course - try to find from assignment's courseId, task.subject, or courses array
         var initialCourse: Course? = nil
@@ -536,9 +534,6 @@ struct TaskDetailSheetView: View {
                 }
             }
             
-            Section(header: Text("Color")) {
-                colorSelection
-            }
         }
     }
     
@@ -611,31 +606,6 @@ struct TaskDetailSheetView: View {
         return nil
     }
     
-    private var colorSelection: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
-            ForEach(PlannerTask.colorOptions, id: \.name) { option in
-                Button {
-                    editedColorName = option.name
-                } label: {
-                    Circle()
-                        .fill(option.color)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.primary.opacity(editedColorName == option.name ? 0.9 : 0), lineWidth: 3)
-                        )
-                        .frame(width: 36, height: 36)
-                }
-                .buttonStyle(.plain)
-                .overlay(
-                    Text(String(option.name.prefix(1)))
-                        .font(.caption2)
-                        .foregroundColor(.white)
-                )
-                .padding(4)
-            }
-        }
-    }
-    
     private var hasCourse: Bool {
         return editedCourse != nil
     }
@@ -686,7 +656,6 @@ struct TaskDetailSheetView: View {
         // For assignments, use the assignment's dueDate; for tasks, use task.startDate
         editedDate = assignment?.dueDate ?? task.startDate
         editedDurationMinutes = task.durationMinutes
-        editedColorName = task.colorName
         
         // Initialize course - prefer course from task.subject, otherwise try to find from assignment
         var courseToSet: Course? = nil
@@ -725,7 +694,6 @@ struct TaskDetailSheetView: View {
         editedTitle = task.title
         editedDate = assignment?.dueDate ?? task.startDate
         editedDurationMinutes = task.durationMinutes
-        editedColorName = task.colorName
         
         // Reset course - find course from task.subject if it exists
         if let subject = task.subject {
@@ -821,7 +789,7 @@ struct TaskDetailSheetView: View {
                         title: trimmedTitle,
                         startDate: editedDate,
                         durationMinutes: editedDurationMinutes,
-                        colorName: editedColorName,
+                        colorName: "Blue",
                         subject: newSubject
                     )
                     onTaskUpdated()

@@ -10,7 +10,7 @@ import { unlinkResourcesByAssignmentId } from '../models/resourceModel.js'
 
 // Courses
 export async function createCourseHandler (req, res) {
-  const { name, studentUserId, studentUserIds } = req.body
+  const { name, colorName, studentUserId, studentUserIds } = req.body
   if (!name || !name.trim()) {
     return res.status(400).json({ error: { message: 'Course name is required' } })
   }
@@ -36,6 +36,7 @@ export async function createCourseHandler (req, res) {
   const course = await createCourse({
     familyId: user.familyId,
     name: name.trim(),
+    colorName: colorName || 'Blue',
     studentUserIds: ids
   })
   res.status(201).json({ course: serializeCourse(course, students) })
@@ -66,7 +67,7 @@ export async function getCoursesHandler (req, res) {
 export async function updateCourseHandler (req, res) {
   try {
     const { id } = req.params
-    const { name, studentUserIds } = req.body
+    const { name, colorName, studentUserIds } = req.body
 
     const user = await findUserById(req.user.userId)
     if (!user || !user.familyId) {
@@ -93,7 +94,7 @@ export async function updateCourseHandler (req, res) {
       }
     }
 
-    const updated = await updateCourse(id, { name, studentUserIds })
+    const updated = await updateCourse(id, { name, colorName, studentUserIds })
     if (!updated || updated === null) {
       console.error('updateCourse returned null/undefined for course:', id)
       return res.status(500).json({ error: { message: 'Failed to update course' } })

@@ -141,10 +141,12 @@ final class APIClient {
     struct CreateCourseRequest: Encodable {
         let name: String
         let studentUserIds: [String]
+        let colorName: String
     }
     
     struct UpdateCourseRequest: Encodable {
         let name: String?
+        let colorName: String?
         let studentUserIds: [String]?
     }
     
@@ -168,8 +170,8 @@ final class APIClient {
     }
     
     // Courses
-    func createCourse(name: String, studentUserIds: [String]) async throws -> Course {
-        let body = CreateCourseRequest(name: name, studentUserIds: studentUserIds)
+    func createCourse(name: String, studentUserIds: [String], colorName: String) async throws -> Course {
+        let body = CreateCourseRequest(name: name, studentUserIds: studentUserIds, colorName: colorName)
         let response: CourseResponse = try await request(
             Endpoint(path: "api/subjects/courses", method: .post, body: body),
             responseType: CourseResponse.self
@@ -185,8 +187,8 @@ final class APIClient {
         return response.courses
     }
     
-    func updateCourse(id: String, name: String?, studentUserIds: [String]? = nil) async throws -> Course {
-        let body = UpdateCourseRequest(name: name, studentUserIds: studentUserIds)
+    func updateCourse(id: String, name: String?, colorName: String? = nil, studentUserIds: [String]? = nil) async throws -> Course {
+        let body = UpdateCourseRequest(name: name, colorName: colorName, studentUserIds: studentUserIds)
         let response: CourseResponse = try await request(
             Endpoint(path: "api/subjects/courses/\(id)", method: .patch, body: body),
             responseType: CourseResponse.self

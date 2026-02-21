@@ -17,7 +17,6 @@ struct AddTaskView: View {
     @State private var title: String = ""
     @State private var date: Date
     @State private var durationMinutes: Int = 60
-    @State private var selectedColorName: String = PlannerTask.colorOptions.first?.name ?? "Blue"
     @State private var isSaving: Bool = false
     @State private var errorMessage: String? = nil
 
@@ -40,10 +39,6 @@ struct AddTaskView: View {
                     }
                 }
 
-                Section(header: Text("Color")) {
-                    colorSelection
-                }
-                
                 if let errorMessage = errorMessage {
                     Section {
                         Text(errorMessage)
@@ -72,31 +67,6 @@ struct AddTaskView: View {
         }
         .presentationDetents([.fraction(0.65), .large])
     }
-    private var colorSelection: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
-            ForEach(PlannerTask.colorOptions, id: \.name) { option in
-                Button {
-                    selectedColorName = option.name
-                } label: {
-                    Circle()
-                        .fill(option.color)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.primary.opacity(selectedColorName == option.name ? 0.9 : 0), lineWidth: 3)
-                        )
-                        .frame(width: 36, height: 36)
-                }
-                .buttonStyle(.plain)
-                .overlay(
-                    Text(String(option.name.prefix(1)))
-                        .font(.caption2)
-                        .foregroundColor(.white)
-                )
-                .padding(4)
-            }
-        }
-    }
-
     private var formattedDuration: String {
         let hours = durationMinutes / 60
         let minutes = durationMinutes % 60
@@ -122,7 +92,7 @@ struct AddTaskView: View {
                 title: trimmedTitle,
                 startDate: date,
                 durationMinutes: durationMinutes,
-                colorName: selectedColorName,
+                colorName: "Blue",
                 subject: nil
             )
             onSaveTask(task)

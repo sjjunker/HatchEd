@@ -10,6 +10,7 @@ import Foundation
 struct Course: Identifiable, Codable, Equatable, Hashable {
     let id: String
     var name: String
+    var colorName: String
     var assignments: [Assignment]
     var students: [User]
     var createdAt: Date?
@@ -21,14 +22,15 @@ struct Course: Identifiable, Codable, Equatable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, assignments, createdAt, updatedAt
+        case id, name, colorName, assignments, createdAt, updatedAt
         case students
         case student
     }
 
-    init(id: String = UUID().uuidString, name: String, assignments: [Assignment] = [], students: [User], createdAt: Date? = nil, updatedAt: Date? = nil) {
+    init(id: String = UUID().uuidString, name: String, colorName: String = "Blue", assignments: [Assignment] = [], students: [User], createdAt: Date? = nil, updatedAt: Date? = nil) {
         self.id = id
         self.name = name
+        self.colorName = colorName
         self.assignments = assignments
         self.students = students
         self.createdAt = createdAt
@@ -39,6 +41,7 @@ struct Course: Identifiable, Codable, Equatable, Hashable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
         name = try c.decode(String.self, forKey: .name)
+        colorName = try c.decodeIfPresent(String.self, forKey: .colorName) ?? "Blue"
         assignments = try c.decodeIfPresent([Assignment].self, forKey: .assignments) ?? []
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt)
         updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt)
@@ -55,6 +58,7 @@ struct Course: Identifiable, Codable, Equatable, Hashable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(id, forKey: .id)
         try c.encode(name, forKey: .name)
+        try c.encode(colorName, forKey: .colorName)
         try c.encode(assignments, forKey: .assignments)
         try c.encode(students, forKey: .students)
         try c.encodeIfPresent(createdAt, forKey: .createdAt)

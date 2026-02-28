@@ -227,10 +227,22 @@ private struct AttendanceRow: View {
 
 private struct AttendanceHistoryRow: View {
     let record: AttendanceRecordDTO
+    
+    private static let attendanceDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter
+    }()
+    
+    private var formattedAttendanceDate: String {
+        Self.attendanceDateFormatter.string(from: record.date)
+    }
 
     var body: some View {
         HStack {
-            Text(record.date, style: .date)
+            Text(formattedAttendanceDate)
                 .font(.subheadline)
                 .foregroundColor(.hatchEdSecondaryText)
             Spacer()

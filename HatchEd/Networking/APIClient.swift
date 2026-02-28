@@ -32,6 +32,13 @@ struct AttendanceListResponse: Decodable {
     let attendance: [AttendanceRecordDTO]
 }
 
+struct DailyQuoteDTO: Decodable {
+    let quote: String
+    let author: String?
+    let work: String?
+    let categories: [String]
+}
+
 final class APIClient {
     static let shared = APIClient()
     
@@ -115,6 +122,14 @@ final class APIClient {
             responseType: AttendanceListResponse.self
         )
         return response.attendance
+    }
+    
+    func fetchDailyQuote() async throws -> DailyQuoteDTO {
+        let response: DailyQuoteResponse = try await request(
+            Endpoint(path: "api/quotes/daily"),
+            responseType: DailyQuoteResponse.self
+        )
+        return response.quote
     }
     
     // Subjects API methods (courses & assignments)
@@ -788,6 +803,10 @@ struct Endpoint {
 }
 
 struct EmptyResponse: Decodable {}
+
+private struct DailyQuoteResponse: Decodable {
+    let quote: DailyQuoteDTO
+}
 
 enum APIError: Error, LocalizedError {
     case invalidURL

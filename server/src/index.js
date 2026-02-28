@@ -19,6 +19,7 @@ import portfolioRoutes from './routes/portfolios.js'
 import plannerRoutes from './routes/planner.js'
 import inviteRoutes from './routes/invite.js'
 import resourcesRoutes from './routes/resources.js'
+import quotesRoutes from './routes/quotes.js'
 import { errorHandler } from './middleware/errorHandler.js'
 import { notFoundHandler } from './middleware/notFoundHandler.js'
 import { UPLOADS_DIR } from './lib/uploadsPath.js'
@@ -105,7 +106,8 @@ app.get('/', (_req, res) => {
       portfolios: '/api/portfolios',
       planner: '/api/planner',
       invite: '/api/invite',
-      resources: '/api/resources'
+      resources: '/api/resources',
+      quotes: '/api/quotes'
     }
   })
 })
@@ -128,6 +130,7 @@ app.use('/api/portfolios', portfolioRoutes)
 app.use('/api/planner', plannerRoutes)
 app.use('/api/invite', inviteRoutes)
 app.use('/api/resources', resourcesRoutes)
+app.use('/api/quotes', quotesRoutes)
 
 // Ensure uploads dir exists and serve uploaded files (same path multer uses)
 await fs.mkdir(UPLOADS_DIR, { recursive: true })

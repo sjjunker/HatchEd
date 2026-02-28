@@ -20,6 +20,8 @@ struct StudentDashboard: View {
     @State private var isLoadingAssignments = false
     @State private var showingHelpConfirmation = false
     @State private var selectedAssignmentForHelp: Assignment?
+    @State private var dailyQuote: DailyQuoteDTO?
+    @State private var isLoadingQuote = false
     
     private let api = APIClient.shared
     private let calendar = Calendar.current
@@ -88,6 +90,7 @@ struct StudentDashboard: View {
             Task {
                 await authViewModel.fetchNotifications()
                 await loadDailyAssignments()
+                await loadDailyQuote()
             }
             if authViewModel.currentUser?.name == nil {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -98,6 +101,7 @@ struct StudentDashboard: View {
         .refreshable {
             await authViewModel.fetchNotifications()
             await loadDailyAssignments()
+            await loadDailyQuote()
         }
         .onChange(of: selectedDestination) { _, newValue in
             updateOrientationLock(for: newValue)
@@ -282,30 +286,40 @@ struct StudentDashboard: View {
             HStack {
                 Image(systemName: "quote.opening")
                     .foregroundColor(.hatchEdAccent)
-                Text("Daily Inspiration")
-                    .font(.headline)
-                    .foregroundColor(.hatchEdText)
             }
             
             VStack(alignment: .leading, spacing: 8) {
-                Text("Today's Quote")
-                    .font(.subheadline)
-                    .foregroundColor(.hatchEdSecondaryText)
-                Text("\"The beautiful thing about learning is that no one can take it away from you.\"")
-                    .font(.body)
-                    .italic()
-                    .foregroundColor(.hatchEdText)
-                Text("— B.B. King")
-                    .font(.caption)
-                    .foregroundColor(.hatchEdSecondaryText)
-                    .padding(.top, 4)
+                if isLoadingQuote && dailyQuote == nil {
+                    ProgressView()
+                        .tint(.hatchEdAccent)
+                } else if let dailyQuote {
+                    Text("\"\(dailyQuote.quote)\"")
+                        .font(.body)
+                        .italic()
+                        .foregroundColor(.hatchEdText)
+                    if let author = dailyQuote.author, !author.isEmpty {
+                        Text("— \(author)")
+                            .font(.caption)
+                            .foregroundColor(.hatchEdSecondaryText)
+                            .padding(.top, 4)
+                    }
+                    if let work = dailyQuote.work, !work.isEmpty {
+                        Text(work)
+                            .font(.caption2)
+                            .foregroundColor(.hatchEdSecondaryText)
+                    }
+                } else {
+                    Text("Unable to load today's quote.")
+                        .font(.footnote)
+                        .foregroundColor(.hatchEdSecondaryText)
+                }
             }
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color.hatchEdAccentBackground)
+                .fill(Color.hatchEdCoralAccent.opacity(0.14))
         )
     }
     
@@ -355,6 +369,19 @@ struct StudentDashboard: View {
     private func loadCompletionStatus() {
         if let array = UserDefaults.standard.array(forKey: "completedAssignments") as? [String] {
             completedAssignments = Set(array)
+        }
+    }
+    
+    @MainActor
+    private func loadDailyQuote() async {
+        guard !isLoadingQuote else { return }
+        isLoadingQuote = true
+        defer { isLoadingQuote = false }
+        do {
+            dailyQuote = try await api.fetchDailyQuote()
+        } catch {
+            dailyQuote = nil
+            print("Failed to load daily quote: \(error.localizedDescription)")
         }
     }
     

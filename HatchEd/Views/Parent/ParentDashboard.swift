@@ -57,6 +57,8 @@ struct ParentDashboard: View {
     @State private var addChildDidSucceed = false
     @State private var selectedDestination: NavigationDestination? = nil
     @State private var selectedNotification: Notification?
+    @State private var dailyQuote: DailyQuoteDTO?
+    @State private var isLoadingQuote = false
     
     var body: some View {
         ZStack {
@@ -122,6 +124,7 @@ struct ParentDashboard: View {
             Task {
                 await authViewModel.fetchNotifications()
                 await dashboardVM.loadAssignmentsAndCourses()
+                await loadDailyQuote()
             }
             dashboardVM.initializeAttendanceStatusIfNeeded(with: authViewModel.students)
             if authViewModel.currentUser?.name == nil {
@@ -133,6 +136,7 @@ struct ParentDashboard: View {
         .refreshable {
             await authViewModel.fetchNotifications()
             await dashboardVM.loadAssignmentsAndCourses()
+            await loadDailyQuote()
         }
         .sheet(item: $dashboardVM.selectedAssignment) { assignment in
             AssignmentGradingView(
@@ -516,31 +520,54 @@ struct ParentDashboard: View {
             HStack {
                 Image(systemName: "quote.opening")
                     .foregroundColor(.hatchEdAccent)
-                Text("Daily Inspiration")
-                    .font(.headline)
-                    .foregroundColor(.hatchEdText)
             }
             
             VStack(alignment: .leading, spacing: 8) {
-                Text("Today's Quote")
-                    .font(.subheadline)
-                    .foregroundColor(.hatchEdSecondaryText)
-                Text("\"The beautiful thing about learning is that no one can take it away from you.\"")
-                    .font(.body)
-                    .italic()
-                    .foregroundColor(.hatchEdText)
-                Text("— B.B. King")
-                    .font(.caption)
-                    .foregroundColor(.hatchEdSecondaryText)
-                    .padding(.top, 4)
+                if isLoadingQuote && dailyQuote == nil {
+                    ProgressView()
+                        .tint(.hatchEdAccent)
+                } else if let dailyQuote {
+                    Text("\"\(dailyQuote.quote)\"")
+                        .font(.body)
+                        .italic()
+                        .foregroundColor(.hatchEdText)
+                    if let author = dailyQuote.author, !author.isEmpty {
+                        Text("— \(author)")
+                            .font(.caption)
+                            .foregroundColor(.hatchEdSecondaryText)
+                            .padding(.top, 4)
+                    }
+                    if let work = dailyQuote.work, !work.isEmpty {
+                        Text(work)
+                            .font(.caption2)
+                            .foregroundColor(.hatchEdSecondaryText)
+                    }
+                } else {
+                    Text("Unable to load today's quote.")
+                        .font(.footnote)
+                        .foregroundColor(.hatchEdSecondaryText)
+                }
             }
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color.hatchEdAccentBackground)
+                .fill(Color.hatchEdCoralAccent.opacity(0.14))
         )
+    }
+    
+    @MainActor
+    private func loadDailyQuote() async {
+        guard !isLoadingQuote else { return }
+        isLoadingQuote = true
+        defer { isLoadingQuote = false }
+        do {
+            dailyQuote = try await APIClient.shared.fetchDailyQuote()
+        } catch {
+            dailyQuote = nil
+            print("Failed to load daily quote: \(error.localizedDescription)")
+        }
     }
 }
 

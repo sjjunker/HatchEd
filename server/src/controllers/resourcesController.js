@@ -8,7 +8,10 @@ import {
   findResourceFoldersByFamilyId,
   findResourceFolderById,
   updateResourceFolder,
-  deleteResourceFolder
+  deleteResourceFolder,
+  deleteResourceFoldersByIds,
+  scheduleResourceFolderDeletion,
+  undoScheduledResourceFolderDeletion
 } from '../models/resourceFolderModel.js'
 import {
   createResource,
@@ -18,6 +21,7 @@ import {
   updateResource,
   deleteResource,
   deleteResourcesByFolderId,
+  deleteResourcesByFolderIds,
   unlinkResourcesByAssignmentId
 } from '../models/resourceModel.js'
 import { serializeResourceFolder, serializeResource } from '../utils/serializers.js'
@@ -77,10 +81,64 @@ async function normalizeAssignedStudentIds (familyId, rawAssignedStudentIds) {
   return uniqueValidIds
 }
 
+function collectFolderTreeIds (rootFolderId, allFolders) {
+  const rootId = rootFolderId.toString()
+  const childrenByParent = new Map()
+  for (const folder of allFolders) {
+    const parentId = folder.parentFolderId?.toString?.() ?? null
+    if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, [])
+    childrenByParent.get(parentId).push(folder._id.toString())
+  }
+  const result = new Set([rootId])
+  const stack = [rootId]
+  while (stack.length) {
+    const currentId = stack.pop()
+    const children = childrenByParent.get(currentId) ?? []
+    for (const childId of children) {
+      if (result.has(childId)) continue
+      result.add(childId)
+      stack.push(childId)
+    }
+  }
+  return Array.from(result)
+}
+
+function countFolderTreeContents (folderTreeIds, allResources) {
+  const folderIdSet = new Set(folderTreeIds)
+  const subfolderCount = Math.max(0, folderTreeIds.length - 1)
+  const resourceCount = allResources.filter(resource => {
+    const folderId = resource.folderId?.toString?.() ?? null
+    return folderId ? folderIdSet.has(folderId) : false
+  }).length
+  return { subfolderCount, resourceCount }
+}
+
+async function purgeExpiredScheduledFolders (familyId) {
+  const folders = await findResourceFoldersByFamilyId(familyId)
+  const now = new Date()
+  const expiredRoots = folders.filter(folder => {
+    if (!folder.scheduledDeletionAt) return false
+    const scheduled = new Date(folder.scheduledDeletionAt)
+    return !Number.isNaN(scheduled.getTime()) && scheduled <= now
+  })
+  if (!expiredRoots.length) return
+
+  const allResources = await findResourcesByFamilyId(familyId, { folderId: undefined })
+  const idsToDelete = new Set()
+  for (const root of expiredRoots) {
+    const treeIds = collectFolderTreeIds(root._id, folders)
+    treeIds.forEach(id => idsToDelete.add(id))
+  }
+  const folderIds = Array.from(idsToDelete)
+  await deleteResourcesByFolderIds(folderIds)
+  await deleteResourceFoldersByIds(folderIds)
+}
+
 // --- Folders ---
 export async function getFoldersHandler (req, res) {
   const user = await findUserById(req.user.userId)
   if (!user?.familyId) return res.json({ folders: [] })
+  await purgeExpiredScheduledFolders(user.familyId)
   const folders = await findResourceFoldersByFamilyId(user.familyId)
   res.json({ folders: folders.map(serializeResourceFolder) })
 }
@@ -111,12 +169,42 @@ export async function updateFolderHandler (req, res) {
 export async function deleteFolderHandler (req, res) {
   const user = await findUserById(req.user.userId)
   if (!user?.familyId) return res.status(400).json({ error: { message: 'User must belong to a family' } })
+  if (user.role !== 'parent') return res.status(403).json({ error: { message: 'Only parents can delete folders' } })
   const folder = await findResourceFolderById(req.params.id)
   if (!folder) return res.status(404).json({ error: { message: 'Folder not found' } })
   if (folder.familyId.toString() !== user.familyId.toString()) return res.status(403).json({ error: { message: 'Not authorized' } })
+  const familyFolders = await findResourceFoldersByFamilyId(user.familyId)
+  const treeIds = collectFolderTreeIds(folder._id, familyFolders)
+  const allResources = await findResourcesByFamilyId(user.familyId, { folderId: undefined })
+  const { subfolderCount, resourceCount } = countFolderTreeContents(treeIds, allResources)
+  const isNonEmpty = subfolderCount > 0 || resourceCount > 0
+
+  if (isNonEmpty) {
+    const scheduledDeletionAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
+    const updated = await scheduleResourceFolderDeletion(req.params.id, scheduledDeletionAt)
+    return res.json({
+      success: true,
+      scheduled: true,
+      folder: serializeResourceFolder(updated),
+      summary: { subfolderCount, resourceCount }
+    })
+  }
+
   await deleteResourcesByFolderId(req.params.id)
   await deleteResourceFolder(req.params.id)
-  res.json({ success: true })
+  res.json({ success: true, scheduled: false, summary: { subfolderCount, resourceCount } })
+}
+
+export async function undoDeleteFolderHandler (req, res) {
+  const user = await findUserById(req.user.userId)
+  if (!user?.familyId) return res.status(400).json({ error: { message: 'User must belong to a family' } })
+  if (user.role !== 'parent') return res.status(403).json({ error: { message: 'Only parents can undo folder deletion' } })
+  const folder = await findResourceFolderById(req.params.id)
+  if (!folder) return res.status(404).json({ error: { message: 'Folder not found' } })
+  if (folder.familyId.toString() !== user.familyId.toString()) return res.status(403).json({ error: { message: 'Not authorized' } })
+
+  const updated = await undoScheduledResourceFolderDeletion(req.params.id)
+  res.json({ success: true, folder: serializeResourceFolder(updated) })
 }
 
 // --- Resources ---
@@ -242,6 +330,7 @@ export async function updateResourceHandler (req, res) {
 export async function deleteResourceHandler (req, res) {
   const user = await findUserById(req.user.userId)
   if (!user?.familyId) return res.status(400).json({ error: { message: 'User must belong to a family' } })
+  if (user.role !== 'parent') return res.status(403).json({ error: { message: 'Only parents can delete resources' } })
   const resource = await findResourceById(req.params.id)
   if (!resource) return res.status(404).json({ error: { message: 'Resource not found' } })
   if (resource.familyId.toString() !== user.familyId.toString()) return res.status(403).json({ error: { message: 'Not authorized' } })

@@ -587,6 +587,13 @@ final class APIClient {
     func deleteResourceFolder(id: String) async throws {
         _ = try await request(Endpoint(path: "api/resources/folders/\(id)", method: .delete), responseType: EmptyResponse.self)
     }
+    func undoDeleteResourceFolder(id: String) async throws -> ResourceFolder {
+        let r = try await request(
+            Endpoint(path: "api/resources/folders/\(id)/undo-delete", method: .patch),
+            responseType: ResourceFolderResponse.self
+        )
+        return r.folder
+    }
     func fetchResources(folderId: String? = nil, includeAll: Bool = false) async throws -> [Resource] {
         var endpoint = Endpoint(path: "api/resources")
         var queryItems: [URLQueryItem] = []

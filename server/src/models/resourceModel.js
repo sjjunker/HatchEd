@@ -123,6 +123,13 @@ export async function deleteResourcesByFolderId (folderId) {
   return result.deletedCount
 }
 
+export async function deleteResourcesByFolderIds (folderIds) {
+  const ids = Array.isArray(folderIds) ? folderIds.filter(Boolean).map(id => new ObjectId(id)) : []
+  if (!ids.length) return 0
+  const result = await resourcesCollection().deleteMany({ folderId: { $in: ids } })
+  return result.deletedCount
+}
+
 /** Delete all resources for a family (for cascade). */
 export async function deleteResourcesByFamilyId (familyId) {
   const result = await resourcesCollection().deleteMany({ familyId: new ObjectId(familyId) })

@@ -6,6 +6,7 @@ import {
   createFolderHandler,
   updateFolderHandler,
   deleteFolderHandler,
+  undoDeleteFolderHandler,
   getResourcesHandler,
   getResourcesForAssignmentHandler,
   getResourceFileHandler,
@@ -25,6 +26,7 @@ router.get('/folders', asyncHandler(getFoldersHandler))
 router.post('/folders', asyncHandler(createFolderHandler))
 router.patch('/folders/:id', asyncHandler(updateFolderHandler))
 router.delete('/folders/:id', asyncHandler(deleteFolderHandler))
+router.patch('/folders/:id/undo-delete', asyncHandler(undoDeleteFolderHandler))
 
 // Resources
 router.get('/', asyncHandler(getResourcesHandler))

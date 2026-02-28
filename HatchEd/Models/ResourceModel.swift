@@ -9,6 +9,8 @@ struct ResourceFolder: Identifiable, Codable, Equatable {
     let id: String
     var name: String
     var parentFolderId: String?
+    var pendingDeletionAt: Date?
+    var scheduledDeletionAt: Date?
     var createdAt: Date?
     var updatedAt: Date?
 }

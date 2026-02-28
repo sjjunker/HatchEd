@@ -14,6 +14,8 @@ export async function createResourceFolder ({ familyId, name, parentFolderId }) 
     familyId: new ObjectId(familyId),
     name: name?.trim() || 'New Folder',
     parentFolderId: parentFolderId ? new ObjectId(parentFolderId) : null,
+    pendingDeletionAt: null,
+    scheduledDeletionAt: null,
     createdAt: new Date(),
     updatedAt: new Date()
   }
@@ -43,10 +45,55 @@ export async function updateResourceFolder (id, { name, parentFolderId }) {
     { $set: update },
     { returnDocument: 'after' }
   )
-  return result?.value ?? null
+  if (result?.value) return result.value
+  const fallback = await resourceFoldersCollection().findOne({ _id: new ObjectId(id) })
+  return fallback ?? null
 }
 
 export async function deleteResourceFolder (id) {
   const result = await resourceFoldersCollection().deleteOne({ _id: new ObjectId(id) })
   return result.deletedCount > 0
+}
+
+export async function deleteResourceFoldersByIds (folderIds) {
+  const ids = Array.isArray(folderIds) ? folderIds.filter(Boolean).map(id => new ObjectId(id)) : []
+  if (!ids.length) return 0
+  const result = await resourceFoldersCollection().deleteMany({ _id: { $in: ids } })
+  return result.deletedCount
+}
+
+export async function scheduleResourceFolderDeletion (id, scheduledDeletionAt) {
+  const now = new Date()
+  const result = await resourceFoldersCollection().findOneAndUpdate(
+    { _id: new ObjectId(id) },
+    {
+      $set: {
+        pendingDeletionAt: now,
+        scheduledDeletionAt,
+        updatedAt: now
+      }
+    },
+    { returnDocument: 'after' }
+  )
+  if (result?.value) return result.value
+  const fallback = await resourceFoldersCollection().findOne({ _id: new ObjectId(id) })
+  return fallback ?? null
+}
+
+export async function undoScheduledResourceFolderDeletion (id) {
+  const now = new Date()
+  const result = await resourceFoldersCollection().findOneAndUpdate(
+    { _id: new ObjectId(id) },
+    {
+      $set: {
+        pendingDeletionAt: null,
+        scheduledDeletionAt: null,
+        updatedAt: now
+      }
+    },
+    { returnDocument: 'after' }
+  )
+  if (result?.value) return result.value
+  const fallback = await resourceFoldersCollection().findOne({ _id: new ObjectId(id) })
+  return fallback ?? null
 }

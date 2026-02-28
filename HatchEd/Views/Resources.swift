@@ -54,6 +54,16 @@ private struct ImageDataTransfer: Transferable {
     }
 }
 
+private struct FolderDeletionCandidate {
+    let folder: ResourceFolder
+    let subfolderCount: Int
+    let resourceCount: Int
+    
+    var isNonEmpty: Bool {
+        subfolderCount > 0 || resourceCount > 0
+    }
+}
+
 struct Resources: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var folders: [ResourceFolder] = []
@@ -70,6 +80,12 @@ struct Resources: View {
     @State private var previewFileURL: URL?
     @State private var previewResourceType: ResourceType?
     @State private var searchText = ""
+    @State private var folderDeletionCandidate: FolderDeletionCandidate?
+    @State private var showingFolderDeleteSimpleAlert = false
+    @State private var showingFolderDeleteSummaryAlert = false
+    @State private var showingFolderDeleteTypedSheet = false
+    @State private var folderDeleteTypedText = ""
+    @State private var pendingFolderAlert: ResourceFolder?
     private let api = APIClient.shared
     
     private var isParent: Bool {
@@ -208,9 +224,15 @@ struct Resources: View {
                             FolderRow(
                                 folder: folder,
                                 showsManagementActions: isParent,
-                                onTap: { currentFolderId = folder.id },
+                                onTap: {
+                                    if folder.scheduledDeletionAt != nil {
+                                        pendingFolderAlert = folder
+                                    } else {
+                                        currentFolderId = folder.id
+                                    }
+                                },
                                 onEdit: { folderToEdit = folder },
-                                onDelete: { Task { await deleteFolder(folder) } }
+                                onDelete: { beginDeleteFolder(folder) }
                             )
                         }
                         ForEach(currentResources) { resource in
@@ -266,6 +288,84 @@ struct Resources: View {
             Button("OK") {}
         } message: {
             if let m = errorMessage { Text(m) }
+        }
+        .alert("Delete Empty Folder?", isPresented: $showingFolderDeleteSimpleAlert) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                guard let candidate = folderDeletionCandidate else { return }
+                Task { await executeDeleteFolder(candidate.folder) }
+            }
+        } message: {
+            if let candidate = folderDeletionCandidate {
+                Text("Delete \"\(candidate.folder.name)\" now?")
+            }
+        }
+        .alert("Confirm Folder Deletion", isPresented: $showingFolderDeleteSummaryAlert) {
+            Button("Cancel", role: .cancel) {}
+            Button("Continue", role: .destructive) {
+                folderDeleteTypedText = ""
+                showingFolderDeleteTypedSheet = true
+            }
+        } message: {
+            if let candidate = folderDeletionCandidate {
+                Text("\"\(candidate.folder.name)\" contains \(candidate.subfolderCount) subfolder(s) and \(candidate.resourceCount) resource(s). It will be archived and permanently deleted in 3 days.")
+            }
+        }
+        .alert(item: $pendingFolderAlert) { folder in
+            if isParent {
+                return Alert(
+                    title: Text("Folder Scheduled for Deletion"),
+                    message: Text("This folder will be deleted in \(remainingTimeText(until: folder.scheduledDeletionAt))."),
+                    primaryButton: .default(Text("Undo")) {
+                        Task { await undoScheduledFolderDeletion(folder) }
+                    },
+                    secondaryButton: .cancel()
+                )
+            }
+            return Alert(
+                title: Text("Folder Scheduled for Deletion"),
+                message: Text("This folder will be deleted in \(remainingTimeText(until: folder.scheduledDeletionAt))."),
+                dismissButton: .default(Text("OK"))
+            )
+        }
+        .sheet(isPresented: $showingFolderDeleteTypedSheet, onDismiss: {
+            folderDeleteTypedText = ""
+        }) {
+            NavigationView {
+                Form {
+                    if let candidate = folderDeletionCandidate {
+                        Section {
+                            Text("Type the folder name to confirm deletion scheduling.")
+                                .font(.subheadline)
+                                .foregroundColor(.hatchEdSecondaryText)
+                            Text(candidate.folder.name)
+                                .font(.headline)
+                                .foregroundColor(.hatchEdText)
+                        }
+                        Section("Folder Name") {
+                            TextField("Enter folder name", text: $folderDeleteTypedText)
+                                .textInputAutocapitalization(.never)
+                        }
+                    }
+                }
+                .navigationTitle("Confirm Delete")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            showingFolderDeleteTypedSheet = false
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Schedule Delete") {
+                            guard let candidate = folderDeletionCandidate else { return }
+                            showingFolderDeleteTypedSheet = false
+                            Task { await executeDeleteFolder(candidate.folder) }
+                        }
+                        .disabled(folderDeleteTypedText != folderDeletionCandidate?.folder.name)
+                    }
+                }
+            }
         }
         .sheet(isPresented: $showingAddFolder) {
             AddFolderSheet(
@@ -368,10 +468,68 @@ struct Resources: View {
         }
     }
 
-    private func deleteFolder(_ folder: ResourceFolder) async {
+    private func beginDeleteFolder(_ folder: ResourceFolder) {
+        guard isParent else { return }
+        let candidate = makeFolderDeletionCandidate(folder)
+        folderDeletionCandidate = candidate
+        if candidate.isNonEmpty {
+            showingFolderDeleteSummaryAlert = true
+        } else {
+            showingFolderDeleteSimpleAlert = true
+        }
+    }
+    
+    private func makeFolderDeletionCandidate(_ folder: ResourceFolder) -> FolderDeletionCandidate {
+        let treeIds = folderTreeIds(for: folder.id)
+        let subfolderCount = max(0, treeIds.count - 1)
+        let treeSet = Set(treeIds)
+        let resourceCount = allResources.filter { resource in
+            guard let fid = resource.folderId else { return false }
+            return treeSet.contains(fid)
+        }.count
+        return FolderDeletionCandidate(folder: folder, subfolderCount: subfolderCount, resourceCount: resourceCount)
+    }
+    
+    private func folderTreeIds(for rootFolderId: String) -> [String] {
+        var result: Set<String> = [rootFolderId]
+        var stack: [String] = [rootFolderId]
+        while let current = stack.popLast() {
+            let children = folders.filter { $0.parentFolderId == current }.map(\.id)
+            for child in children where !result.contains(child) {
+                result.insert(child)
+                stack.append(child)
+            }
+        }
+        return Array(result)
+    }
+    
+    private func remainingTimeText(until scheduledDeletionAt: Date?) -> String {
+        guard let target = scheduledDeletionAt else { return "less than 1 minute" }
+        let seconds = max(0, Int(target.timeIntervalSinceNow))
+        let days = seconds / 86_400
+        let hours = (seconds % 86_400) / 3_600
+        let minutes = (seconds % 3_600) / 60
+        if days > 0 {
+            return "\(days)d \(hours)h"
+        } else if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        }
+        return "\(max(1, minutes))m"
+    }
+    
+    private func executeDeleteFolder(_ folder: ResourceFolder) async {
         do {
             try await api.deleteResourceFolder(id: folder.id)
             if currentFolderId == folder.id { currentFolderId = folder.parentFolderId }
+            await load()
+        } catch {
+            await MainActor.run { errorMessage = error.localizedDescription }
+        }
+    }
+    
+    private func undoScheduledFolderDeletion(_ folder: ResourceFolder) async {
+        do {
+            _ = try await api.undoDeleteResourceFolder(id: folder.id)
             await load()
         } catch {
             await MainActor.run { errorMessage = error.localizedDescription }
@@ -421,33 +579,46 @@ private struct FolderRow: View {
     let onTap: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
-    @State private var showingDelete = false
+    
+    private var isPendingDeletion: Bool {
+        folder.scheduledDeletionAt != nil
+    }
 
     var body: some View {
         HStack {
             Button(action: onTap) {
                 HStack {
                     Image(systemName: "folder.fill")
-                        .foregroundColor(.hatchEdWarning)
-                    Text(folder.name)
+                        .foregroundColor(isPendingDeletion ? .hatchEdSecondaryText : .hatchEdWarning)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(folder.name)
+                            .foregroundColor(.hatchEdText)
+                            .lineLimit(1)
+                        if isPendingDeletion {
+                            Text("Scheduled for deletion")
+                                .font(.caption)
+                                .foregroundColor(.hatchEdSecondaryText)
+                        }
+                    }
                         .foregroundColor(.hatchEdText)
                     Spacer()
+                    if isPendingDeletion {
+                        Image(systemName: "clock.badge.exclamationmark")
+                            .foregroundColor(.hatchEdSecondaryText)
+                    }
                     Image(systemName: "chevron.right")
                         .foregroundColor(.hatchEdSecondaryText)
                 }
                 .padding()
                 .background(RoundedRectangle(cornerRadius: 12).fill(Color.hatchEdCardBackground))
+                .opacity(isPendingDeletion ? 0.55 : 1.0)
             }
             .buttonStyle(.plain)
-            if showsManagementActions {
+            if showsManagementActions && !isPendingDeletion {
                 Menu {
-                    Button(role: .destructive, action: { showingDelete = true }) { Label("Delete", systemImage: "trash") }
+                    Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
                 } label: { Image(systemName: "ellipsis.circle") }
             }
-        }
-        .confirmationDialog("Delete folder and its contents?", isPresented: $showingDelete, titleVisibility: .visible) {
-            Button("Delete", role: .destructive, action: onDelete)
-            Button("Cancel", role: .cancel) {}
         }
     }
 }

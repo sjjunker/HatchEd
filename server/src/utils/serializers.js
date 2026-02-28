@@ -183,6 +183,8 @@ export function serializeResourceFolder (folder) {
     id: folder._id?.toString?.() ?? folder._id,
     name: folder.name,
     parentFolderId: folder.parentFolderId?.toString?.() ?? folder.parentFolderId ?? null,
+    pendingDeletionAt: folder.pendingDeletionAt ?? null,
+    scheduledDeletionAt: folder.scheduledDeletionAt ?? null,
     createdAt: folder.createdAt,
     updatedAt: folder.updatedAt
   }

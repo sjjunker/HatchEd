@@ -25,9 +25,13 @@ export async function createResource ({
   url,
   mimeType,
   fileSize,
-  assignmentId
+  assignmentId,
+  assignedStudentIds
 }) {
   const resourceType = normalizeType(type)
+  const normalizedAssignedStudentIds = Array.isArray(assignedStudentIds)
+    ? assignedStudentIds.filter(Boolean).map(id => new ObjectId(id))
+    : []
   const resource = {
     familyId: new ObjectId(familyId),
     folderId: folderId ? new ObjectId(folderId) : null,
@@ -38,6 +42,7 @@ export async function createResource ({
     mimeType: mimeType || null,
     fileSize: fileSize != null ? Number(fileSize) : null,
     assignmentId: assignmentId ? new ObjectId(assignmentId) : null,
+    assignedStudentIds: normalizedAssignedStudentIds,
     createdAt: new Date(),
     updatedAt: new Date()
   }
@@ -45,10 +50,13 @@ export async function createResource ({
   return { ...resource, _id: result.insertedId }
 }
 
-export async function findResourcesByFamilyId (familyId, { folderId } = {}) {
+export async function findResourcesByFamilyId (familyId, { folderId, viewerStudentId } = {}) {
   const query = { familyId: new ObjectId(familyId) }
   if (folderId !== undefined) {
     query.folderId = folderId ? new ObjectId(folderId) : null
+  }
+  if (viewerStudentId) {
+    query.assignedStudentIds = { $in: [new ObjectId(viewerStudentId)] }
   }
   const docs = await resourcesCollection()
     .find(query)
@@ -57,9 +65,16 @@ export async function findResourcesByFamilyId (familyId, { folderId } = {}) {
   return docs
 }
 
-export async function findResourcesByAssignmentId (assignmentId) {
+export async function findResourcesByAssignmentId (assignmentId, { familyId, viewerStudentId } = {}) {
+  const query = { assignmentId: new ObjectId(assignmentId) }
+  if (familyId) {
+    query.familyId = new ObjectId(familyId)
+  }
+  if (viewerStudentId) {
+    query.assignedStudentIds = { $in: [new ObjectId(viewerStudentId)] }
+  }
   const docs = await resourcesCollection()
-    .find({ assignmentId: new ObjectId(assignmentId) })
+    .find(query)
     .sort({ displayName: 1 })
     .toArray()
   return docs
@@ -70,11 +85,16 @@ export async function findResourceById (id) {
   return doc
 }
 
-export async function updateResource (id, { displayName, folderId, assignmentId }) {
+export async function updateResource (id, { displayName, folderId, assignmentId, assignedStudentIds }) {
   const update = { updatedAt: new Date() }
   if (displayName !== undefined) update.displayName = (displayName || '').trim() || 'Untitled'
   if (folderId !== undefined) update.folderId = folderId ? new ObjectId(folderId) : null
   if (assignmentId !== undefined) update.assignmentId = assignmentId ? new ObjectId(assignmentId) : null
+  if (assignedStudentIds !== undefined) {
+    update.assignedStudentIds = Array.isArray(assignedStudentIds)
+      ? assignedStudentIds.filter(Boolean).map(id => new ObjectId(id))
+      : []
+  }
   const result = await resourcesCollection().findOneAndUpdate(
     { _id: new ObjectId(id) },
     { $set: update },

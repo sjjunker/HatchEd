@@ -69,6 +69,14 @@ struct Resources: View {
     @State private var previewFileURL: URL?
     @State private var previewResourceType: ResourceType?
     private let api = APIClient.shared
+    
+    private var isParent: Bool {
+        authViewModel.userRole == "parent"
+    }
+    
+    private var availableStudents: [User] {
+        authViewModel.students.sorted { ($0.name ?? "").localizedCaseInsensitiveCompare($1.name ?? "") == .orderedAscending }
+    }
 
     private var currentFolder: ResourceFolder? {
         currentFolderId.flatMap { id in folders.first { $0.id == id } }
@@ -149,6 +157,7 @@ struct Resources: View {
                         ForEach(subfolders) { folder in
                             FolderRow(
                                 folder: folder,
+                                showsManagementActions: isParent,
                                 onTap: { currentFolderId = folder.id },
                                 onEdit: { folderToEdit = folder },
                                 onDelete: { Task { await deleteFolder(folder) } }
@@ -157,6 +166,7 @@ struct Resources: View {
                         ForEach(resources) { resource in
                             ResourceRow(
                                 resource: resource,
+                                showsManagementActions: isParent,
                                 onTap: { openResource(resource) },
                                 onEdit: { resourceToEdit = resource },
                                 onDelete: { Task { await deleteResource(resource) } }
@@ -177,16 +187,18 @@ struct Resources: View {
         .navigationTitle(currentFolder == nil ? "Resources" : currentFolder?.name ?? "Folder")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button { showingAddFolder = true } label: {
-                        Label("New Folder", systemImage: "folder.badge.plus")
+            if isParent {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button { showingAddFolder = true } label: {
+                            Label("New Folder", systemImage: "folder.badge.plus")
+                        }
+                        Button { showingAddResource = true } label: {
+                            Label("Add Resource", systemImage: "plus.circle")
+                        }
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
                     }
-                    Button { showingAddResource = true } label: {
-                        Label("Add Resource", systemImage: "plus.circle")
-                    }
-                } label: {
-                    Image(systemName: "plus.circle.fill")
                 }
             }
         }
@@ -221,6 +233,7 @@ struct Resources: View {
             AddResourceSheet(
                 folderId: currentFolderId,
                 assignments: [],
+                availableStudents: availableStudents,
                 onDismiss: { showingAddResource = false },
                 onSaved: {
                     Task { await load() }
@@ -235,6 +248,7 @@ struct Resources: View {
                 resource: resource,
                 folderId: currentFolderId,
                 folders: folders,
+                availableStudents: availableStudents,
                 onDismiss: { resourceToEdit = nil },
                 onSaved: {
                     Task { await load() }
@@ -345,6 +359,7 @@ extension ResourceFolder: Hashable {
 // MARK: - Rows
 private struct FolderRow: View {
     let folder: ResourceFolder
+    let showsManagementActions: Bool
     let onTap: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
@@ -366,9 +381,11 @@ private struct FolderRow: View {
                 .background(RoundedRectangle(cornerRadius: 12).fill(Color.hatchEdCardBackground))
             }
             .buttonStyle(.plain)
-            Menu {
-                Button(role: .destructive, action: { showingDelete = true }) { Label("Delete", systemImage: "trash") }
-            } label: { Image(systemName: "ellipsis.circle") }
+            if showsManagementActions {
+                Menu {
+                    Button(role: .destructive, action: { showingDelete = true }) { Label("Delete", systemImage: "trash") }
+                } label: { Image(systemName: "ellipsis.circle") }
+            }
         }
         .confirmationDialog("Delete folder and its contents?", isPresented: $showingDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive, action: onDelete)
@@ -379,6 +396,7 @@ private struct FolderRow: View {
 
 private struct ResourceRow: View {
     let resource: Resource
+    let showsManagementActions: Bool
     let onTap: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
@@ -404,10 +422,12 @@ private struct ResourceRow: View {
                 .background(RoundedRectangle(cornerRadius: 12).fill(Color.hatchEdCardBackground))
             }
             .buttonStyle(.plain)
-            Menu {
-                Button(action: onEdit) { Label("Edit", systemImage: "pencil") }
-                Button(role: .destructive, action: { showingDelete = true }) { Label("Delete", systemImage: "trash") }
-            } label: { Image(systemName: "ellipsis.circle") }
+            if showsManagementActions {
+                Menu {
+                    Button(action: onEdit) { Label("Edit", systemImage: "pencil") }
+                    Button(role: .destructive, action: { showingDelete = true }) { Label("Delete", systemImage: "trash") }
+                } label: { Image(systemName: "ellipsis.circle") }
+            }
         }
         .confirmationDialog("Delete this resource?", isPresented: $showingDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive, action: onDelete)
@@ -453,6 +473,7 @@ private struct AddResourceSheet: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
     var folderId: String?
     var assignments: [Assignment]
+    var availableStudents: [User]
     let onDismiss: () -> Void
     let onSaved: () -> Void
     @Binding var errorMessage: String?
@@ -467,6 +488,7 @@ private struct AddResourceSheet: View {
     @State private var pendingFileName: String?
     @State private var pendingMimeType: String?
     @State private var selectedPhotoItems: [PhotosPickerItem] = []
+    @State private var selectedStudentIds: Set<String> = []
     private let api = APIClient.shared
 
     var body: some View {
@@ -526,6 +548,24 @@ private struct AddResourceSheet: View {
                         }
                     }
                 }
+                if !availableStudents.isEmpty {
+                    Section("Assign to students") {
+                        ForEach(availableStudents) { student in
+                            Toggle(isOn: Binding(
+                                get: { selectedStudentIds.contains(student.id) },
+                                set: { isOn in
+                                    if isOn {
+                                        selectedStudentIds.insert(student.id)
+                                    } else {
+                                        selectedStudentIds.remove(student.id)
+                                    }
+                                }
+                            )) {
+                                Text(student.name ?? "Student")
+                            }
+                        }
+                    }
+                }
             }
             .navigationTitle("Add Resource")
             .navigationBarTitleDisplayMode(.inline)
@@ -538,6 +578,7 @@ private struct AddResourceSheet: View {
             }
             .onAppear {
                 Task { await loadAssignments() }
+                selectedStudentIds = Set(availableStudents.map(\.id))
             }
             .fileImporter(
                 isPresented: $showingFilePicker,
@@ -576,7 +617,8 @@ private struct AddResourceSheet: View {
                     displayName: displayName.trimmingCharacters(in: .whitespaces),
                     url: linkURL.trimmingCharacters(in: .whitespaces),
                     folderId: folderId,
-                    assignmentId: selectedAssignmentId
+                    assignmentId: selectedAssignmentId,
+                    assignedStudentIds: Array(selectedStudentIds)
                 )
                 onSaved()
             } else if let data = pendingFileData, let fileName = pendingFileName, let mimeType = pendingMimeType {
@@ -591,6 +633,7 @@ private struct AddResourceSheet: View {
                     type: type,
                     folderId: folderId,
                     assignmentId: selectedAssignmentId,
+                    assignedStudentIds: Array(selectedStudentIds),
                     fileName: fileName,
                     fileData: data,
                     mimeType: mimeType
@@ -658,12 +701,14 @@ private struct EditResourceSheet: View {
     let resource: Resource
     var folderId: String?
     let folders: [ResourceFolder]
+    let availableStudents: [User]
     let onDismiss: () -> Void
     let onSaved: () -> Void
     @Binding var errorMessage: String?
     @State private var displayName = ""
     @State private var selectedFolderId: String?
     @State private var selectedAssignmentId: String?
+    @State private var selectedStudentIds: Set<String> = []
     @State private var assignmentsLoaded: [Assignment] = []
     @State private var isSaving = false
     private let api = APIClient.shared
@@ -691,6 +736,24 @@ private struct EditResourceSheet: View {
                         }
                     }
                 }
+                if !availableStudents.isEmpty {
+                    Section("Assign to students") {
+                        ForEach(availableStudents) { student in
+                            Toggle(isOn: Binding(
+                                get: { selectedStudentIds.contains(student.id) },
+                                set: { isOn in
+                                    if isOn {
+                                        selectedStudentIds.insert(student.id)
+                                    } else {
+                                        selectedStudentIds.remove(student.id)
+                                    }
+                                }
+                            )) {
+                                Text(student.name ?? "Student")
+                            }
+                        }
+                    }
+                }
             }
             .navigationTitle("Edit Resource")
             .navigationBarTitleDisplayMode(.inline)
@@ -698,6 +761,7 @@ private struct EditResourceSheet: View {
                 displayName = resource.displayName
                 selectedFolderId = resource.folderId
                 selectedAssignmentId = resource.assignmentId
+                selectedStudentIds = Set(resource.assignedStudentIds)
                 Task { await loadAssignments() }
             }
             .toolbar {
@@ -724,7 +788,8 @@ private struct EditResourceSheet: View {
                 id: resource.id,
                 displayName: displayName.trimmingCharacters(in: .whitespaces),
                 folderId: selectedFolderId,
-                assignmentId: selectedAssignmentId
+                assignmentId: selectedAssignmentId,
+                assignedStudentIds: Array(selectedStudentIds)
             )
             onSaved()
         } catch {

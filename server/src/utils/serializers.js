@@ -200,6 +200,7 @@ export function serializeResource (resource) {
     mimeType: resource.mimeType ?? null,
     fileSize: resource.fileSize ?? null,
     assignmentId: resource.assignmentId?.toString?.() ?? resource.assignmentId ?? null,
+    assignedStudentIds: (resource.assignedStudentIds ?? []).map(id => id?.toString?.() ?? id),
     createdAt: resource.createdAt,
     updatedAt: resource.updatedAt
   }

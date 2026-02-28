@@ -608,13 +608,14 @@ final class APIClient {
         let url: String
         let folderId: String?
         let assignmentId: String?
+        let assignedStudentIds: [String]
     }
-    func createResourceLink(displayName: String, url: String, folderId: String?, assignmentId: String?) async throws -> Resource {
-        let body = CreateResourceLinkRequest(displayName: displayName, url: url, folderId: folderId, assignmentId: assignmentId)
+    func createResourceLink(displayName: String, url: String, folderId: String?, assignmentId: String?, assignedStudentIds: [String] = []) async throws -> Resource {
+        let body = CreateResourceLinkRequest(displayName: displayName, url: url, folderId: folderId, assignmentId: assignmentId, assignedStudentIds: assignedStudentIds)
         let r = try await request(Endpoint(path: "api/resources", method: .post, body: body), responseType: ResourceResponse.self)
         return r.resource
     }
-    func uploadResource(displayName: String, type: ResourceType, folderId: String?, assignmentId: String?, fileName: String, fileData: Data, mimeType: String) async throws -> Resource {
+    func uploadResource(displayName: String, type: ResourceType, folderId: String?, assignmentId: String?, assignedStudentIds: [String] = [], fileName: String, fileData: Data, mimeType: String) async throws -> Resource {
         var request = URLRequest(url: baseURL.appendingPathComponent("api/resources/upload"))
         request.httpMethod = "POST"
         if let token = tokenStore.token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
@@ -630,6 +631,9 @@ final class APIClient {
         appendField("type", type.rawValue)
         if let f = folderId { appendField("folderId", f) }
         if let a = assignmentId { appendField("assignmentId", a) }
+        for sid in assignedStudentIds {
+            appendField("assignedStudentIds", sid)
+        }
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
         body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
@@ -645,9 +649,10 @@ final class APIClient {
         let displayName: String?
         let folderId: String?
         let assignmentId: String?
+        let assignedStudentIds: [String]?
     }
-    func updateResource(id: String, displayName: String?, folderId: String?, assignmentId: String?) async throws -> Resource {
-        let body = UpdateResourceRequest(displayName: displayName, folderId: folderId, assignmentId: assignmentId)
+    func updateResource(id: String, displayName: String?, folderId: String?, assignmentId: String?, assignedStudentIds: [String]? = nil) async throws -> Resource {
+        let body = UpdateResourceRequest(displayName: displayName, folderId: folderId, assignmentId: assignmentId, assignedStudentIds: assignedStudentIds)
         let r = try await request(Endpoint(path: "api/resources/\(id)", method: .patch, body: body), responseType: ResourceResponse.self)
         return r.resource
     }

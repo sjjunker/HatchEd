@@ -35,12 +35,6 @@ struct PortfolioView: View {
                     } else {
                         portfoliosList
                     }
-                    if let errorMessage = viewModel.errorMessage {
-                        Text(errorMessage)
-                            .font(.subheadline)
-                            .foregroundColor(.hatchEdCoralAccent)
-                            .padding()
-                    }
                 }
                 .padding()
                 .padding(.bottom, isParent ? 80 : 24)

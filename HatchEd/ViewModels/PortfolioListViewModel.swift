@@ -24,6 +24,13 @@ final class PortfolioListViewModel: ObservableObject {
             let fetched = try await api.fetchPortfolios()
             portfolios = fetched
         } catch {
+            if error is CancellationError {
+                return
+            }
+            let message = error.localizedDescription.lowercased()
+            if message == "cancelled" || message == "canceled" {
+                return
+            }
             print("[PortfolioList] Error loading portfolios: \(error)")
             errorMessage = "Failed to load portfolios: \(error.localizedDescription)"
         }

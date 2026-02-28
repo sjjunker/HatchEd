@@ -2,7 +2,7 @@
 
 import { ObjectId } from 'mongodb'
 import { findUserById } from '../models/userModel.js'
-import { createPortfolio, findPortfoliosByFamilyId, findPortfolioById, updatePortfolio, deletePortfolio, portfoliosCollection } from '../models/portfolioModel.js'
+import { createPortfolio, findPortfoliosByFamilyId, findPortfoliosByStudentId, findPortfolioById, updatePortfolio, deletePortfolio, portfoliosCollection } from '../models/portfolioModel.js'
 import { findStudentWorkFilesByStudentId, createStudentWorkFile, findStudentWorkFileById, deleteStudentWorkFile } from '../models/studentWorkFileModel.js'
 import { findCoursesByStudentId } from '../models/courseModel.js'
 import { findAttendanceForStudent } from '../models/attendanceModel.js'
@@ -58,7 +58,10 @@ export async function getPortfoliosHandler (req, res) {
     return res.json({ portfolios: [] })
   }
 
-  const portfolios = await findPortfoliosByFamilyId(user.familyId)
+  const isStudent = user.role === 'student'
+  const portfolios = isStudent
+    ? await findPortfoliosByStudentId(user._id?.toString?.() ?? req.user.userId)
+    : await findPortfoliosByFamilyId(user.familyId)
   console.log('[Portfolio Controller] Found', portfolios.length, 'portfolios for family', user.familyId)
   
   const portfoliosWithDetails = portfolios.map(portfolio => serializePortfolio(portfolio))
@@ -318,6 +321,10 @@ export async function getPortfolioHandler (req, res) {
   }
 
   if (portfolio.familyId.toString() !== user.familyId.toString()) {
+    return res.status(403).json({ error: { message: 'Not authorized' } })
+  }
+
+  if (user.role === 'student' && portfolio.studentId?.toString() !== (user._id?.toString?.() ?? req.user.userId)) {
     return res.status(403).json({ error: { message: 'Not authorized' } })
   }
   res.json({ portfolio: serializePortfolio(portfolio) })

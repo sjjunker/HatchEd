@@ -25,6 +25,14 @@ struct Planner: View {
 
     private let calendar = Calendar.current
     private let api = APIClient.shared
+    
+    private var isStudentUser: Bool {
+        authViewModel.currentUser?.role == "student"
+    }
+    
+    private var currentStudentId: String? {
+        authViewModel.currentUser?.id
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -188,7 +196,7 @@ struct Planner: View {
         if isLandscape {
             HStack(spacing: 8) {
                 weekNavigationControls(isCompact: true)
-                if !availableStudentsForFilter.isEmpty {
+                if !isStudentUser && !availableStudentsForFilter.isEmpty {
                     studentFilterControl
                 }
                 todayControl
@@ -199,7 +207,7 @@ struct Planner: View {
             VStack(spacing: 8) {
                 weekNavigationControls(isCompact: false)
                 HStack {
-                    if !availableStudentsForFilter.isEmpty {
+                    if !isStudentUser && !availableStudentsForFilter.isEmpty {
                         studentFilterControl
                     }
                     Spacer()
@@ -411,6 +419,9 @@ struct Planner: View {
 
     private func filteredPlannerTasks(for date: Date) -> [PlannerTask] {
         taskStore.tasks(for: date).filter { task in
+            if isStudentUser, let currentStudentId {
+                return task.studentIds.contains(currentStudentId)
+            }
             guard let selectedStudentFilterId else { return true }
             return task.studentIds.isEmpty || task.studentIds.contains(selectedStudentFilterId)
         }
@@ -418,6 +429,10 @@ struct Planner: View {
 
     private func filteredAssignmentTasks(for date: Date) -> [PlannerTask] {
         assignmentsToTasks(for: date).filter { task in
+            if isStudentUser, let currentStudentId {
+                guard let assignment = assignmentForTask(task) else { return false }
+                return assignment.studentId == currentStudentId
+            }
             guard let selectedStudentFilterId else { return true }
             guard let assignment = assignmentForTask(task) else { return true }
             return assignment.studentId == selectedStudentFilterId

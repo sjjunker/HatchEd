@@ -9,12 +9,18 @@ function assignmentsCollection () {
   return getCollection(ASSIGNMENTS_COLLECTION)
 }
 
-export async function createAssignment ({ familyId, title, studentId, workDates, dueDate, instructions, pointsPossible, pointsAwarded, courseId }) {
+export async function createAssignment ({ familyId, title, studentId, workDates, workDurationsMinutes, dueDate, instructions, pointsPossible, pointsAwarded, courseId }) {
+  const normalizedWorkDates = Array.isArray(workDates) ? workDates.filter(Boolean).map(date => new Date(date)) : []
+  const normalizedDurations = normalizedWorkDates.map((_, index) => {
+    const duration = Array.isArray(workDurationsMinutes) ? Number(workDurationsMinutes[index]) : NaN
+    return Number.isFinite(duration) ? Math.max(15, Math.round(duration)) : 60
+  })
   const assignment = {
     familyId: new ObjectId(familyId),
     title,
     studentId: new ObjectId(studentId),
-    workDates: Array.isArray(workDates) ? workDates.filter(Boolean).map(date => new Date(date)) : [],
+    workDates: normalizedWorkDates,
+    workDurationsMinutes: normalizedDurations,
     dueDate: dueDate ? new Date(dueDate) : null,
     instructions: instructions ?? null,
     pointsPossible: pointsPossible ?? null,
@@ -48,11 +54,32 @@ export async function findAssignmentById (id) {
   return assignmentsCollection().findOne({ _id: new ObjectId(id) })
 }
 
-export async function updateAssignment (id, { title, workDates, dueDate, clearDueDate, instructions, pointsPossible, pointsAwarded, courseId }) {
+export async function updateAssignment (id, { title, workDates, workDurationsMinutes, dueDate, clearDueDate, instructions, pointsPossible, pointsAwarded, courseId }) {
   const update = {}
   if (title !== undefined) update.title = title
   if (workDates !== undefined) {
-    update.workDates = Array.isArray(workDates) ? workDates.filter(Boolean).map(date => new Date(date)) : []
+    const normalizedWorkDates = Array.isArray(workDates) ? workDates.filter(Boolean).map(date => new Date(date)) : []
+    update.workDates = normalizedWorkDates
+    if (workDurationsMinutes !== undefined) {
+      update.workDurationsMinutes = normalizedWorkDates.map((_, index) => {
+        const duration = Array.isArray(workDurationsMinutes) ? Number(workDurationsMinutes[index]) : NaN
+        return Number.isFinite(duration) ? Math.max(15, Math.round(duration)) : 60
+      })
+    } else {
+      const existingAssignment = await findAssignmentById(id)
+      const existingDurations = Array.isArray(existingAssignment?.workDurationsMinutes) ? existingAssignment.workDurationsMinutes : []
+      update.workDurationsMinutes = normalizedWorkDates.map((_, index) => {
+        const duration = Number(existingDurations[index])
+        return Number.isFinite(duration) ? Math.max(15, Math.round(duration)) : 60
+      })
+    }
+  } else if (workDurationsMinutes !== undefined) {
+    update.workDurationsMinutes = Array.isArray(workDurationsMinutes)
+      ? workDurationsMinutes.map(value => {
+        const duration = Number(value)
+        return Number.isFinite(duration) ? Math.max(15, Math.round(duration)) : 60
+      })
+      : []
   }
   if (clearDueDate === true) {
     update.dueDate = null

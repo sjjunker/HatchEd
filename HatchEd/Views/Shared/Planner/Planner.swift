@@ -391,7 +391,7 @@ struct Planner: View {
                             id: "assignment-work-\(assignment.id)::\(index)",
                             title: assignment.title,
                             startDate: workDate,
-                            durationMinutes: 60,
+                            durationMinutes: index < assignment.workDurationsMinutes.count ? max(15, assignment.workDurationsMinutes[index]) : 60,
                             colorName: workColor,
                             subject: assignment.courseId.flatMap { id in courses.first(where: { $0.id == id })?.name },
                             studentIds: [assignment.studentId]

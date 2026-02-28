@@ -12,6 +12,7 @@ struct Assignment: Identifiable, Codable, Equatable, Hashable {
     var title: String
     var studentId: String
     var workDates: [Date]
+    var workDurationsMinutes: [Int]
     var dueDate: Date?
     var instructions: String?
     var pointsPossible: Double?
@@ -22,11 +23,15 @@ struct Assignment: Identifiable, Codable, Equatable, Hashable {
     var createdAt: Date?
     var updatedAt: Date?
 
-    init(id: String = UUID().uuidString, title: String, studentId: String, workDates: [Date] = [], dueDate: Date? = nil, instructions: String? = nil, pointsPossible: Double? = nil, pointsAwarded: Double? = nil, courseId: String? = nil, questions: [Question] = [], completed: Bool = false, createdAt: Date? = nil, updatedAt: Date? = nil) {
+    init(id: String = UUID().uuidString, title: String, studentId: String, workDates: [Date] = [], workDurationsMinutes: [Int] = [], dueDate: Date? = nil, instructions: String? = nil, pointsPossible: Double? = nil, pointsAwarded: Double? = nil, courseId: String? = nil, questions: [Question] = [], completed: Bool = false, createdAt: Date? = nil, updatedAt: Date? = nil) {
         self.id = id
         self.title = title
         self.studentId = studentId
         self.workDates = workDates
+        self.workDurationsMinutes = workDates.indices.map { index in
+            let duration = index < workDurationsMinutes.count ? workDurationsMinutes[index] : 60
+            return max(15, duration)
+        }
         self.dueDate = dueDate
         self.instructions = instructions
         self.pointsPossible = pointsPossible
@@ -48,6 +53,7 @@ struct Assignment: Identifiable, Codable, Equatable, Hashable {
         case title
         case studentId
         case workDates
+        case workDurationsMinutes
         case workDate
         case dueDate
         case instructions
@@ -67,6 +73,11 @@ struct Assignment: Identifiable, Codable, Equatable, Hashable {
         studentId = try container.decode(String.self, forKey: .studentId)
         workDates = try container.decodeIfPresent([Date].self, forKey: .workDates)
             ?? (try container.decodeIfPresent(Date.self, forKey: .workDate).map { [$0] } ?? [])
+        let decodedDurations = try container.decodeIfPresent([Int].self, forKey: .workDurationsMinutes) ?? []
+        workDurationsMinutes = workDates.indices.map { index in
+            let duration = index < decodedDurations.count ? decodedDurations[index] : 60
+            return max(15, duration)
+        }
         dueDate = try container.decodeIfPresent(Date.self, forKey: .dueDate)
         instructions = try container.decodeIfPresent(String.self, forKey: .instructions)
         pointsPossible = try container.decodeIfPresent(Double.self, forKey: .pointsPossible)
@@ -84,6 +95,7 @@ struct Assignment: Identifiable, Codable, Equatable, Hashable {
         try container.encode(title, forKey: .title)
         try container.encode(studentId, forKey: .studentId)
         try container.encode(workDates, forKey: .workDates)
+        try container.encode(workDurationsMinutes, forKey: .workDurationsMinutes)
         try container.encodeIfPresent(dueDate, forKey: .dueDate)
         try container.encodeIfPresent(instructions, forKey: .instructions)
         try container.encodeIfPresent(pointsPossible, forKey: .pointsPossible)

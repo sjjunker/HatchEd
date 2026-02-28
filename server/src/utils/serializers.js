@@ -102,6 +102,7 @@ export function serializeAssignment (assignment) {
     title: assignment.title,
     studentId: assignment.studentId?.toString?.() ?? assignment.studentId,
     workDates: assignment.workDates ?? [],
+    workDurationsMinutes: assignment.workDurationsMinutes ?? [],
     dueDate: assignment.dueDate ?? null,
     instructions: assignment.instructions ?? null,
     pointsPossible: assignment.pointsPossible ?? null,

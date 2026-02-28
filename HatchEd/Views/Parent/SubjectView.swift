@@ -181,7 +181,7 @@ struct SubjectView: View {
             id: assignment.id,
             title: assignment.title,
             startDate: startDate,
-            durationMinutes: 60, // Default duration
+            durationMinutes: assignment.workDurationsMinutes.first ?? 60,
             colorName: linkedCourse?.colorName ?? "Blue",
             subject: courseName
         )
@@ -591,6 +591,7 @@ private struct AddItemView: View {
     @State private var selectedStudentIdsForCourse: Set<String> = []
     @State private var assignmentTitle = ""
     @State private var assignmentWorkDates: [Date] = [Date()]
+    @State private var assignmentWorkDurationsMinutes: [Int] = [60]
     @State private var assignmentDueDate = Date()
     @State private var selectedCourseForAssignment: Course?
     @State private var selectedStudentForAssignment: User?
@@ -638,6 +639,7 @@ private struct AddItemView: View {
                     if assignmentWorkDates.isEmpty {
                         Button("Add Work Date & Time") {
                             assignmentWorkDates.append(Date())
+                            assignmentWorkDurationsMinutes.append(60)
                         }
                     } else {
                         ForEach(assignmentWorkDates.indices, id: \.self) { index in
@@ -645,12 +647,27 @@ private struct AddItemView: View {
                                 get: { assignmentWorkDates[index] },
                                 set: { assignmentWorkDates[index] = $0 }
                             ), displayedComponents: [.date, .hourAndMinute])
+                            Stepper(value: Binding(
+                                get: {
+                                    index < assignmentWorkDurationsMinutes.count ? assignmentWorkDurationsMinutes[index] : 60
+                                },
+                                set: { newValue in
+                                    if index >= assignmentWorkDurationsMinutes.count {
+                                        assignmentWorkDurationsMinutes.append(contentsOf: Array(repeating: 60, count: index - assignmentWorkDurationsMinutes.count + 1))
+                                    }
+                                    assignmentWorkDurationsMinutes[index] = newValue
+                                }
+                            ), in: 15...480, step: 15) {
+                                Text("Duration: \(formattedDuration(index < assignmentWorkDurationsMinutes.count ? assignmentWorkDurationsMinutes[index] : 60))")
+                            }
                         }
                         .onDelete { offsets in
                             assignmentWorkDates.remove(atOffsets: offsets)
+                            assignmentWorkDurationsMinutes.remove(atOffsets: offsets)
                         }
                         Button("Add Another Work Time") {
                             assignmentWorkDates.append(assignmentWorkDates.last ?? Date())
+                            assignmentWorkDurationsMinutes.append(assignmentWorkDurationsMinutes.last ?? 60)
                         }
                     }
                     
@@ -754,6 +771,7 @@ private struct AddItemView: View {
                     title: assignmentTitle.trimmingCharacters(in: .whitespaces),
                     studentId: student.id,
                     workDates: assignmentWorkDates.isEmpty ? nil : assignmentWorkDates,
+                    workDurationsMinutes: assignmentWorkDates.isEmpty ? nil : normalizedAssignmentDurations,
                     dueDate: hasDueDate ? assignmentDueDate : nil,
                     instructions: nil,
                     pointsPossible: nil,
@@ -766,6 +784,22 @@ private struct AddItemView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private var normalizedAssignmentDurations: [Int] {
+        assignmentWorkDates.indices.map { index in
+            let duration = index < assignmentWorkDurationsMinutes.count ? assignmentWorkDurationsMinutes[index] : 60
+            return max(15, duration)
+        }
+    }
+
+    private func formattedDuration(_ durationMinutes: Int) -> String {
+        let hours = durationMinutes / 60
+        let minutes = durationMinutes % 60
+        if hours > 0 {
+            return minutes == 0 ? "\(hours) hr" : "\(hours) hr \(minutes) min"
+        }
+        return "\(minutes) min"
     }
 }
 

@@ -16,6 +16,7 @@ struct AddAssignmentView: View {
 
     @State private var title: String = ""
     @State private var workDates: [Date]
+    @State private var workDurationsMinutes: [Int]
     @State private var dueDate: Date
     @State private var hasDueDate: Bool = true
     @State private var selectedStudent: User? = nil
@@ -32,6 +33,7 @@ struct AddAssignmentView: View {
         self.students = students
         self.onSaveAssignment = onSaveAssignment
         _workDates = State(initialValue: [initialDate])
+        _workDurationsMinutes = State(initialValue: [60])
         _dueDate = State(initialValue: initialDate)
     }
 
@@ -44,6 +46,7 @@ struct AddAssignmentView: View {
                     if workDates.isEmpty {
                         Button("Add Work Date & Time") {
                             workDates.append(initialDate)
+                            workDurationsMinutes.append(60)
                         }
                     } else {
                         ForEach(workDates.indices, id: \.self) { index in
@@ -51,12 +54,27 @@ struct AddAssignmentView: View {
                                 get: { workDates[index] },
                                 set: { workDates[index] = $0 }
                             ), displayedComponents: [.date, .hourAndMinute])
+                            Stepper(value: Binding(
+                                get: {
+                                    index < workDurationsMinutes.count ? workDurationsMinutes[index] : 60
+                                },
+                                set: { newValue in
+                                    if index >= workDurationsMinutes.count {
+                                        workDurationsMinutes.append(contentsOf: Array(repeating: 60, count: index - workDurationsMinutes.count + 1))
+                                    }
+                                    workDurationsMinutes[index] = newValue
+                                }
+                            ), in: 15...480, step: 15) {
+                                Text("Duration: \(formattedDuration(index < workDurationsMinutes.count ? workDurationsMinutes[index] : 60))")
+                            }
                         }
                         .onDelete { offsets in
                             workDates.remove(atOffsets: offsets)
+                            workDurationsMinutes.remove(atOffsets: offsets)
                         }
                         Button("Add Another Work Time") {
                             workDates.append(workDates.last ?? initialDate)
+                            workDurationsMinutes.append(workDurationsMinutes.last ?? 60)
                         }
                     }
                     
@@ -192,6 +210,7 @@ struct AddAssignmentView: View {
                 title: trimmedTitle,
                 studentId: student.id,
                 workDates: workDates.isEmpty ? nil : workDates,
+                workDurationsMinutes: workDates.isEmpty ? nil : normalizedWorkDurations,
                 dueDate: hasDueDate ? dueDate : nil,
                 instructions: nil,
                 pointsPossible: nil,
@@ -204,6 +223,22 @@ struct AddAssignmentView: View {
             errorMessage = "Failed to create assignment: \(error.localizedDescription)"
             isSaving = false
         }
+    }
+
+    private var normalizedWorkDurations: [Int] {
+        workDates.indices.map { index in
+            let duration = index < workDurationsMinutes.count ? workDurationsMinutes[index] : 60
+            return max(15, duration)
+        }
+    }
+
+    private func formattedDuration(_ durationMinutes: Int) -> String {
+        let hours = durationMinutes / 60
+        let minutes = durationMinutes % 60
+        if hours > 0 {
+            return minutes == 0 ? "\(hours) hr" : "\(hours) hr \(minutes) min"
+        }
+        return "\(minutes) min"
     }
 }
 

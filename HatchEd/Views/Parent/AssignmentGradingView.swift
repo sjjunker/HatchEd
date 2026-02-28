@@ -303,6 +303,7 @@ struct AssignmentGradingView: View {
                 id: assignment.id,
                 title: nil,
                 workDates: assignment.workDates,
+                workDurationsMinutes: assignment.workDurationsMinutes,
                 dueDate: assignment.dueDate,
                 instructions: nil,
                 pointsPossible: pointsPossibleValue,

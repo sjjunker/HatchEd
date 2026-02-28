@@ -22,6 +22,7 @@ struct TaskDetailSheetView: View {
     @State private var editedTitle: String = ""
     @State private var editedDate: Date = Date()
     @State private var editedWorkDates: [Date] = []
+    @State private var editedWorkDurationsMinutes: [Int] = []
     @State private var editedDueDate: Date = Date()
     @State private var hasDueDate: Bool = false
     @State private var editedDurationMinutes: Int = 60
@@ -73,6 +74,7 @@ struct TaskDetailSheetView: View {
         let initialDate = assignment?.dueDate ?? task.startDate
         _editedDate = State(initialValue: initialDate)
         _editedWorkDates = State(initialValue: assignment?.workDates ?? [])
+        _editedWorkDurationsMinutes = State(initialValue: assignment?.workDurationsMinutes ?? [])
         _editedDueDate = State(initialValue: assignment?.dueDate ?? task.startDate)
         _hasDueDate = State(initialValue: assignment?.dueDate != nil)
         _editedDurationMinutes = State(initialValue: task.durationMinutes)
@@ -340,13 +342,18 @@ struct TaskDetailSheetView: View {
                                     .font(.headline)
                                     .foregroundColor(.hatchEdText)
 
-                                ForEach(Array(assignment.workDates.sorted().enumerated()), id: \.offset) { _, workDate in
+                                ForEach(Array(assignment.workDates.enumerated()), id: \.offset) { index, workDate in
                                     HStack {
                                         Image(systemName: "hammer.fill")
                                             .foregroundColor(.hatchEdAccent)
-                                        Text(dateFormatter.string(from: workDate))
-                                            .font(.body)
-                                            .foregroundColor(.hatchEdText)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(dateFormatter.string(from: workDate))
+                                                .font(.body)
+                                                .foregroundColor(.hatchEdText)
+                                            Text("Duration: \(durationLabel(assignment.workDurationsMinutes, index: index))")
+                                                .font(.caption)
+                                                .foregroundColor(.hatchEdSecondaryText)
+                                        }
                                     }
                                 }
                             }
@@ -545,6 +552,7 @@ struct TaskDetailSheetView: View {
                     if editedWorkDates.isEmpty {
                         Button("Add Work Date & Time") {
                             editedWorkDates.append(editedDate)
+                            editedWorkDurationsMinutes.append(60)
                         }
                     } else {
                         ForEach(editedWorkDates.indices, id: \.self) { index in
@@ -552,12 +560,27 @@ struct TaskDetailSheetView: View {
                                 get: { editedWorkDates[index] },
                                 set: { editedWorkDates[index] = $0 }
                             ), displayedComponents: [.date, .hourAndMinute])
+                            Stepper(value: Binding(
+                                get: {
+                                    index < editedWorkDurationsMinutes.count ? editedWorkDurationsMinutes[index] : 60
+                                },
+                                set: { newValue in
+                                    if index >= editedWorkDurationsMinutes.count {
+                                        editedWorkDurationsMinutes.append(contentsOf: Array(repeating: 60, count: index - editedWorkDurationsMinutes.count + 1))
+                                    }
+                                    editedWorkDurationsMinutes[index] = newValue
+                                }
+                            ), in: 15...480, step: 15) {
+                                Text("Duration: \(formattedDurationValue(index < editedWorkDurationsMinutes.count ? editedWorkDurationsMinutes[index] : 60))")
+                            }
                         }
                         .onDelete { offsets in
                             editedWorkDates.remove(atOffsets: offsets)
+                            editedWorkDurationsMinutes.remove(atOffsets: offsets)
                         }
                         Button("Add Another Work Time") {
                             editedWorkDates.append(editedWorkDates.last ?? editedDate)
+                            editedWorkDurationsMinutes.append(editedWorkDurationsMinutes.last ?? 60)
                         }
                     }
                     Toggle("Has Due Date", isOn: $hasDueDate)
@@ -720,6 +743,27 @@ struct TaskDetailSheetView: View {
         }
         return "\(minutes) min"
     }
+
+    private func formattedDurationValue(_ durationMinutes: Int) -> String {
+        let hours = durationMinutes / 60
+        let minutes = durationMinutes % 60
+        if hours > 0 {
+            return minutes == 0 ? "\(hours) hr" : "\(hours) hr \(minutes) min"
+        }
+        return "\(minutes) min"
+    }
+
+    private func durationLabel(_ durations: [Int], index: Int) -> String {
+        let duration = index < durations.count ? max(15, durations[index]) : 60
+        return formattedDurationValue(duration)
+    }
+
+    private var normalizedEditedWorkDurations: [Int] {
+        editedWorkDates.indices.map { index in
+            let duration = index < editedWorkDurationsMinutes.count ? editedWorkDurationsMinutes[index] : 60
+            return max(15, duration)
+        }
+    }
     
     // Get the display student - either from assignment or if course exists
     private var displayStudent: User? {
@@ -755,6 +799,7 @@ struct TaskDetailSheetView: View {
         // For assignments, use the assignment's dueDate; for tasks, use task.startDate
         editedDate = assignment?.dueDate ?? task.startDate
         editedWorkDates = assignment?.workDates ?? []
+        editedWorkDurationsMinutes = assignment?.workDurationsMinutes ?? []
         editedDueDate = assignment?.dueDate ?? task.startDate
         hasDueDate = assignment?.dueDate != nil
         editedDurationMinutes = task.durationMinutes
@@ -799,6 +844,7 @@ struct TaskDetailSheetView: View {
         editedTitle = assignment?.title ?? task.title
         editedDate = assignment?.dueDate ?? task.startDate
         editedWorkDates = assignment?.workDates ?? []
+        editedWorkDurationsMinutes = assignment?.workDurationsMinutes ?? []
         editedDueDate = assignment?.dueDate ?? task.startDate
         hasDueDate = assignment?.dueDate != nil
         editedDurationMinutes = task.durationMinutes
@@ -839,6 +885,7 @@ struct TaskDetailSheetView: View {
                     id: assignment.id,
                     title: trimmedTitle,
                     workDates: editedWorkDates.isEmpty ? nil : editedWorkDates,
+                    workDurationsMinutes: editedWorkDates.isEmpty ? nil : normalizedEditedWorkDurations,
                     dueDate: hasDueDate ? editedDueDate : nil,
                     clearDueDate: hasDueDate ? nil : true,
                     instructions: nil,
@@ -876,6 +923,7 @@ struct TaskDetailSheetView: View {
                         title: trimmedTitle,
                         studentId: student.id,
                         workDates: [editedDate],
+                        workDurationsMinutes: [editedDurationMinutes],
                         dueDate: nil,
                         instructions: nil,
                         pointsPossible: nil,

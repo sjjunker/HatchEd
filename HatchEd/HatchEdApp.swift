@@ -75,7 +75,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         }
         guard let orientation else { return }
         UIDevice.current.setValue(orientation.rawValue, forKey: "orientation")
-        UINavigationController.attemptRotationToDeviceOrientation()
+        UIViewController.attemptRotationToDeviceOrientation()
     }
     
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {

@@ -11,12 +11,23 @@ import SwiftUI
 struct DayDetailSheetView: View {
     let date: Date
     let tasks: [PlannerTask]
+    let studentNamesById: [String: String]
+    let showsTaskStudents: Bool
     let onDelete: (PlannerTask) -> Void
     let onTaskSelected: ((PlannerTask) -> Void)?
     
-    init(date: Date, tasks: [PlannerTask], onDelete: @escaping (PlannerTask) -> Void, onTaskSelected: ((PlannerTask) -> Void)? = nil) {
+    init(
+        date: Date,
+        tasks: [PlannerTask],
+        studentNamesById: [String: String] = [:],
+        showsTaskStudents: Bool = false,
+        onDelete: @escaping (PlannerTask) -> Void,
+        onTaskSelected: ((PlannerTask) -> Void)? = nil
+    ) {
         self.date = date
         self.tasks = tasks
+        self.studentNamesById = studentNamesById
+        self.showsTaskStudents = showsTaskStudents
         self.onDelete = onDelete
         self.onTaskSelected = onTaskSelected
     }
@@ -58,7 +69,10 @@ struct DayDetailSheetView: View {
                                 Button {
                                     onTaskSelected?(task)
                                 } label: {
-                                    PlannerTaskRow(task: task)
+                                    PlannerTaskRow(
+                                        task: task,
+                                        studentNamesText: studentNamesText(for: task)
+                                    )
                                 }
                                 .buttonStyle(.plain)
                                 .padding(.horizontal)
@@ -81,6 +95,13 @@ struct DayDetailSheetView: View {
             .navigationTitle("Day Overview")
             .navigationBarTitleDisplayMode(.inline)
         }
+    }
+
+    private func studentNamesText(for task: PlannerTask) -> String? {
+        guard showsTaskStudents else { return nil }
+        let names = task.studentIds.compactMap { studentNamesById[$0] }
+        guard !names.isEmpty else { return nil }
+        return names.joined(separator: ", ")
     }
 }
 

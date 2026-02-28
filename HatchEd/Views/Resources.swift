@@ -72,6 +72,7 @@ struct Resources: View {
     @State private var currentFolderId: String?
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var showingAddActions = false
     @State private var showingAddFolder = false
     @State private var showingAddResource = false
     @State private var newFolderName = ""
@@ -211,72 +212,92 @@ struct Resources: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            searchBar
-            if isLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity)
-                    .padding()
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 12) {
-                        ForEach(currentSubfolders) { folder in
-                            FolderRow(
-                                folder: folder,
-                                showsManagementActions: isParent,
-                                onTap: {
-                                    if folder.scheduledDeletionAt != nil {
-                                        pendingFolderAlert = folder
-                                    } else {
-                                        currentFolderId = folder.id
-                                    }
-                                },
-                                onEdit: { folderToEdit = folder },
-                                onDelete: { beginDeleteFolder(folder) }
-                            )
+        ZStack(alignment: .bottomTrailing) {
+            VStack(spacing: 0) {
+                searchBar
+                if isLoading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                } else {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 12) {
+                            ForEach(currentSubfolders) { folder in
+                                FolderRow(
+                                    folder: folder,
+                                    showsManagementActions: isParent,
+                                    onTap: {
+                                        if folder.scheduledDeletionAt != nil {
+                                            pendingFolderAlert = folder
+                                        } else {
+                                            currentFolderId = folder.id
+                                        }
+                                    },
+                                    onEdit: { folderToEdit = folder },
+                                    onDelete: { beginDeleteFolder(folder) }
+                                )
+                            }
+                            ForEach(currentResources) { resource in
+                                ResourceRow(
+                                    resource: resource,
+                                    detailsText: isSearching
+                                        ? "\(resource.type.displayName) • \(folderPathString(folderId: resource.folderId, in: folders))"
+                                        : resource.type.displayName,
+                                    showsManagementActions: isParent,
+                                    onTap: { openResource(resource) },
+                                    onEdit: { resourceToEdit = resource },
+                                    onDelete: { Task { await deleteResource(resource) } }
+                                )
+                            }
+                            if currentSubfolders.isEmpty && currentResources.isEmpty {
+                                Text(isSearching ? "No resources match your search" : "No folders or resources here")
+                                    .font(.subheadline)
+                                    .foregroundColor(.hatchEdSecondaryText)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 32)
+                            }
                         }
-                        ForEach(currentResources) { resource in
-                            ResourceRow(
-                                resource: resource,
-                                detailsText: isSearching
-                                    ? "\(resource.type.displayName) • \(folderPathString(folderId: resource.folderId, in: folders))"
-                                    : resource.type.displayName,
-                                showsManagementActions: isParent,
-                                onTap: { openResource(resource) },
-                                onEdit: { resourceToEdit = resource },
-                                onDelete: { Task { await deleteResource(resource) } }
-                            )
-                        }
-                        if currentSubfolders.isEmpty && currentResources.isEmpty {
-                            Text(isSearching ? "No resources match your search" : "No folders or resources here")
-                                .font(.subheadline)
-                                .foregroundColor(.hatchEdSecondaryText)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 32)
+                        .padding()
+                    }
+                }
+            }
+
+            if showingAddActions {
+                Color.black.opacity(0.001)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            showingAddActions = false
                         }
                     }
-                    .padding()
+            }
+
+            if isParent {
+                VStack(alignment: .trailing, spacing: 10) {
+                    if showingAddActions {
+                        resourcesAddActionsMenu
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            showingAddActions.toggle()
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.title)
+                            .foregroundColor(.hatchEdWhite)
+                            .padding()
+                            .background(Color.hatchEdAccent)
+                            .clipShape(Circle())
+                            .shadow(radius: 6)
+                    }
                 }
+                .padding()
             }
         }
         .navigationTitle(currentFolder == nil ? "Resources" : currentFolder?.name ?? "Folder")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if isParent {
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button { showingAddFolder = true } label: {
-                            Label("New Folder", systemImage: "folder.badge.plus")
-                        }
-                        Button { showingAddResource = true } label: {
-                            Label("Add Resource", systemImage: "plus.circle")
-                        }
-                    } label: {
-                        Image(systemName: "plus.circle.fill")
-                    }
-                }
-            }
-        }
         .safeAreaInset(edge: .top, spacing: 0) {
             if breadcrumbPath.count > 1 {
                 breadcrumbBar
@@ -434,6 +455,38 @@ struct Resources: View {
                 }
             }
         }
+    }
+
+    private var resourcesAddActionsMenu: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                showingAddActions = false
+                showingAddFolder = true
+            } label: {
+                Label("New Folder", systemImage: "folder.badge.plus")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+            }
+            Divider()
+            Button {
+                showingAddActions = false
+                showingAddResource = true
+            } label: {
+                Label("Add Resource", systemImage: "plus.circle")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+            }
+        }
+        .font(.subheadline)
+        .foregroundColor(.hatchEdText)
+        .frame(width: 210)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.hatchEdCardBackground)
+                .shadow(color: .black.opacity(0.14), radius: 8, x: 0, y: 4)
+        )
     }
 
     private func load() async {

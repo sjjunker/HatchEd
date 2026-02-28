@@ -10,6 +10,7 @@ import SwiftUI
 
 struct PlannerTaskRow: View {
     let task: PlannerTask
+    let studentNamesText: String?
 
     private let formatter: DateFormatter = {
         let f = DateFormatter()
@@ -23,6 +24,11 @@ struct PlannerTaskRow: View {
 
     private var isDueAssignment: Bool {
         task.id.hasPrefix("assignment-due-")
+    }
+
+    init(task: PlannerTask, studentNamesText: String? = nil) {
+        self.task = task
+        self.studentNamesText = studentNamesText
     }
     
     var body: some View {
@@ -79,6 +85,17 @@ struct PlannerTaskRow: View {
                 }
                 .font(.caption)
                 .foregroundColor(.hatchEdSecondaryText)
+
+                if let studentNamesText, !studentNamesText.isEmpty {
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.fill")
+                            .font(.caption2)
+                            .foregroundColor(.hatchEdAccent)
+                        Text(studentNamesText)
+                            .font(.caption)
+                            .foregroundColor(.hatchEdSecondaryText)
+                    }
+                }
             }
 
             Spacer()

@@ -58,6 +58,7 @@ struct Resources: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var folders: [ResourceFolder] = []
     @State private var resources: [Resource] = []
+    @State private var allResources: [Resource] = []
     @State private var currentFolderId: String?
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -68,6 +69,7 @@ struct Resources: View {
     @State private var folderToEdit: ResourceFolder?
     @State private var previewFileURL: URL?
     @State private var previewResourceType: ResourceType?
+    @State private var searchText = ""
     private let api = APIClient.shared
     
     private var isParent: Bool {
@@ -80,6 +82,27 @@ struct Resources: View {
 
     private var currentFolder: ResourceFolder? {
         currentFolderId.flatMap { id in folders.first { $0.id == id } }
+    }
+    
+    private var isSearching: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+    
+    private var currentSubfolders: [ResourceFolder] {
+        if isSearching { return [] }
+        let inFolder = folders.filter { $0.parentFolderId == currentFolderId }
+        return inFolder
+    }
+    
+    private var currentResources: [Resource] {
+        guard isSearching else {
+            return resources
+        }
+        return allResources.filter { resource in
+            resource.displayName.localizedCaseInsensitiveContains(searchText)
+                || resource.type.displayName.localizedCaseInsensitiveContains(searchText)
+                || folderPathString(folderId: resource.folderId, in: folders).localizedCaseInsensitiveContains(searchText)
+        }
     }
 
     /// Path from root to current folder; nil = root. First element is nil (Resources), then parent chain, then current.
@@ -143,9 +166,37 @@ struct Resources: View {
         .frame(maxWidth: .infinity)
         .background(Color(.secondarySystemBackground))
     }
+    
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundColor(.hatchEdSecondaryText)
+            TextField("Search resources", text: $searchText)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.hatchEdSecondaryText)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.hatchEdCardBackground)
+        )
+        .padding(.horizontal)
+        .padding(.top, 8)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
+            searchBar
             if isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity)
@@ -153,8 +204,7 @@ struct Resources: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
-                        let subfolders = folders.filter { $0.parentFolderId == currentFolderId }
-                        ForEach(subfolders) { folder in
+                        ForEach(currentSubfolders) { folder in
                             FolderRow(
                                 folder: folder,
                                 showsManagementActions: isParent,
@@ -163,17 +213,20 @@ struct Resources: View {
                                 onDelete: { Task { await deleteFolder(folder) } }
                             )
                         }
-                        ForEach(resources) { resource in
+                        ForEach(currentResources) { resource in
                             ResourceRow(
                                 resource: resource,
+                                detailsText: isSearching
+                                    ? "\(resource.type.displayName) • \(folderPathString(folderId: resource.folderId, in: folders))"
+                                    : resource.type.displayName,
                                 showsManagementActions: isParent,
                                 onTap: { openResource(resource) },
                                 onEdit: { resourceToEdit = resource },
                                 onDelete: { Task { await deleteResource(resource) } }
                             )
                         }
-                        if subfolders.isEmpty && resources.isEmpty {
-                            Text("No folders or resources here")
+                        if currentSubfolders.isEmpty && currentResources.isEmpty {
+                            Text(isSearching ? "No resources match your search" : "No folders or resources here")
                                 .font(.subheadline)
                                 .foregroundColor(.hatchEdSecondaryText)
                                 .frame(maxWidth: .infinity)
@@ -286,10 +339,15 @@ struct Resources: View {
     private func load() async {
         await MainActor.run { isLoading = true; errorMessage = nil }
         do {
-            let (f, r) = try await (api.fetchResourceFolders(), api.fetchResources(folderId: currentFolderId))
+            let (f, r, all) = try await (
+                api.fetchResourceFolders(),
+                api.fetchResources(folderId: currentFolderId),
+                api.fetchResources(includeAll: true)
+            )
             await MainActor.run {
                 folders = f
                 resources = r
+                allResources = all
                 isLoading = false
             }
         } catch {
@@ -396,6 +454,7 @@ private struct FolderRow: View {
 
 private struct ResourceRow: View {
     let resource: Resource
+    let detailsText: String
     let showsManagementActions: Bool
     let onTap: () -> Void
     let onEdit: () -> Void
@@ -412,7 +471,7 @@ private struct ResourceRow: View {
                         Text(resource.displayName)
                             .foregroundColor(.hatchEdText)
                             .lineLimit(1)
-                        Text(resource.type.displayName)
+                        Text(detailsText)
                             .font(.caption)
                             .foregroundColor(.hatchEdSecondaryText)
                     }

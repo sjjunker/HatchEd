@@ -124,8 +124,11 @@ export async function getResourcesHandler (req, res) {
   const user = await findUserById(req.user.userId)
   if (!user?.familyId) return res.json({ resources: [] })
   const folderId = req.query.folderId
+  const includeAll = req.query.includeAll === 'true'
   // No folderId or empty = root only (folderId null); otherwise filter by that folder
-  const filterFolderId = folderId === undefined || folderId === '' ? null : folderId
+  const filterFolderId = includeAll
+    ? undefined
+    : (folderId === undefined || folderId === '' ? null : folderId)
   const viewerStudentId = user.role === 'student' ? user._id?.toString?.() ?? req.user.userId : null
   const resources = await findResourcesByFamilyId(user.familyId, { folderId: filterFolderId, viewerStudentId })
   res.json({ resources: resources.map(serializeResource) })

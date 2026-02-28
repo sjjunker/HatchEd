@@ -107,7 +107,7 @@ export async function getFamily (req, res, next) {
   const baseUrl = process.env.INVITE_BASE_URL || 'https://hatched-46ar.onrender.com'
   res.json({
     family: serializeFamily(family),
-    students: students.map((s) => serializeUserWithInvite(s, baseUrl))
+    students: students.map((s) => serializeUserWithInvite(s, baseUrl, family._id))
   })
   } catch (error) {
     next(error)

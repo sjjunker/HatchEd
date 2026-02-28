@@ -2,6 +2,14 @@
 
 export function serializeUser (user) {
   if (!user) return null
+  const hasSignInMethod = Boolean(
+    (typeof user.appleId === 'string' && user.appleId.trim() !== '') ||
+    (typeof user.googleId === 'string' && user.googleId.trim() !== '') ||
+    (typeof user.username === 'string' && user.username.trim() !== '') ||
+    (typeof user.password === 'string' && user.password.trim() !== '')
+  )
+  const hasInviteToken = typeof user.inviteToken === 'string' && user.inviteToken.trim() !== ''
+  const invitePending = user.role === 'student' && hasInviteToken && !hasSignInMethod
   const payload = {
     id: user._id?.toString?.() ?? user._id,
     appleId: user.appleId,
@@ -11,7 +19,7 @@ export function serializeUser (user) {
     email: user.email ?? null,
     role: user.role ?? null,
     familyId: user.familyId ? user.familyId.toString() : null,
-    invitePending: !!(user.inviteToken != null),
+    invitePending,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt
   }
@@ -19,10 +27,22 @@ export function serializeUser (user) {
 }
 
 /** Like serializeUser but adds inviteLink and inviteToken when user has a pending invite (for family students so parent can copy link later). */
-export function serializeUserWithInvite (user, baseUrl) {
+export function serializeUserWithInvite (user, baseUrl, familyIdForContext) {
   const payload = serializeUser(user)
   if (!payload) return null
-  if (user.inviteToken) {
+  const userFamilyId = user.familyId?.toString?.() ?? user.familyId ?? null
+  const contextFamilyId = familyIdForContext?.toString?.() ?? familyIdForContext ?? null
+  const hasMatchingFamilyCode = contextFamilyId != null && userFamilyId != null && userFamilyId === contextFamilyId
+  const hasSignInMethod = Boolean(
+    (typeof user.appleId === 'string' && user.appleId.trim() !== '') ||
+    (typeof user.googleId === 'string' && user.googleId.trim() !== '') ||
+    (typeof user.username === 'string' && user.username.trim() !== '') ||
+    (typeof user.password === 'string' && user.password.trim() !== '')
+  )
+  const hasInviteToken = typeof user.inviteToken === 'string' && user.inviteToken.trim() !== ''
+  payload.invitePending = user.role === 'student' && hasInviteToken && (!hasMatchingFamilyCode || !hasSignInMethod)
+
+  if (payload.invitePending) {
     const invitePath = `/invite?token=${encodeURIComponent(user.inviteToken)}`
     payload.inviteLink = `${baseUrl}${invitePath}`
     payload.inviteToken = user.inviteToken

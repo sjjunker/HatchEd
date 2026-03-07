@@ -7,6 +7,7 @@
 
 import SwiftUI
 import PDFKit
+import UIKit
 
 struct PortfolioDetailView: View {
     let portfolio: Portfolio
@@ -15,6 +16,7 @@ struct PortfolioDetailView: View {
     @State private var pdfData: Data?
     @State private var showingShareSheet = false
     @State private var showingStyleSelection = false
+    @State private var pendingPDFAction: PDFAction? = nil
     @State private var selectedStyle: PDFStyle = .modern
     
     var body: some View {
@@ -116,12 +118,17 @@ struct PortfolioDetailView: View {
                 }
             }
             .sheet(isPresented: $showingStyleSelection) {
-                PDFStyleSelectionSheet(selectedStyle: $selectedStyle) {
+                PDFStyleSelectionSheet(selectedStyle: $selectedStyle, onPrint: {
                     showingStyleSelection = false
-                    Task {
-                        await generatePDF()
-                    }
-                }
+                    pendingPDFAction = .print
+                    Task { await generatePDF() }
+                }, onShare: {
+                    showingStyleSelection = false
+                    pendingPDFAction = .share
+                    Task { await generatePDF() }
+                }, onCancel: {
+                    showingStyleSelection = false
+                })
             }
         }
     }
@@ -169,8 +176,43 @@ struct PortfolioDetailView: View {
         
         // Create PDF from portfolio content with selected style and pre-loaded images
         let pdfCreator = PDFCreator()
-        pdfData = pdfCreator.createPDF(from: portfolio, style: selectedStyle, imageCache: imageCache)
-        showingShareSheet = true
+        let data = pdfCreator.createPDF(from: portfolio, style: selectedStyle, imageCache: imageCache)
+        pdfData = data
+        
+        switch pendingPDFAction {
+        case .print:
+            pendingPDFAction = nil
+            presentPrintController(with: data)
+        case .share:
+            pendingPDFAction = nil
+            showingShareSheet = true
+        case .none:
+            showingShareSheet = true
+        }
+    }
+    
+    private func presentPrintController(with data: Data) {
+        let printController = UIPrintInteractionController.shared
+        let printInfo = UIPrintInfo(dictionary: nil)
+        printInfo.outputType = .general
+        printInfo.jobName = "Portfolio"
+        printInfo.orientation = .portrait
+        printInfo.duplex = .none
+        printController.printInfo = printInfo
+        printController.showsNumberOfCopies = false
+        printController.showsPaperSelectionForLoadedPapers = false
+        printController.printingItem = data
+        
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first(where: { $0.isKeyWindow }),
+           let rootViewController = window.rootViewController {
+            var top = rootViewController
+            while let presented = top.presentedViewController { top = presented }
+            let rect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.midY, width: 0, height: 0)
+            printController.present(from: rect, in: top.view, animated: true, completionHandler: nil)
+        } else {
+            printController.present(animated: true, completionHandler: nil)
+        }
     }
 }
 
@@ -1502,11 +1544,17 @@ class PDFCreator {
     }
 }
 
+private enum PDFAction {
+    case print
+    case share
+}
+
 // PDF Style Selection Sheet
 struct PDFStyleSelectionSheet: View {
     @Binding var selectedStyle: PDFStyle
-    let onConfirm: () -> Void
-    @Environment(\.dismiss) private var dismiss
+    let onPrint: () -> Void
+    let onShare: () -> Void
+    let onCancel: () -> Void
     
     var body: some View {
         NavigationView {
@@ -1542,16 +1590,20 @@ struct PDFStyleSelectionSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
+                    Button("Cancel", action: onCancel)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Generate") {
-                        onConfirm()
+                    HStack(spacing: 12) {
+                        Button("Print") {
+                            onPrint()
+                        }
+                        .fontWeight(.semibold)
+                        .foregroundColor(.hatchEdAccent)
+                        Button("Share") {
+                            onShare()
+                        }
+                        .fontWeight(.medium)
                     }
-                    .fontWeight(.semibold)
-                    .foregroundColor(.hatchEdAccent)
                 }
             }
         }
@@ -1563,7 +1615,9 @@ struct ShareSheet: UIViewControllerRepresentable {
     let activityItems: [Any]
     
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+        let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+        controller.excludedActivityTypes = [.print]
+        return controller
     }
     
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}

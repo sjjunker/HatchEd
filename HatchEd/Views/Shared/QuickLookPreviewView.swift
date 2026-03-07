@@ -63,18 +63,18 @@ struct ImagePreviewView: View {
                     .padding()
             }
         }
-        .onAppear {
-            loadImage()
+        .task {
+            await loadImage()
         }
     }
 
-    private func loadImage() {
-        guard let data = try? Data(contentsOf: url),
-              let uiImage = UIImage(data: data) else {
-            image = nil
-            return
-        }
-        image = uiImage
+    private func loadImage() async {
+        let loaded = await Task.detached(priority: .userInitiated) { () -> UIImage? in
+            guard let data = try? Data(contentsOf: url),
+                  let uiImage = UIImage(data: data) else { return nil }
+            return uiImage
+        }.value
+        image = loaded
     }
 }
 
@@ -104,8 +104,10 @@ struct PDFPreviewView: View {
                     .padding()
             }
         }
-        .onAppear {
-            document = PDFDocument(url: url)
+        .task {
+            document = await Task.detached(priority: .userInitiated) {
+                PDFDocument(url: url)
+            }.value
         }
     }
 }
@@ -151,8 +153,10 @@ struct TextFilePreviewView: View {
                     .padding()
             }
         }
-        .onAppear {
-            text = (try? String(contentsOf: url, encoding: .utf8)) ?? (try? String(contentsOf: url, encoding: .utf16)) ?? "Could not load text."
+        .task {
+            text = await Task.detached(priority: .userInitiated) {
+                (try? String(contentsOf: url, encoding: .utf8)) ?? (try? String(contentsOf: url, encoding: .utf16)) ?? "Could not load text."
+            }.value
         }
     }
 }

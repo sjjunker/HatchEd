@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct Planner: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
@@ -27,7 +28,7 @@ struct Planner: View {
     @State private var printOptions = PlannerPrintOptions()
     @State private var printErrorMessage: String?
     @State private var plannerShareRequest: PlannerShareRequest?
-    @State private var shouldGeneratePlannerExport = false
+    @State private var plannerExportAction: PlannerExportAction? = nil
 
     private let calendar = Calendar.current
     private let api = APIClient.shared
@@ -195,10 +196,10 @@ struct Planner: View {
             .presentationDetents([.fraction(0.75), .large])
         }
         .sheet(isPresented: $showingPrintOptions, onDismiss: {
-            guard shouldGeneratePlannerExport else { return }
-            shouldGeneratePlannerExport = false
+            guard let action = plannerExportAction else { return }
+            plannerExportAction = nil
             Task { @MainActor in
-                await exportPlannerAfterOptionsDismiss()
+                await exportPlannerAfterOptionsDismiss(action: action)
             }
         }) {
             PlannerPrintOptionsSheet(
@@ -207,10 +208,15 @@ struct Planner: View {
                 options: $printOptions,
                 onCancel: {
                     showingPrintOptions = false
+                    plannerExportAction = nil
                 },
                 onPrint: {
                     showingPrintOptions = false
-                    shouldGeneratePlannerExport = true
+                    plannerExportAction = .print
+                },
+                onShare: {
+                    showingPrintOptions = false
+                    plannerExportAction = .share
                 }
             )
         }
@@ -597,16 +603,51 @@ struct Planner: View {
     }
 
     @MainActor
-    private func printPlanner() async {
+    private func sharePlanner() async {
         guard let pdfData = generatePlannerPDFData() else { return }
         plannerShareRequest = PlannerShareRequest(items: [pdfData])
     }
 
     @MainActor
-    private func exportPlannerAfterOptionsDismiss() async {
-        // Presenting immediately after sheet dismissal can trigger UIKit reparenting warnings.
+    private func printPlannerDirectly() async {
+        guard let pdfData = generatePlannerPDFData() else { return }
+        let printController = UIPrintInteractionController.shared
+        let printInfo = UIPrintInfo(dictionary: nil)
+        printInfo.outputType = .general
+        printInfo.jobName = "Planner"
+        printInfo.orientation = printOptions.scope == .daily ? .portrait : .landscape
+        printInfo.duplex = .none
+        printController.printInfo = printInfo
+        printController.showsNumberOfCopies = false
+        printController.showsPaperSelectionForLoadedPapers = false
+        printController.printingItem = pdfData
+
+        let presentPrint: () -> Void = {
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let window = windowScene.windows.first(where: { $0.isKeyWindow }),
+               let rootViewController = window.rootViewController {
+                var top = rootViewController
+                while let presented = top.presentedViewController { top = presented }
+                let rect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.midY, width: 0, height: 0)
+                printController.present(from: rect, in: top.view, animated: true, completionHandler: nil)
+            } else {
+                printController.present(animated: true, completionHandler: nil)
+            }
+        }
+
         try? await Task.sleep(nanoseconds: 300_000_000)
-        await printPlanner()
+        await MainActor.run { presentPrint() }
+    }
+
+    @MainActor
+    private func exportPlannerAfterOptionsDismiss(action: PlannerExportAction) async {
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        switch action {
+        case .print:
+            await printPlannerDirectly()
+        case .share:
+            await sharePlanner()
+        }
     }
 
     private func generatePlannerPDFData() -> Data? {
@@ -676,6 +717,11 @@ struct Planner: View {
     }
 }
 
+private enum PlannerExportAction {
+    case print
+    case share
+}
+
 private enum PlannerPrintScope: String, CaseIterable, Identifiable {
     case daily
     case weekly
@@ -704,6 +750,7 @@ private struct PlannerPrintOptionsSheet: View {
     @Binding var options: PlannerPrintOptions
     let onCancel: () -> Void
     let onPrint: () -> Void
+    let onShare: () -> Void
 
     var body: some View {
         NavigationView {
@@ -747,9 +794,13 @@ private struct PlannerPrintOptionsSheet: View {
                     Button("Cancel", action: onCancel)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Continue", action: onPrint)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.hatchEdAccent)
+                    HStack(spacing: 12) {
+                        Button("Print", action: onPrint)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.hatchEdAccent)
+                        Button("Share", action: onShare)
+                            .fontWeight(.medium)
+                    }
                 }
             }
         }
@@ -784,6 +835,7 @@ private struct PlannerActivityPresenter: UIViewControllerRepresentable {
         context.coordinator.presentedRequestID = request.id
 
         let controller = UIActivityViewController(activityItems: request.items, applicationActivities: nil)
+        controller.excludedActivityTypes = [.print]
         controller.completionWithItemsHandler = { _, _, _, error in
             DispatchQueue.main.async {
                 self.request = nil

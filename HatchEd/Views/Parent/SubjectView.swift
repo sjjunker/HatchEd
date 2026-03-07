@@ -590,8 +590,8 @@ private struct AddItemView: View {
     @State private var selectedCourseColorName: String = "Green"
     @State private var selectedStudentIdsForCourse: Set<String> = []
     @State private var assignmentTitle = ""
-    @State private var assignmentWorkDates: [Date] = [Date()]
-    @State private var assignmentWorkDurationsMinutes: [Int] = [60]
+    @State private var assignmentWorkDates: [Date] = []
+    @State private var assignmentWorkDurationsMinutes: [Int] = []
     @State private var assignmentDueDate = Date()
     @State private var selectedCourseForAssignment: Course?
     @State private var selectedStudentForAssignment: User?

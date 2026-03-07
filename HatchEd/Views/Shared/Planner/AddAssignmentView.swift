@@ -32,8 +32,8 @@ struct AddAssignmentView: View {
         self.initialDate = initialDate
         self.students = students
         self.onSaveAssignment = onSaveAssignment
-        _workDates = State(initialValue: [initialDate])
-        _workDurationsMinutes = State(initialValue: [60])
+        _workDates = State(initialValue: [])
+        _workDurationsMinutes = State(initialValue: [])
         _dueDate = State(initialValue: initialDate)
     }
 

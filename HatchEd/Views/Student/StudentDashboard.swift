@@ -8,13 +8,21 @@
 import SwiftUI
 import UserNotifications
 
+private let studentDashboardSectionIds = ["welcome", "notifications", "dailyAssignments", "quote"]
+
 struct StudentDashboard: View {
     @EnvironmentObject var authViewModel: AuthViewModel
+    @StateObject private var sectionState = DashboardSectionState(storage: DashboardSectionStorage(
+        orderKey: "studentDashboardSectionOrder",
+        hiddenKey: "studentDashboardHiddenSections",
+        defaultOrder: studentDashboardSectionIds
+    ))
     @State private var showMenu = false
     @State private var selectedDestination: NavigationDestination? = nil
     @State private var showingNameEditor = false
     @State private var editedName = ""
     @State private var selectedNotification: Notification?
+    @State private var showingUnhideSheet = false
     @State private var assignments: [Assignment] = []
     @State private var completedAssignments: Set<String> = []
     @State private var isLoadingAssignments = false
@@ -39,6 +47,11 @@ struct StudentDashboard: View {
                         studentDashboardContent
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                             .navigationTitle("Dashboard")
+                            .toolbar {
+                                ToolbarItem(placement: .navigationBarTrailing) {
+                                    EditButton()
+                                }
+                            }
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -170,32 +183,124 @@ struct StudentDashboard: View {
     }
     
     private var studentDashboardContent: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                welcomeSection
-                NotificationsView(
-                    notifications: authViewModel.notifications,
-                    onSelect: { selectedNotification = $0 }
-                )
-                dailyAssignmentsSection
-                inspirationalQuoteSection
-                if authViewModel.isOffline {
-                    HStack {
-                        Image(systemName: "wifi.slash")
-                            .foregroundColor(.hatchEdWarning)
-                        Text("Offline mode")
-                            .font(.caption)
-                            .foregroundColor(.hatchEdSecondaryText)
+        List {
+            ForEach(Array(sectionState.visibleSectionIds.enumerated()), id: \.element) { _, sectionId in
+                sectionView(for: sectionId)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                sectionState.hideSection(sectionId)
+                            }
+                        } label: {
+                            Label("Hide", systemImage: "eye.slash")
+                        }
                     }
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color.hatchEdCardBackground)
-                    )
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                sectionState.hideSection(sectionId)
+                            }
+                        } label: {
+                            Label("Hide Section", systemImage: "eye.slash")
+                        }
+                    }
+            }
+            .onMove(perform: sectionState.move)
+            
+            if !sectionState.hiddenSectionIds.isEmpty {
+                Section {
+                    Button {
+                        showingUnhideSheet = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "plus.rectangle.on.folder")
+                            Text("Show hidden sections (\(sectionState.hiddenSectionIds.count))")
+                        }
+                        .foregroundColor(.hatchEdAccent)
+                    }
+                    .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+                    .listRowBackground(Color.clear)
                 }
             }
-            .padding(.horizontal)
-            .padding(.bottom, 24)
+            
+            if authViewModel.isOffline {
+                HStack {
+                    Image(systemName: "wifi.slash")
+                        .foregroundColor(.hatchEdWarning)
+                    Text("Offline mode")
+                        .font(.caption)
+                        .foregroundColor(.hatchEdSecondaryText)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.hatchEdCardBackground)
+                )
+                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .sheet(isPresented: $showingUnhideSheet) {
+            NavigationView {
+                List {
+                    ForEach(sectionState.hiddenSectionIdsArray, id: \.self) { sectionId in
+                        Button {
+                            withAnimation {
+                                sectionState.unhideSection(sectionId)
+                                if sectionState.hiddenSectionIds.isEmpty {
+                                    showingUnhideSheet = false
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                Text(studentSectionTitle(for: sectionId))
+                                Spacer()
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundColor(.hatchEdAccent)
+                            }
+                        }
+                    }
+                }
+                .navigationTitle("Hidden Sections")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { showingUnhideSheet = false }
+                    }
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private func sectionView(for sectionId: String) -> some View {
+        switch sectionId {
+        case "welcome": welcomeSection
+        case "notifications":
+            NotificationsView(
+                notifications: authViewModel.notifications,
+                onSelect: { selectedNotification = $0 }
+            )
+        case "dailyAssignments": dailyAssignmentsSection
+        case "quote": inspirationalQuoteSection
+        default: EmptyView()
+        }
+    }
+    
+    private func studentSectionTitle(for sectionId: String) -> String {
+        switch sectionId {
+        case "welcome": return "Welcome"
+        case "notifications": return "Notifications"
+        case "dailyAssignments": return "Today's Assignments"
+        case "quote": return "Inspirational Quote"
+        default: return sectionId
         }
     }
     

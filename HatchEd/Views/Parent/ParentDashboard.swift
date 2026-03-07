@@ -47,9 +47,16 @@ enum NavigationDestination: String, Identifiable {
     }
 }
 
+private let parentDashboardSectionIds = ["welcome", "notifications", "assignments", "attendance", "addChild", "quote", "students"]
+
 struct ParentDashboard: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
     @StateObject private var dashboardVM = ParentDashboardViewModel()
+    @StateObject private var sectionState = DashboardSectionState(storage: DashboardSectionStorage(
+        orderKey: "parentDashboardSectionOrder",
+        hiddenKey: "parentDashboardHiddenSections",
+        defaultOrder: parentDashboardSectionIds
+    ))
     @State private var showingNameEditor = false
     @State private var editedName = ""
     @State private var showMenu = false
@@ -59,6 +66,7 @@ struct ParentDashboard: View {
     @State private var selectedNotification: Notification?
     @State private var dailyQuote: DailyQuoteDTO?
     @State private var isLoadingQuote = false
+    @State private var showingUnhideSheet = false
     
     var body: some View {
         ZStack {
@@ -73,6 +81,11 @@ struct ParentDashboard: View {
                         dashboardContent
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                             .navigationTitle("Dashboard")
+                            .toolbar {
+                                ToolbarItem(placement: .navigationBarTrailing) {
+                                    EditButton()
+                                }
+                            }
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -175,21 +188,80 @@ struct ParentDashboard: View {
     
     // MARK: - Dashboard Content
     private var dashboardContent: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                welcomeSection
-                NotificationsView(
-                    notifications: authViewModel.notifications,
-                    onSelect: { selectedNotification = $0 }
-                )
-                completedAssignmentsSection
-                attendanceSection
-                addChildSection
-                inspirationalQuoteSection
-                studentsSection
+        List {
+            ForEach(Array(sectionState.visibleSectionIds.enumerated()), id: \.element) { _, sectionId in
+                sectionView(for: sectionId)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                sectionState.hideSection(sectionId)
+                            }
+                        } label: {
+                            Label("Hide", systemImage: "eye.slash")
+                        }
+                    }
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                sectionState.hideSection(sectionId)
+                            }
+                        } label: {
+                            Label("Hide Section", systemImage: "eye.slash")
+                        }
+                    }
             }
-            .padding(.horizontal)
-            .padding(.bottom, 24)
+            .onMove(perform: sectionState.move)
+            
+            if !sectionState.hiddenSectionIds.isEmpty {
+                Section {
+                    Button {
+                        showingUnhideSheet = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "plus.rectangle.on.folder")
+                            Text("Show hidden sections (\(sectionState.hiddenSectionIds.count))")
+                        }
+                        .foregroundColor(.hatchEdAccent)
+                    }
+                    .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+                    .listRowBackground(Color.clear)
+                }
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .sheet(isPresented: $showingUnhideSheet) {
+            NavigationView {
+                List {
+                    ForEach(sectionState.hiddenSectionIdsArray, id: \.self) { sectionId in
+                        Button {
+                            withAnimation {
+                                sectionState.unhideSection(sectionId)
+                                if sectionState.hiddenSectionIds.isEmpty {
+                                    showingUnhideSheet = false
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                Text(parentSectionTitle(for: sectionId))
+                                Spacer()
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundColor(.hatchEdAccent)
+                            }
+                        }
+                    }
+                }
+                .navigationTitle("Hidden Sections")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { showingUnhideSheet = false }
+                    }
+                }
+            }
         }
         .sheet(isPresented: $showingNameEditor) {
             NavigationView {
@@ -223,6 +295,37 @@ struct ParentDashboard: View {
                 authViewModel.updateUserFromDatabase()
                 addChildDidSucceed = false
             }
+        }
+    }
+    
+    @ViewBuilder
+    private func sectionView(for sectionId: String) -> some View {
+        switch sectionId {
+        case "welcome": welcomeSection
+        case "notifications":
+            NotificationsView(
+                notifications: authViewModel.notifications,
+                onSelect: { selectedNotification = $0 }
+            )
+        case "assignments": completedAssignmentsSection
+        case "attendance": attendanceSection
+        case "addChild": addChildSection
+        case "quote": inspirationalQuoteSection
+        case "students": studentsSection
+        default: EmptyView()
+        }
+    }
+    
+    private func parentSectionTitle(for sectionId: String) -> String {
+        switch sectionId {
+        case "welcome": return "Welcome"
+        case "notifications": return "Notifications"
+        case "assignments": return "Assignments Pending Grading"
+        case "attendance": return "Take Attendance"
+        case "addChild": return "Add Child"
+        case "quote": return "Inspirational Quote"
+        case "students": return "Students"
+        default: return sectionId
         }
     }
     

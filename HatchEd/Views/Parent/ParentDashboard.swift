@@ -190,28 +190,7 @@ struct ParentDashboard: View {
     private var dashboardContent: some View {
         List {
             ForEach(Array(sectionState.visibleSectionIds.enumerated()), id: \.element) { _, sectionId in
-                sectionView(for: sectionId)
-                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button(role: .destructive) {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                sectionState.hideSection(sectionId)
-                            }
-                        } label: {
-                            Label("Hide", systemImage: "eye.slash")
-                        }
-                    }
-                    .contextMenu {
-                        Button(role: .destructive) {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                sectionState.hideSection(sectionId)
-                            }
-                        } label: {
-                            Label("Hide Section", systemImage: "eye.slash")
-                        }
-                    }
+                sectionContent(for: sectionId)
             }
             .onMove(perform: sectionState.move)
             
@@ -299,6 +278,36 @@ struct ParentDashboard: View {
     }
     
     @ViewBuilder
+    private func sectionContent(for sectionId: String) -> some View {
+        if sectionId == "students" {
+            studentsSectionRows
+        } else {
+            sectionView(for: sectionId)
+                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button(role: .destructive) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            sectionState.hideSection(sectionId)
+                        }
+                    } label: {
+                        Label("Hide", systemImage: "eye.slash")
+                    }
+                }
+                .contextMenu {
+                    Button(role: .destructive) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            sectionState.hideSection(sectionId)
+                        }
+                    } label: {
+                        Label("Hide Section", systemImage: "eye.slash")
+                    }
+                }
+        }
+    }
+    
+    @ViewBuilder
     private func sectionView(for sectionId: String) -> some View {
         switch sectionId {
         case "welcome": welcomeSection
@@ -311,7 +320,7 @@ struct ParentDashboard: View {
         case "attendance": attendanceSection
         case "addChild": addChildSection
         case "quote": inspirationalQuoteSection
-        case "students": studentsSection
+        case "students": studentsSectionRows
         default: EmptyView()
         }
     }
@@ -384,62 +393,96 @@ struct ParentDashboard: View {
         )
     }
     
-    private var studentsSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Image(systemName: "person.2.fill")
-                    .foregroundColor(.hatchEdAccent)
-                Text("Students")
-                    .font(.headline)
-                    .foregroundColor(.hatchEdText)
-            }
+    /// Students as separate List rows for correct navigation; header has section hide actions.
+    private var studentsSectionRows: some View {
+        Group {
+            studentsSectionHeader
+                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button(role: .destructive) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            sectionState.hideSection("students")
+                        }
+                    } label: {
+                        Label("Hide", systemImage: "eye.slash")
+                    }
+                }
+                .contextMenu {
+                    Button(role: .destructive) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            sectionState.hideSection("students")
+                        }
+                    } label: {
+                        Label("Hide Section", systemImage: "eye.slash")
+                    }
+                }
             
             if authViewModel.students.isEmpty {
                 Text("No students linked yet.")
                     .foregroundColor(.hatchEdSecondaryText)
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 16).fill(Color.hatchEdCardBackground))
+                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(
+                        RoundedRectangle(cornerRadius: 16).fill(Color.hatchEdCardBackground)
+                    )
             } else {
-                LazyVStack(spacing: 12) {
-                    ForEach(authViewModel.students) { student in
-                        NavigationLink(destination: StudentDetail(
-                            student: student,
-                            courses: dashboardVM.courses.filter { $0.students.contains(where: { $0.id == student.id }) },
-                            assignments: dashboardVM.assignments.filter { $0.studentId == student.id }
-                        )) {
-                            HStack {
-                                Image(systemName: "person.circle.fill")
-                                    .foregroundColor(.hatchEdAccent)
-                                    .font(.title3)
-                                Text(student.name ?? "Student")
-                                    .foregroundColor(.hatchEdText)
-                                    .fontWeight(.medium)
-                                if student.invitePending == true {
-                                    Text("Pending")
-                                        .font(.caption)
-                                        .foregroundColor(.hatchEdSecondaryText)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(Capsule().fill(Color.hatchEdSecondaryBackground))
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.footnote)
-                                    .foregroundColor(.hatchEdAccent)
-                            }
-                            .padding()
-                            .background(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .fill(Color.hatchEdCardBackground)
-                                    .shadow(color: Color.hatchEdAccent.opacity(0.1), radius: 4, x: 0, y: 2)
-                            )
-                        }
+                ForEach(authViewModel.students) { student in
+                    NavigationLink(destination: StudentDetail(
+                        student: student,
+                        courses: dashboardVM.courses.filter { $0.students.contains(where: { $0.id == student.id }) },
+                        assignments: dashboardVM.assignments.filter { $0.studentId == student.id }
+                    )) {
+                        studentRowContent(student)
                     }
+                    .id(student.id)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 }
             }
         }
     }
+    
+    private var studentsSectionHeader: some View {
+        HStack {
+            Image(systemName: "person.2.fill")
+                .foregroundColor(.hatchEdAccent)
+            Text("Students")
+                .font(.headline)
+                .foregroundColor(.hatchEdText)
+        }
+    }
+    
+    private func studentRowContent(_ student: User) -> some View {
+        HStack {
+            Image(systemName: "person.circle.fill")
+                .foregroundColor(.hatchEdAccent)
+                .font(.title3)
+            Text(student.name ?? "Student")
+                .foregroundColor(.hatchEdText)
+                .fontWeight(.medium)
+            if student.invitePending == true {
+                Text("Pending")
+                    .font(.caption)
+                    .foregroundColor(.hatchEdSecondaryText)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.hatchEdSecondaryBackground))
+            }
+            Spacer()
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.hatchEdCardBackground)
+                .shadow(color: Color.hatchEdAccent.opacity(0.1), radius: 4, x: 0, y: 2)
+        )
+    }
+    
     
     private var attendanceSection: some View {
         VStack(alignment: .leading, spacing: 16) {

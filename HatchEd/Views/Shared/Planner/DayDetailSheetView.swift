@@ -76,14 +76,11 @@ struct DayDetailSheetView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .padding(.horizontal)
-                                .swipeActions {
-                                    // Only allow deletion of regular tasks, not assignments
-                                    if !task.id.hasPrefix("assignment-") {
-                                        Button(role: .destructive) {
-                                            onDelete(task)
-                                        } label: {
-                                            Label("Delete", systemImage: "trash")
-                                        }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button(role: .destructive) {
+                                        onDelete(task)
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
                                     }
                                 }
                             }

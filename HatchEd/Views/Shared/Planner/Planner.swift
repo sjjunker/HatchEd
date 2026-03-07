@@ -136,8 +136,13 @@ struct Planner: View {
                 ),
                 showsTaskStudents: !isStudentUser,
                 onDelete: { task in
-                    // Only allow deletion of regular tasks, not assignments
-                    if !task.id.hasPrefix("assignment-") {
+                    if task.id.hasPrefix("assignment-") {
+                        guard let assignment = assignmentForTask(task) else { return }
+                        Task {
+                            try? await api.deleteAssignment(id: assignment.id)
+                            await loadAssignments()
+                        }
+                    } else {
                         Task {
                             await taskStore.remove(task)
                         }
@@ -186,6 +191,11 @@ struct Planner: View {
                 },
                 onAssignmentUpdated: { assignment in
                     upsertAssignment(assignment)
+                },
+                onAssignmentDeleted: { _ in
+                    Task {
+                        await loadAssignments()
+                    }
                 },
                 onTaskDeleted: {
                     Task {

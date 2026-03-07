@@ -132,6 +132,12 @@ struct SubjectView: View {
                         await loadSubjects()
                     }
                 },
+                onAssignmentDeleted: { _ in
+                    selectedAssignmentForEdit = nil
+                    Task {
+                        await loadSubjects()
+                    }
+                },
                 onTaskDeleted: {}
             )
         }

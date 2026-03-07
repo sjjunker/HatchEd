@@ -8,13 +8,24 @@
 
 import SwiftUI
 
+private let studentDetailSectionIds = ["invitePending", "attendance", "attendanceHistory", "courses", "recentAssignments", "incompleteAssignments", "portfolios"]
+
 struct StudentDetail: View {
+    @EnvironmentObject private var authViewModel: AuthViewModel
     @StateObject private var viewModel: StudentDetailViewModel
     @State private var viewModelState: StudentDetailViewModel.StateSnapshot
     @State private var hasLoadedAttendance = false
+    @State private var hasLoadedPortfolios = false
     @State private var fetchedInviteLink: String?
     @State private var fetchedInviteToken: String?
     @State private var isLoadingInvite = false
+    @State private var selectedIncompleteAssignment: Assignment?
+    @StateObject private var sectionState = DashboardSectionState(storage: DashboardSectionStorage(
+        orderKey: "studentDetailSectionOrder",
+        hiddenKey: "studentDetailHiddenSections",
+        defaultOrder: studentDetailSectionIds
+    ))
+    @State private var showingUnhideSheet = false
 
     init(student: User, courses: [Course] = [], assignments: [Assignment] = [], attendanceRecords: [AttendanceRecordDTO] = []) {
         let model = StudentDetailViewModel(student: student, courses: courses, assignments: assignments, attendanceRecords: attendanceRecords)
@@ -29,38 +40,63 @@ struct StudentDetail: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                if viewModel.student.invitePending == true {
-                    invitePendingSection
-                }
-                attendanceSection
-                attendanceHistorySection
-                coursesSection
-                recentAssignmentsSection
+        List {
+            ForEach(Array(sectionState.visibleSectionIds.enumerated()), id: \.element) { _, sectionId in
+                sectionContent(for: sectionId)
             }
-            .padding()
+            .onMove(perform: sectionState.move)
+
+            if !sectionState.hiddenSectionIds.isEmpty {
+                Section {
+                    Button {
+                        showingUnhideSheet = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "plus.rectangle.on.folder")
+                            Text("Show hidden sections (\(sectionState.hiddenSectionIds.count))")
+                        }
+                        .foregroundColor(.hatchEdAccent)
+                    }
+                    .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+                    .listRowBackground(Color.clear)
+                }
+            }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
         .navigationTitle(viewModelState.studentName)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                EditButton()
+            }
+        }
         .task(id: viewModelState.updateToken) {
             viewModelState = viewModel.makeSnapshot()
         }
         .onAppear {
+            Task {
+                await viewModel.loadAssignments()
+                await MainActor.run { viewModelState = viewModel.makeSnapshot() }
+            }
             guard !hasLoadedAttendance else { return }
             hasLoadedAttendance = true
             Task {
                 await viewModel.loadAttendance()
-                await MainActor.run {
-                    viewModelState = viewModel.makeSnapshot()
-                }
+                await MainActor.run { viewModelState = viewModel.makeSnapshot() }
+            }
+            guard !hasLoadedPortfolios else { return }
+            hasLoadedPortfolios = true
+            Task {
+                await viewModel.loadPortfolios()
+                await MainActor.run { viewModelState = viewModel.makeSnapshot() }
             }
         }
         .refreshable {
+            await viewModel.loadAssignments()
             await viewModel.loadAttendance()
-            await MainActor.run {
-                viewModelState = viewModel.makeSnapshot()
-            }
+            await viewModel.loadPortfolios()
+            await MainActor.run { viewModelState = viewModel.makeSnapshot() }
         }
         .task(id: viewModel.student.id) {
             guard viewModel.student.invitePending == true else { return }
@@ -74,49 +110,180 @@ struct StudentDetail: View {
                 fetchedInviteLink = response.inviteLink
                 fetchedInviteToken = response.inviteToken
             } catch {
-                // Leave fetched state nil; section will show nothing or loading
+                // Leave fetched state nil
             }
+        }
+        .sheet(item: $selectedIncompleteAssignment) { assignment in
+            TaskDetailSheetView(
+                task: createPlannerTaskFromAssignment(assignment),
+                assignment: assignment,
+                students: authViewModel.students,
+                courses: viewModel.courses,
+                onTaskUpdated: { _ in },
+                onAssignmentUpdated: { updated in
+                    viewModel.updateAssignment(updated)
+                    viewModelState = viewModel.makeSnapshot()
+                },
+                onAssignmentDeleted: { deleted in
+                    selectedIncompleteAssignment = nil
+                    viewModel.removeAssignment(id: deleted.id)
+                    viewModelState = viewModel.makeSnapshot()
+                },
+                onTaskDeleted: {}
+            )
+            .presentationDetents([.fraction(0.75), .large])
+        }
+        .sheet(isPresented: $showingUnhideSheet) {
+            NavigationView {
+                List {
+                    ForEach(sectionState.hiddenSectionIdsArray, id: \.self) { sectionId in
+                        Button {
+                            withAnimation {
+                                sectionState.unhideSection(sectionId)
+                                if sectionState.hiddenSectionIds.isEmpty { showingUnhideSheet = false }
+                            }
+                        } label: {
+                            HStack {
+                                Text(studentDetailSectionTitle(for: sectionId))
+                                Spacer()
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundColor(.hatchEdAccent)
+                            }
+                        }
+                    }
+                }
+                .navigationTitle("Hidden Sections")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { showingUnhideSheet = false }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sectionContent(for sectionId: String) -> some View {
+        sectionView(for: sectionId)
+            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button(role: .destructive) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        sectionState.hideSection(sectionId)
+                    }
+                } label: {
+                    Label("Hide", systemImage: "eye.slash")
+                }
+            }
+            .contextMenu {
+                Button(role: .destructive) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        sectionState.hideSection(sectionId)
+                    }
+                } label: {
+                    Label("Hide Section", systemImage: "eye.slash")
+                }
+            }
+    }
+
+    @ViewBuilder
+    private func sectionView(for sectionId: String) -> some View {
+        switch sectionId {
+        case "invitePending": invitePendingSection
+        case "attendance": attendanceSection
+        case "attendanceHistory": attendanceHistorySection
+        case "courses": coursesSection
+        case "recentAssignments": recentAssignmentsSection
+        case "incompleteAssignments": incompleteAssignmentsSection
+        case "portfolios": portfoliosSection
+        default: EmptyView()
+        }
+    }
+
+    private func createPlannerTaskFromAssignment(_ assignment: Assignment) -> PlannerTask {
+        let startDate = assignment.dueDate ?? Date()
+        let linkedCourse = assignment.courseId.flatMap { courseId in
+            viewModel.courses.first { $0.id == courseId }
+        }
+        return PlannerTask(
+            id: "assignment-due-\(assignment.id)",
+            title: assignment.title,
+            startDate: startDate,
+            durationMinutes: assignment.workDurationsMinutes.first ?? 60,
+            colorName: linkedCourse?.colorName ?? "Blue",
+            subject: linkedCourse?.name,
+            studentIds: [viewModel.student.id]
+        )
+    }
+
+    private func studentDetailSectionTitle(for sectionId: String) -> String {
+        switch sectionId {
+        case "invitePending": return "Invite Link"
+        case "attendance": return "Attendance"
+        case "attendanceHistory": return "Attendance History"
+        case "courses": return "Courses"
+        case "recentAssignments": return "Recent Assignments"
+        case "incompleteAssignments": return "Incomplete Assignments"
+        case "portfolios": return "Portfolios"
+        default: return sectionId
         }
     }
 
     private var invitePendingSection: some View {
         Group {
-            let link = viewModel.student.inviteLink ?? fetchedInviteLink
-            let token = viewModel.student.inviteToken ?? fetchedInviteToken
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Invite link")
-                    .font(.headline)
-                    .foregroundColor(.hatchEdText)
-                if isLoadingInvite {
-                    HStack {
-                        ProgressView()
-                            .tint(.hatchEdAccent)
-                        Text("Loading…")
-                            .font(.subheadline)
-                            .foregroundColor(.hatchEdSecondaryText)
+            if viewModel.student.invitePending != true {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Invite link")
+                        .font(.headline)
+                        .foregroundColor(.hatchEdText)
+                    Text("No invite pending.")
+                        .font(.subheadline)
+                        .foregroundColor(.hatchEdSecondaryText)
+                }
+            } else {
+                let link = viewModel.student.inviteLink ?? fetchedInviteLink
+                let token = viewModel.student.inviteToken ?? fetchedInviteToken
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Invite link")
+                        .font(.headline)
+                        .foregroundColor(.hatchEdText)
+                    if isLoadingInvite {
+                        HStack {
+                            ProgressView()
+                                .tint(.hatchEdAccent)
+                            Text("Loading…")
+                                .font(.subheadline)
+                                .foregroundColor(.hatchEdSecondaryText)
+                        }
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 16).fill(Color.hatchEdCardBackground))
+                    } else if let link, !link.isEmpty {
+                        Text(link)
+                            .font(.caption)
+                            .foregroundColor(.hatchEdText)
+                            .textSelection(.enabled)
+                            .padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(RoundedRectangle(cornerRadius: 16).fill(Color.hatchEdCardBackground))
+                    } else if let token, !token.isEmpty {
+                        Text("hatched://invite?token=\(token)")
+                            .font(.caption)
+                            .foregroundColor(.hatchEdText)
+                            .textSelection(.enabled)
+                            .padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(RoundedRectangle(cornerRadius: 16).fill(Color.hatchEdCardBackground))
                     }
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 16).fill(Color.hatchEdCardBackground))
-                } else if let link, !link.isEmpty {
-                    Text(link)
-                        .font(.caption)
-                        .foregroundColor(.hatchEdText)
-                        .textSelection(.enabled)
-                        .padding()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(RoundedRectangle(cornerRadius: 16).fill(Color.hatchEdCardBackground))
-                } else if let token, !token.isEmpty {
-                    Text("hatched://invite?token=\(token)")
-                        .font(.caption)
-                        .foregroundColor(.hatchEdText)
-                        .textSelection(.enabled)
-                        .padding()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(RoundedRectangle(cornerRadius: 16).fill(Color.hatchEdCardBackground))
                 }
             }
         }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.hatchEdCardBackground))
     }
 
     private var attendanceSection: some View {
@@ -168,18 +335,50 @@ struct StudentDetail: View {
                 EmptyView()
             }
         }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.hatchEdCardBackground))
     }
 
     private var attendanceHistorySection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if !viewModelState.attendanceRecords.isEmpty {
-                Text("Attendance History")
-                    .font(.headline)
+            Text("Attendance History")
+                .font(.headline)
+            if viewModelState.attendanceRecords.isEmpty {
+                Text("No attendance records yet.")
+                    .font(.subheadline)
+                    .foregroundColor(.hatchEdSecondaryText)
+            } else if let grouping = viewModelState.attendanceGrouping {
+                // Current week: individual days
+                if !grouping.currentWeekRecords.isEmpty {
+                    Text("This Week")
+                        .font(.subheadline.bold())
+                        .foregroundColor(.hatchEdSecondaryText)
+                    ForEach(grouping.currentWeekRecords, id: \.id) { record in
+                        AttendanceHistoryRow(record: record)
+                    }
+                }
+                // Monthly summaries
+                ForEach(Array(grouping.monthlySummaries.enumerated()), id: \.offset) { _, item in
+                    HStack {
+                        Text(item.month)
+                            .font(.subheadline)
+                            .foregroundColor(.hatchEdText)
+                        Spacer()
+                        Text("Total Days Present: \(item.daysPresent)")
+                            .font(.subheadline.bold())
+                            .foregroundColor(.hatchEdAccent)
+                    }
+                }
+            } else {
                 ForEach(viewModelState.attendanceRecords, id: \.id) { record in
                     AttendanceHistoryRow(record: record)
                 }
             }
         }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.hatchEdCardBackground))
     }
 
     private var coursesSection: some View {
@@ -190,22 +389,104 @@ struct StudentDetail: View {
                 CourseRow(course: course, studentId: viewModel.student.id)
             }
         }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.hatchEdCardBackground))
     }
 
     private var recentAssignmentsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Recent Assignments")
                 .font(.headline)
-            if viewModelState.recentAssignments.isEmpty {
+            if viewModelState.recentAssignmentsByMonth.isEmpty {
                 Text("No assignments completed recently.")
                     .foregroundColor(.hatchEdSecondaryText)
                     .font(.subheadline)
             } else {
-                ForEach(viewModelState.recentAssignments) { assignment in
-                    AssignmentRow(assignment: assignment)
+                ForEach(Array(viewModelState.recentAssignmentsByMonth.enumerated()), id: \.offset) { _, monthGroup in
+                    DisclosureGroup {
+                        ForEach(monthGroup.assignments) { assignment in
+                            AssignmentRow(assignment: assignment)
+                        }
+                    } label: {
+                        Text(monthGroup.month)
+                            .font(.subheadline.bold())
+                            .foregroundColor(.hatchEdText)
+                    }
+                    .accentColor(.hatchEdAccent)
                 }
             }
         }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.hatchEdCardBackground))
+    }
+
+    private var incompleteAssignmentsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Incomplete Assignments")
+                .font(.headline)
+            if viewModelState.incompleteAssignments.isEmpty {
+                Text("No ungraded assignments.")
+                    .foregroundColor(.hatchEdSecondaryText)
+                    .font(.subheadline)
+            } else {
+                ForEach(viewModelState.incompleteAssignments) { assignment in
+                    Button {
+                        selectedIncompleteAssignment = assignment
+                    } label: {
+                        HStack(spacing: 8) {
+                            AssignmentRow(assignment: assignment)
+                            Image(systemName: "chevron.right")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(.hatchEdAccent)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.hatchEdCardBackground))
+    }
+
+    private var portfoliosSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Portfolios")
+                .font(.headline)
+            if viewModel.isLoadingPortfolios {
+                ProgressView("Loading portfolios…")
+                    .tint(.hatchEdAccent)
+            } else if viewModelState.portfolios.isEmpty {
+                Text("No portfolios yet.")
+                    .foregroundColor(.hatchEdSecondaryText)
+                    .font(.subheadline)
+            } else {
+                ForEach(viewModelState.portfolios) { portfolio in
+                    NavigationLink(destination: PortfolioDetailView(portfolio: portfolio, isStudent: false)) {
+                        HStack {
+                            Image(systemName: "folder.fill")
+                                .foregroundColor(.hatchEdAccent)
+                            Text(portfolio.designPattern.rawValue + " Portfolio")
+                                .font(.subheadline.bold())
+                                .foregroundColor(.hatchEdText)
+                            if let created = portfolio.createdAt {
+                                Spacer()
+                                Text(created, style: .date)
+                                    .font(.caption)
+                                    .foregroundColor(.hatchEdSecondaryText)
+                            }
+                        }
+                        .padding()
+                        .background(RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6)))
+                    }
+                }
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.hatchEdCardBackground))
     }
 }
 
@@ -384,7 +665,10 @@ private struct AssignmentRow: View {
 
 #Preview {
     let previewVM = StudentDetailViewModel.previewModel()
+    let authVM = AuthViewModel()
+    authVM.students = [previewVM.student]
     return NavigationView {
         StudentDetail(viewModel: previewVM)
+            .environmentObject(authVM)
     }
 }

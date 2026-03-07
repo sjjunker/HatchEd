@@ -29,8 +29,15 @@ final class StudentDetailViewModel: ObservableObject {
     @Published private(set) var attendanceRecords: [AttendanceRecordDTO]
     @Published private(set) var courses: [Course]
     @Published private(set) var assignments: [Assignment]
+    @Published private(set) var portfolios: [Portfolio] = []
     @Published private(set) var isLoadingAttendance = false
     @Published private(set) var attendanceError: String?
+    @Published private(set) var isLoadingPortfolios = false
+
+    struct AttendanceGrouping {
+        let currentWeekRecords: [AttendanceRecordDTO]
+        let monthlySummaries: [(month: String, daysPresent: Int)]
+    }
 
     struct StateSnapshot {
         let updateToken = UUID()
@@ -42,8 +49,12 @@ final class StudentDetailViewModel: ObservableObject {
         let attendanceStreakText: String
         let attendanceStatus: AttendanceStatus
         let attendanceRecords: [AttendanceRecordDTO]
+        let attendanceGrouping: AttendanceGrouping?
         let courses: [Course]
         let recentAssignments: [Assignment]
+        let recentAssignmentsByMonth: [(month: String, assignments: [Assignment])]
+        let incompleteAssignments: [Assignment]
+        let portfolios: [Portfolio]
 
         enum AttendanceStatus {
             case loading
@@ -83,6 +94,36 @@ final class StudentDetailViewModel: ObservableObject {
         isLoadingAttendance = false
     }
 
+    func updateAssignment(_ updated: Assignment) {
+        guard let idx = assignments.firstIndex(where: { $0.id == updated.id }) else { return }
+        assignments[idx] = updated
+    }
+
+    func removeAssignment(id: String) {
+        assignments.removeAll { $0.id == id }
+    }
+
+    func loadAssignments() async {
+        do {
+            let all = try await api.fetchAssignments()
+            assignments = all.filter { $0.studentId == student.id }
+        } catch {
+            // Keep existing assignments on error
+        }
+    }
+
+    func loadPortfolios() async {
+        guard !isLoadingPortfolios else { return }
+        isLoadingPortfolios = true
+        defer { isLoadingPortfolios = false }
+        do {
+            let all = try await api.fetchPortfolios()
+            portfolios = all.filter { $0.studentId == student.id }
+        } catch {
+            portfolios = []
+        }
+    }
+
     func makeSnapshot() -> StateSnapshot {
         let attendanceStatus: StateSnapshot.AttendanceStatus
         if isLoadingAttendance {
@@ -102,8 +143,12 @@ final class StudentDetailViewModel: ObservableObject {
             attendanceStreakText: attendanceStreakText,
             attendanceStatus: attendanceStatus,
             attendanceRecords: attendanceRecords,
+            attendanceGrouping: attendanceGrouping,
             courses: courses,
-            recentAssignments: recentAssignments
+            recentAssignments: recentAssignments,
+            recentAssignmentsByMonth: recentAssignmentsByMonth,
+            incompleteAssignments: incompleteAssignments,
+            portfolios: portfolios
         )
     }
 
@@ -130,10 +175,72 @@ final class StudentDetailViewModel: ObservableObject {
 
     var recentAssignments: [Assignment] {
         assignments
-            .filter { $0.isCompleted } // Only show completed assignments
+            .filter { $0.isCompleted }
             .sorted { ($0.dueDate ?? Date.distantPast) > ($1.dueDate ?? Date.distantPast) }
-            .prefix(5)
-            .map { $0 }
+    }
+
+    var recentAssignmentsByMonth: [(month: String, assignments: [Assignment])] {
+        let completed = assignments.filter { $0.isCompleted }
+        let grouped = Dictionary(grouping: completed) { a -> DateComponents in
+            Calendar.current.dateComponents([.year, .month], from: a.dueDate ?? a.createdAt ?? Date())
+        }
+        return grouped.keys
+            .sorted { dc1, dc2 in
+                guard let d1 = Calendar.current.date(from: dc1),
+                      let d2 = Calendar.current.date(from: dc2) else { return false }
+                return d1 > d2
+            }
+            .compactMap { dc -> (month: String, assignments: [Assignment])? in
+                guard let date = Calendar.current.date(from: dc) else { return nil }
+                let assignments = grouped[dc] ?? []
+                let formatter = DateFormatter()
+                formatter.dateFormat = "MMMM yyyy"
+                return (formatter.string(from: date), assignments.sorted { ($0.dueDate ?? .distantPast) > ($1.dueDate ?? .distantPast) })
+            }
+    }
+
+    var incompleteAssignments: [Assignment] {
+        assignments
+            .filter { !$0.isCompleted }
+            .sorted { ($0.dueDate ?? Date.distantPast) < ($1.dueDate ?? Date.distantPast) }
+    }
+
+    var attendanceGrouping: AttendanceGrouping? {
+        guard !attendanceRecords.isEmpty else { return nil }
+        let cal = Calendar.current
+        let now = Date()
+        guard let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)) else {
+            return AttendanceGrouping(currentWeekRecords: [], monthlySummaries: monthlyAttendanceSummaries)
+        }
+        let weekEnd = cal.date(byAdding: .day, value: 7, to: weekStart) ?? now
+
+        let currentWeekRecords = attendanceRecords
+            .filter { $0.date >= weekStart && $0.date < weekEnd }
+            .sorted { $0.date > $1.date }
+
+        // Monthly summaries include all records (current month total includes current week)
+        let summaries = monthlyAttendanceSummaries
+        return AttendanceGrouping(currentWeekRecords: currentWeekRecords, monthlySummaries: summaries)
+    }
+
+    private var monthlyAttendanceSummaries: [(month: String, daysPresent: Int)] {
+        let cal = Calendar.current
+        let byMonth = Dictionary(grouping: attendanceRecords) { r in
+            cal.dateComponents([.year, .month], from: r.date)
+        }
+        let monthFormatter = DateFormatter()
+        monthFormatter.dateFormat = "MMMM yyyy"
+        return byMonth.keys
+            .sorted { dc1, dc2 in
+                guard let d1 = cal.date(from: dc1), let d2 = cal.date(from: dc2) else { return false }
+                return d1 > d2
+            }
+            .compactMap { dc -> (month: String, daysPresent: Int)? in
+                guard let date = cal.date(from: dc) else { return nil }
+                let records = byMonth[dc] ?? []
+                let daysPresent = records.filter { $0.isPresent }.count
+                return (monthFormatter.string(from: date), daysPresent)
+            }
     }
 }
 

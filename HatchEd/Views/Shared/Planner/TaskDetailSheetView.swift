@@ -15,9 +15,11 @@ struct TaskDetailSheetView: View {
     let courses: [Course]
     let onTaskUpdated: (PlannerTask) -> Void
     let onAssignmentUpdated: (Assignment) -> Void
+    let onAssignmentDeleted: (Assignment) -> Void
     let onTaskDeleted: () -> Void
-    
+
     @Environment(\.dismiss) private var dismiss
+    @State private var showingDeleteConfirmation = false
     @State private var isEditing: Bool = false
     @State private var editedTitle: String = ""
     @State private var editedDate: Date = Date()
@@ -59,13 +61,14 @@ struct TaskDetailSheetView: View {
     }
     
     
-    init(task: PlannerTask, assignment: Assignment?, students: [User] = [], courses: [Course] = [], onTaskUpdated: @escaping (PlannerTask) -> Void = { _ in }, onAssignmentUpdated: @escaping (Assignment) -> Void = { _ in }, onTaskDeleted: @escaping () -> Void = {}) {
+    init(task: PlannerTask, assignment: Assignment?, students: [User] = [], courses: [Course] = [], onTaskUpdated: @escaping (PlannerTask) -> Void = { _ in }, onAssignmentUpdated: @escaping (Assignment) -> Void = { _ in }, onAssignmentDeleted: @escaping (Assignment) -> Void = { _ in }, onTaskDeleted: @escaping () -> Void = {}) {
         self.task = task
         self.assignment = assignment
         self.students = students
         self.courses = courses
         self.onTaskUpdated = onTaskUpdated
         self.onAssignmentUpdated = onAssignmentUpdated
+        self.onAssignmentDeleted = onAssignmentDeleted
         self.onTaskDeleted = onTaskDeleted
         
         // Initialize edit state from task or assignment
@@ -129,6 +132,12 @@ struct TaskDetailSheetView: View {
                         .foregroundColor(.hatchEdAccent)
                         .disabled(isSaving || editedTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (editedCourse != nil && primaryEditedStudent == nil))
                     }
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Delete", role: .destructive) {
+                            showingDeleteConfirmation = true
+                        }
+                        .disabled(isSaving)
+                    }
                 } else {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Done") {
@@ -137,13 +146,34 @@ struct TaskDetailSheetView: View {
                     }
                     
                     ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Edit") {
-                            startEditing()
+                        Menu {
+                            Button("Edit") {
+                                startEditing()
+                            }
+                            Button(role: .destructive) {
+                                showingDeleteConfirmation = true
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
                         }
                     }
                 }
             }
             .background(Color.hatchEdBackground)
+            .confirmationDialog(assignment != nil ? "Delete Assignment?" : "Delete Task?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
+                Button("Delete", role: .destructive) {
+                    Task {
+                        await performDelete()
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    showingDeleteConfirmation = false
+                }
+            } message: {
+                Text("This cannot be undone.")
+            }
             .alert("Error", isPresented: Binding(
                 get: { errorMessage != nil },
                 set: { if !$0 { errorMessage = nil } }
@@ -838,6 +868,27 @@ struct TaskDetailSheetView: View {
         errorMessage = nil
     }
     
+    @MainActor
+    private func performDelete() async {
+        if let assignment = assignment {
+            do {
+                try await api.deleteAssignment(id: assignment.id)
+                onAssignmentDeleted(assignment)
+                dismiss()
+            } catch {
+                errorMessage = "Failed to delete: \(error.localizedDescription)"
+            }
+        } else {
+            do {
+                try await api.deletePlannerTask(id: task.id)
+                onTaskDeleted()
+                dismiss()
+            } catch {
+                errorMessage = "Failed to delete: \(error.localizedDescription)"
+            }
+        }
+    }
+
     private func cancelEditing() {
         isEditing = false
         // Reset to original values

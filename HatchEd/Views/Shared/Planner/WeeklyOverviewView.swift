@@ -195,6 +195,7 @@ struct WeeklyOverviewView: View {
                     date: date,
                     tasks: regularTasks + inScopeAssignments,
                     column: column,
+                    totalColumns: weekDates.count,
                     columnWidth: columnWidth,
                     rowHeight: rowHeight,
                     hours: hours,
@@ -218,6 +219,7 @@ private struct TasksForDay: View {
     let date: Date
     let tasks: [PlannerTask]
     let column: Int
+    let totalColumns: Int
     let columnWidth: CGFloat
     let rowHeight: CGFloat
     let hours: [Int]
@@ -332,7 +334,10 @@ private struct TasksForDay: View {
                                 )
                                 .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 3)
                         )
-                        .position(x: rect.maxX + 90, y: rect.minY + 14 + CGFloat(min(slot.tasks.count, 4)) * 10)
+                        .position(
+                            x: column >= totalColumns - 3 ? rect.minX - 90 : rect.maxX + 90,
+                            y: rect.minY + 14 + CGFloat(min(slot.tasks.count, 4)) * 10
+                        )
                         .zIndex(1001)
                     }
                 }

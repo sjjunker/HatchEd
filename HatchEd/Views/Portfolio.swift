@@ -162,46 +162,65 @@ struct PortfolioView: View {
 
 private struct PortfolioRow: View {
     let portfolio: Portfolio
-    
+
+    private var designAccent: Color {
+        portfolio.designPattern.accentColor
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "folder.fill")
-                    .foregroundColor(.hatchEdWhite)
-                    .font(.title3)
-                    .padding(8)
-                    .background(Color.hatchEdAccent)
-                    .clipShape(Circle())
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(portfolio.studentName)
-                        .font(.headline)
-                        .foregroundColor(.hatchEdText)
-                    
-                    Text(portfolio.designPattern.rawValue)
-                        .font(.subheadline)
-                        .foregroundColor(.hatchEdSecondaryText)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 16) {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(designAccent)
+                    .frame(width: 4)
+                    .padding(.leading, 16)
+                    .padding(.top, 4)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(portfolio.studentName)
+                                .font(.headline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.hatchEdText)
+                            Text(portfolio.designPattern == .general ? "Portfolio" : (portfolio.designPattern.rawValue + " Portfolio"))
+                                .font(.subheadline)
+                                .foregroundColor(designAccent)
+                        }
+                        Spacer()
+                        if let createdAt = portfolio.createdAt {
+                            Text(createdAt.formatted(date: .abbreviated, time: .omitted))
+                                .font(.caption)
+                                .foregroundColor(.hatchEdSecondaryText)
+                        }
+                    }
+                    if !portfolio.snippet.isEmpty {
+                        Text(portfolio.snippet)
+                            .font(.subheadline)
+                            .foregroundColor(.hatchEdSecondaryText)
+                            .lineLimit(3)
+                            .lineSpacing(4)
+                            .padding(.top, 4)
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(Color.hatchEdSecondaryBackground.opacity(0.6))
+                            )
+                    }
                 }
-                
-                Spacer()
-                
-                Text(portfolio.createdAt?.formatted(date: .abbreviated, time: .omitted) ?? "")
-                    .font(.caption)
-                    .foregroundColor(.hatchEdSecondaryText)
+                .padding(.trailing, 16)
             }
-            
-            if !portfolio.snippet.isEmpty {
-                Text(portfolio.snippet)
-                    .font(.body)
-                    .foregroundColor(.hatchEdText)
-                    .lineLimit(3)
-            }
+            .padding(.vertical, 16)
         }
-        .padding()
         .background(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 16)
                 .fill(Color.hatchEdCardBackground)
-                .shadow(color: Color.hatchEdAccent.opacity(0.15), radius: 4, x: 0, y: 2)
+                .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 2)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(designAccent.opacity(0.15), lineWidth: 1)
         )
     }
 }

@@ -17,81 +17,62 @@ struct PortfolioDetailView: View {
     @State private var showingShareSheet = false
     @State private var showingStyleSelection = false
     @State private var pendingPDFAction: PDFAction? = nil
-    @State private var selectedStyle: PDFStyle = .modern
-    
+    @State private var selectedStyle: PDFStyle = .professional
+
+    private var designAccent: Color {
+        portfolio.designPattern.accentColor
+    }
+
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    // Header
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(portfolio.studentName)
-                            .font(.title)
-                            .fontWeight(.bold)
-                            .foregroundColor(.hatchEdText)
-                        
-                        Text(portfolio.designPattern.rawValue + " Portfolio")
-                            .font(.headline)
-                            .foregroundColor(.hatchEdSecondaryText)
-                        
-                        if let createdAt = portfolio.createdAt {
-                            Text("Created: \(createdAt.formatted(date: .long, time: .shortened))")
-                                .font(.caption)
-                                .foregroundColor(.hatchEdSecondaryText)
+                VStack(alignment: .leading, spacing: 28) {
+                    // Header — design-pattern accent, stronger hierarchy
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .top) {
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(designAccent)
+                                .frame(width: 4)
+                                .padding(.leading, -4)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(portfolio.studentName)
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.hatchEdText)
+                                if portfolio.designPattern != .general {
+                                    Text(portfolio.designPattern.rawValue + " Portfolio")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(designAccent)
+                                }
+                                if let createdAt = portfolio.createdAt {
+                                    Text("Created \(createdAt.formatted(date: .long, time: .omitted))")
+                                        .font(.caption)
+                                        .foregroundColor(.hatchEdSecondaryText)
+                                }
+                            }
+                            Spacer()
                         }
                     }
-                    .padding()
+                    .padding(20)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
-                        RoundedRectangle(cornerRadius: 12)
+                        RoundedRectangle(cornerRadius: 16)
                             .fill(Color.hatchEdCardBackground)
+                            .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
                     )
                     
-                    // Student Remarks
-                    if let studentRemarks = portfolio.studentRemarks, !studentRemarks.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Student Remarks")
-                                .font(.headline)
-                                .foregroundColor(.hatchEdText)
-                            Text(studentRemarks)
-                                .font(.body)
-                                .foregroundColor(.hatchEdText)
-                        }
-                        .padding()
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.hatchEdCardBackground)
-                        )
+                    // Compiled Content (includes Remarks section)
+                    VStack(alignment: .leading, spacing: 16) {
+                        sectionHeader("Portfolio Content")
+                        PortfolioContentView(portfolio: portfolio, designAccent: designAccent)
                     }
-                    
-                    // Instructor Remarks
-                    if let instructorRemarks = portfolio.instructorRemarks, !instructorRemarks.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Instructor Remarks")
-                                .font(.headline)
-                                .foregroundColor(.hatchEdText)
-                            Text(instructorRemarks)
-                                .font(.body)
-                                .foregroundColor(.hatchEdText)
-                        }
-                        .padding()
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.hatchEdCardBackground)
-                        )
-                    }
-                    
-                    // Compiled Content (text + images from generatedImages / studentWorkFiles)
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Portfolio Content")
-                            .font(.headline)
-                            .foregroundColor(.hatchEdText)
-                        PortfolioContentView(portfolio: portfolio)
-                    }
-                    .padding()
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
-                        RoundedRectangle(cornerRadius: 12)
+                        RoundedRectangle(cornerRadius: 16)
                             .fill(Color.hatchEdCardBackground)
+                            .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
                     )
                 }
                 .padding()
@@ -131,6 +112,30 @@ struct PortfolioDetailView: View {
                 })
             }
         }
+    }
+
+    private func portfolioSectionCard(title: String, content: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader(title)
+            Text(content)
+                .font(.body)
+                .foregroundColor(.hatchEdText)
+                .lineSpacing(6)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.hatchEdCardBackground)
+                .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+        )
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.title3)
+            .fontWeight(.semibold)
+            .foregroundColor(.hatchEdText)
     }
     
     @MainActor
@@ -219,6 +224,7 @@ struct PortfolioDetailView: View {
 // Renders portfolio compiled content with inline images (AI-generated + user-provided from studentWorkFiles)
 private struct PortfolioContentView: View {
     let portfolio: Portfolio
+    var designAccent: Color = .hatchEdAccent
     
     /// Splits content by [IMAGE] and pairs segments with generatedImages by order.
     private var segments: [(text: String, imageId: String?)] {
@@ -240,24 +246,274 @@ private struct PortfolioContentView: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 20) {
             ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
                 if !segment.text.isEmpty {
-                    Text(segment.text)
-                        .font(.body)
-                        .foregroundColor(.hatchEdText)
+                    portfolioTextBlock(segment.text)
                 }
                 if let imageId = segment.imageId {
-                    PortfolioRemoteImageView(imageId: imageId)
+                    PortfolioRemoteImageView(imageId: imageId, accentColor: designAccent)
                 }
             }
         }
+    }
+    
+    /// Parses text with # section headers and renders with typography hierarchy.
+    @ViewBuilder
+    private func portfolioTextBlock(_ text: String) -> some View {
+        let sections = parseSections(text)
+        VStack(alignment: .leading, spacing: 20) {
+            ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
+                if section.title == "Remarks" {
+                    remarksFormattedSection(content: section.content)
+                } else if section.title == "Instructor Remarks", let (instructorPart, aiPart) = splitAtClosingQuote(section.content), !aiPart.isEmpty {
+                    VStack(alignment: .leading, spacing: 16) {
+                        standardSection(title: "Instructor Remarks", content: instructorPart)
+                        Divider().padding(.vertical, 8)
+                        standardSection(title: "Final Word", content: aiPart)
+                    }
+                } else {
+                    standardSection(title: section.title, content: section.content)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func standardSection(title: String, content: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if !title.isEmpty {
+                Text(title)
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(designAccent)
+            }
+            if !content.isEmpty {
+                sectionBody(content)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func remarksFormattedSection(content: String) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Remarks")
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(designAccent)
+            remarksContentBlock(content)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(designAccent.opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(designAccent.opacity(0.2), lineWidth: 1)
+        )
+    }
+
+    /// Splits remarks content by "Student Remarks:", "Instructor Remarks:", and "AI Comments:" (displayed as "Final Word") for structured display.
+    /// Each paragraph is shown on its own line.
+    @ViewBuilder
+    private func remarksContentBlock(_ content: String) -> some View {
+        let parts = splitRemarksContent(content)
+        if parts.count > 1 {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(parts.enumerated()), id: \.offset) { partIndex, part in
+                    let paragraphs = part.text.components(separatedBy: "\n\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+                    ForEach(Array(paragraphs.enumerated()), id: \.offset) { paraIndex, paragraph in
+                        if partIndex > 0 || paraIndex > 0 {
+                            Divider()
+                                .padding(.vertical, 12)
+                        }
+                        if paraIndex == 0 && !part.label.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(part.label)
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.hatchEdText)
+                                sectionBody(paragraph)
+                            }
+                        } else {
+                            sectionBody(paragraph)
+                        }
+                    }
+                }
+            }
+        } else if let first = parts.first, !first.text.isEmpty {
+            let paragraphs = first.text.components(separatedBy: "\n\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(paragraphs.enumerated()), id: \.offset) { i, p in
+                    if i > 0 {
+                        Divider()
+                            .padding(.vertical, 12)
+                    }
+                    sectionBody(p)
+                }
+            }
+        }
+    }
+
+    private func splitRemarksContent(_ content: String) -> [(label: String, text: String)] {
+        let markers: [(String, String)] = [
+            ("Student Remarks:", "Student Remarks"),
+            ("Instructor Remarks:", "Instructor Remarks"),
+            ("AI Comments:", "Final Word")
+        ]
+        var result: [(label: String, text: String)] = []
+        var remaining = content
+
+        while !remaining.isEmpty {
+            var earliestRange: Range<String.Index>?
+            var earliestLabel: String?
+            for (marker, label) in markers {
+                if let r = remaining.range(of: marker, options: .caseInsensitive),
+                   earliestRange == nil || r.lowerBound < earliestRange!.lowerBound {
+                    earliestRange = r
+                    earliestLabel = label
+                }
+            }
+            let (markerRange, label) = (earliestRange, earliestLabel ?? "")
+
+            if let range = markerRange {
+                let before = String(remaining[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !before.isEmpty {
+                    result.append(("", before))
+                }
+                remaining = String(remaining[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                // Find content end: either next paragraph (\n\n) or start of next marker
+                var contentEnd: String.Index?
+                if let paraEnd = remaining.range(of: "\n\n") {
+                    contentEnd = paraEnd.lowerBound
+                }
+                for (marker, _) in markers {
+                    if let nextMarker = remaining.range(of: marker, options: .caseInsensitive),
+                       contentEnd == nil || nextMarker.lowerBound < contentEnd! {
+                        contentEnd = nextMarker.lowerBound
+                    }
+                }
+                if let end = contentEnd {
+                    let text = String(remaining[..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !text.isEmpty {
+                        // If Instructor Remarks contains quoted text, split at closing quote: quoted part = instructor, rest = AI comments
+                        if label == "Instructor Remarks", let (instructorPart, aiPart) = splitAtClosingQuote(text) {
+                            result.append(("Instructor Remarks", instructorPart))
+                            if !aiPart.isEmpty {
+                                result.append(("Final Word", aiPart))
+                            }
+                        } else {
+                            result.append((label, text))
+                        }
+                    }
+                    remaining = String(remaining[end...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                } else {
+                    if !remaining.isEmpty {
+                        let text = remaining
+                        if label == "Instructor Remarks", let (instructorPart, aiPart) = splitAtClosingQuote(text) {
+                            result.append(("Instructor Remarks", instructorPart))
+                            if !aiPart.isEmpty {
+                                result.append(("Final Word", aiPart))
+                            }
+                        } else {
+                            result.append((label, text))
+                        }
+                    }
+                    break
+                }
+            } else {
+                let text = remaining.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !text.isEmpty {
+                    result.append(("", text))
+                }
+                break
+            }
+        }
+        return result.isEmpty ? [("", content)] : result
+    }
+
+    /// Splits text at the closing quote of the first quoted passage. Returns (quoted part, rest) or nil if no closing quote.
+    private func splitAtClosingQuote(_ text: String) -> (String, String)? {
+        let quote: Character = "\""
+        guard let first = text.firstIndex(of: quote) else { return nil }
+        let afterFirst = text.index(after: first)
+        guard afterFirst < text.endIndex, let second = text[afterFirst...].firstIndex(of: quote) else { return nil }
+        let throughClosing = text.index(after: second)
+        let instructorPart = String(text[..<throughClosing]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let aiPart = throughClosing < text.endIndex
+            ? String(text[throughClosing...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            : ""
+        return (instructorPart, aiPart)
+    }
+
+    @ViewBuilder
+    private func sectionBody(_ content: String) -> some View {
+        if let attr = try? AttributedString(markdown: content) {
+            Text(attr)
+                .font(.body)
+                .foregroundColor(.hatchEdText)
+                .lineSpacing(6)
+        } else {
+            Text(content)
+                .font(.body)
+                .foregroundColor(.hatchEdText)
+                .lineSpacing(6)
+        }
+    }
+    
+    private func parseSections(_ text: String) -> [(title: String, content: String)] {
+        let lines = text.components(separatedBy: .newlines)
+        var result: [(title: String, content: String)] = []
+        var currentTitle = ""
+        var currentContent: [String] = []
+
+        /// Strip leading # symbols and return the heading text, or nil if not a heading line.
+        func parseHeading(_ line: String) -> String? {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("#"), let spaceIdx = trimmed.firstIndex(of: " ") else { return nil }
+            return String(trimmed[trimmed.index(after: spaceIdx)...]).trimmingCharacters(in: .whitespaces)
+        }
+
+        /// Titles to skip (treat as empty / content only).
+        let skipTitles = ["Introduction", "General Portfolio"]
+        func shouldSkipTitle(_ t: String) -> Bool {
+            skipTitles.contains(t) || (t.contains(" Portfolio") && (t.contains(" - ") || t.contains(" for ")))
+        }
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if let heading = parseHeading(trimmed) {
+                if !currentContent.isEmpty || !currentTitle.isEmpty {
+                    let content = currentContent.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+                    let title = shouldSkipTitle(currentTitle) ? "" : currentTitle
+                    if !content.isEmpty || !title.isEmpty {
+                        result.append((title, content))
+                    }
+                }
+                currentTitle = heading
+                currentContent = []
+            } else {
+                currentContent.append(line)
+            }
+        }
+        if !currentContent.isEmpty || !currentTitle.isEmpty {
+            let content = currentContent.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            let title = shouldSkipTitle(currentTitle) ? "" : currentTitle
+            if !content.isEmpty || !title.isEmpty {
+                result.append((title, content))
+            }
+        }
+        return result
     }
 }
 
 // Loads and displays one portfolio image (portfolioImages or studentWorkFiles) via GET /api/portfolios/images/:id
 private struct PortfolioRemoteImageView: View {
     let imageId: String
+    var accentColor: Color = .hatchEdAccent
+    
     @State private var image: UIImage?
     @State private var failed = false
     
@@ -272,20 +528,25 @@ private struct PortfolioRemoteImageView: View {
                     .resizable()
                     .scaledToFit()
                     .frame(maxWidth: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(accentColor.opacity(0.25), lineWidth: 1)
+                    )
+                    .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 2)
             } else if failed {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 12)
                     .fill(Color.hatchEdCardBackground)
-                    .frame(height: 120)
+                    .frame(height: 140)
                     .overlay(
                         Text("Image unavailable")
                             .font(.caption)
                             .foregroundColor(.hatchEdSecondaryText)
                     )
             } else {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 12)
                     .fill(Color.hatchEdCardBackground.opacity(0.5))
-                    .frame(height: 120)
+                    .frame(height: 140)
                     .overlay(ProgressView())
             }
         }
@@ -366,7 +627,13 @@ enum PDFStyle: String, CaseIterable, Identifiable {
                 textSpacing: 25,
                 sectionSpacing: 40,
                 textBorderStyle: .subtle,
-                textBorderWidth: 1
+                textBorderWidth: 1,
+                opaqueImageBackground: false,
+                fancyPageBorder: false,
+                verticalFocusedLayout: false,
+                narrowContentWidthRatio: nil,
+                imageEdgeMargin: nil,
+                textBlockCardColor: nil
             )
         case .classic:
             return PDFDesignScheme(
@@ -389,7 +656,13 @@ enum PDFStyle: String, CaseIterable, Identifiable {
                 textSpacing: 20,
                 sectionSpacing: 35,
                 textBorderStyle: .topBottom,
-                textBorderWidth: 1
+                textBorderWidth: 1,
+                opaqueImageBackground: false,
+                fancyPageBorder: false,
+                verticalFocusedLayout: false,
+                narrowContentWidthRatio: nil,
+                imageEdgeMargin: nil,
+                textBlockCardColor: nil
             )
         case .elegant:
             return PDFDesignScheme(
@@ -401,8 +674,8 @@ enum PDFStyle: String, CaseIterable, Identifiable {
                 sectionBackground: UIColor(red: 0.99, green: 0.98, blue: 1.0, alpha: 1.0), // Very light purple
                 text: .label,
                 secondaryText: .secondaryLabel,
-                titleFont: UIFont(name: "Georgia-Bold", size: 28) ?? UIFont.boldSystemFont(ofSize: 28),
-                sectionFont: UIFont(name: "Georgia-Bold", size: 20) ?? UIFont.boldSystemFont(ofSize: 20),
+                titleFont: UIFont(name: "SnellRoundhand-Bold", size: 26) ?? UIFont(name: "Zapfino", size: 26) ?? UIFont.italicSystemFont(ofSize: 26),
+                sectionFont: UIFont(name: "SnellRoundhand", size: 18) ?? UIFont(name: "Zapfino", size: 18) ?? UIFont.italicSystemFont(ofSize: 18),
                 bodyFont: UIFont(name: "Georgia", size: 11) ?? UIFont.systemFont(ofSize: 11),
                 cornerRadius: 16,
                 shadowOffset: CGSize(width: 0, height: 4),
@@ -412,7 +685,13 @@ enum PDFStyle: String, CaseIterable, Identifiable {
                 textSpacing: 25,
                 sectionSpacing: 45,
                 textBorderStyle: .accent,
-                textBorderWidth: 2
+                textBorderWidth: 0.5,
+                opaqueImageBackground: true,
+                fancyPageBorder: true,
+                verticalFocusedLayout: true,
+                narrowContentWidthRatio: 0.55,
+                imageEdgeMargin: nil,
+                textBlockCardColor: .white
             )
         case .vibrant:
             return PDFDesignScheme(
@@ -441,7 +720,13 @@ enum PDFStyle: String, CaseIterable, Identifiable {
                 textSpacing: 30,
                 sectionSpacing: 50,
                 textBorderStyle: .solid,
-                textBorderWidth: 3
+                textBorderWidth: 3,
+                opaqueImageBackground: false,
+                fancyPageBorder: false,
+                verticalFocusedLayout: false,
+                narrowContentWidthRatio: nil,
+                imageEdgeMargin: nil,
+                textBlockCardColor: nil
             )
         case .minimal:
             return PDFDesignScheme(
@@ -464,7 +749,13 @@ enum PDFStyle: String, CaseIterable, Identifiable {
                 textSpacing: 35,
                 sectionSpacing: 60,
                 textBorderStyle: .none,
-                textBorderWidth: 0
+                textBorderWidth: 0,
+                opaqueImageBackground: false,
+                fancyPageBorder: false,
+                verticalFocusedLayout: false,
+                narrowContentWidthRatio: nil,
+                imageEdgeMargin: nil,
+                textBlockCardColor: nil
             )
         case .professional:
             return PDFDesignScheme(
@@ -487,7 +778,13 @@ enum PDFStyle: String, CaseIterable, Identifiable {
                 textSpacing: 22,
                 sectionSpacing: 38,
                 textBorderStyle: .leftAccent,
-                textBorderWidth: 4
+                textBorderWidth: 4,
+                opaqueImageBackground: false,
+                fancyPageBorder: false,
+                verticalFocusedLayout: false,
+                narrowContentWidthRatio: nil,
+                imageEdgeMargin: nil,
+                textBlockCardColor: nil
             )
         }
     }
@@ -523,13 +820,58 @@ struct PDFDesignScheme {
     let sectionSpacing: CGFloat
     let textBorderStyle: TextBorderStyle
     let textBorderWidth: CGFloat
+    let opaqueImageBackground: Bool  // For Elegant: solid background behind non-hero images
+    let fancyPageBorder: Bool  // For Elegant: ornate double-line page frame
+    let verticalFocusedLayout: Bool  // For Elegant: narrow centered text and images, images match text width
+    let narrowContentWidthRatio: CGFloat?  // When set, text uses pageWidth * this (centered)
+    let imageEdgeMargin: CGFloat?  // When set, images extend to page edges with this margin
+    let textBlockCardColor: UIColor?  // When set, use for text card background (e.g. white)
+}
+
+/// Layout variants for portfolio PDF content—adds variety: columns, text-wrap, asymmetric blocks.
+enum PDFContentLayoutType {
+    case singleColumn          // Default full-width
+    case twoColumn             // Text in two columns
+    case heroImage             // First image: full page width
+    case imageLeftTextWrap     // Image left, text wraps around (Core Text exclusion)
+    case imageRightTextWrap    // Image right, text wraps around (Core Text exclusion)
+    case sideBySide            // Image and text as adjacent blocks (left/right)
+    case magazineGrid          // Multiple small text boxes in 2-column grid
+    case calloutBox            // Narrow callout strip (left or right edge)
 }
 
 // PDF Creator - Graphical PDF Generation
 class PDFCreator {
     private var contentPairIndex = 0 // Track pairs for alternating text/image order and background colors
+    private var sectionIndex = 0
     
-    func createPDF(from portfolio: Portfolio, style: PDFStyle = .modern, imageCache: [String: UIImage] = [:]) -> Data {
+    /// Choose layout based on position and content to create visual variety.
+    private func layoutForPair(sectionIndex: Int, pairIndex: Int, hasImage: Bool, textLength: Int, imageIndex: Int?, design: PDFDesignScheme) -> PDFContentLayoutType {
+        if design.verticalFocusedLayout {
+            return .singleColumn
+        }
+        let idx = sectionIndex * 10 + pairIndex
+        if hasImage {
+            switch idx % 5 {
+            case 0: return .imageLeftTextWrap
+            case 1: return .imageRightTextWrap
+            case 2: return .sideBySide
+            case 3: return .imageLeftTextWrap
+            default: return .imageRightTextWrap
+            }
+        } else {
+            // Text-only: vary between single column, two column, magazine grid
+            if textLength > 400 { return .twoColumn }
+            switch idx % 4 {
+            case 0: return .singleColumn
+            case 1: return .twoColumn
+            case 2: return .magazineGrid
+            default: return .singleColumn
+            }
+        }
+    }
+    
+    func createPDF(from portfolio: Portfolio, style: PDFStyle = .professional, imageCache: [String: UIImage] = [:]) -> Data {
         contentPairIndex = 0 // Reset for each PDF generation
         let pdfMetaData = [
             kCGPDFContextCreator: "HatchEd",
@@ -557,6 +899,7 @@ class PDFCreator {
             let bgColor = getBackgroundColor(for: 0, design: design)
             bgColor.setFill()
             context.fill(pageRect)
+            drawFancyPageBorder(pageWidth: pageWidth, pageHeight: pageHeight, design: design)
             
             var yPosition: CGFloat = margin
             
@@ -602,14 +945,16 @@ class PDFCreator {
             let titleHeight = ceil(titleBoundingRect.height)
             title.draw(at: CGPoint(x: margin, y: style == .minimal ? 30 : 50), withAttributes: titleAttributes)
             
-            // Subtitle
-            let subtitleColor = style == .minimal ? design.secondaryText : UIColor.white.withAlphaComponent(0.95)
-            let subtitleAttributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: design.sectionFont.pointSize - 4, weight: .medium),
-                .foregroundColor: subtitleColor
-            ]
-            let subtitle = "\(portfolio.designPattern.rawValue) Portfolio"
-            subtitle.draw(at: CGPoint(x: margin, y: (style == .minimal ? 30 : 50) + titleHeight + 10), withAttributes: subtitleAttributes)
+            // Subtitle (omit for General)
+            if portfolio.designPattern != .general {
+                let subtitleColor = style == .minimal ? design.secondaryText : UIColor.white.withAlphaComponent(0.95)
+                let subtitleAttributes: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: design.sectionFont.pointSize - 4, weight: .medium),
+                    .foregroundColor: subtitleColor
+                ]
+                let subtitle = "\(portfolio.designPattern.rawValue) Portfolio"
+                subtitle.draw(at: CGPoint(x: margin, y: (style == .minimal ? 30 : 50) + titleHeight + 10), withAttributes: subtitleAttributes)
+            }
             
             yPosition = headerHeight + design.sectionSpacing / 2
             
@@ -629,58 +974,119 @@ class PDFCreator {
                 contentPairIndex: &contentPairIndex
             )
             
-            // Student Remarks Section (if not already in compiled content)
-            if let studentRemarks = portfolio.studentRemarks, !studentRemarks.isEmpty, !portfolio.compiledContent.contains("Student Remarks") {
-                let remarksHeight = estimateDrawSectionHeight(title: "Student Remarks", content: studentRemarks, contentWidth: contentWidth, design: design)
-                if yPosition + remarksHeight > pageHeight - margin {
-                    context.beginPage()
-                    let bgColor = getBackgroundColor(for: contentPairIndex, design: design)
-                    bgColor.setFill()
-                    context.fill(pageRect)
-                    yPosition = margin
-                    contentPairIndex += 1
-                }
-                
-                yPosition = drawSection(
-                    context: context,
-                    title: "Student Remarks",
-                    content: studentRemarks,
-                    yPosition: yPosition,
-                    pageWidth: pageWidth,
-                    pageHeight: pageHeight,
-                    margin: margin,
-                    contentWidth: contentWidth,
-                    design: design
-                )
-            }
-            
-            // Instructor Remarks Section (if not already in compiled content)
-            if let instructorRemarks = portfolio.instructorRemarks, !instructorRemarks.isEmpty, !portfolio.compiledContent.contains("Instructor Remarks") {
-                let remarksHeight = estimateDrawSectionHeight(title: "Instructor Remarks", content: instructorRemarks, contentWidth: contentWidth, design: design)
-                if yPosition + remarksHeight > pageHeight - margin {
-                    context.beginPage()
-                    let bgColor = getBackgroundColor(for: contentPairIndex, design: design)
-                    bgColor.setFill()
-                    context.fill(pageRect)
-                    yPosition = margin
-                    contentPairIndex += 1
-                }
-                
-                yPosition = drawSection(
-                    context: context,
-                    title: "Instructor Remarks",
-                    content: instructorRemarks,
-                    yPosition: yPosition,
-                    pageWidth: pageWidth,
-                    pageHeight: pageHeight,
-                    margin: margin,
-                    contentWidth: contentWidth,
-                    design: design
-                )
-            }
+            // Footer on last page
+            let footerPattern = portfolio.designPattern == .general ? "Portfolio" : "\(portfolio.designPattern.rawValue) Portfolio"
+            drawPageFooter(
+                context: context,
+                pageRect: pageRect,
+                pageWidth: pageWidth,
+                pageHeight: pageHeight,
+                margin: margin,
+                studentName: portfolio.studentName,
+                designPattern: footerPattern,
+                design: design
+            )
         }
         
         return data
+    }
+
+    private func drawPageFooter(
+        context: UIGraphicsPDFRendererContext,
+        pageRect: CGRect,
+        pageWidth: CGFloat,
+        pageHeight: CGFloat,
+        margin: CGFloat,
+        studentName: String,
+        designPattern: String,
+        design: PDFDesignScheme
+    ) {
+        let footerBottom = pageHeight - 20
+        let lineY = footerBottom - 14
+        design.secondaryText.setStroke()
+        let linePath = UIBezierPath()
+        linePath.move(to: CGPoint(x: margin, y: lineY))
+        linePath.addLine(to: CGPoint(x: pageWidth - margin, y: lineY))
+        linePath.lineWidth = 0.5
+        linePath.stroke()
+        let paraStyle = NSMutableParagraphStyle()
+        paraStyle.alignment = .center
+        let footerAttributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: 8, weight: .regular),
+            .foregroundColor: design.secondaryText,
+            .paragraphStyle: paraStyle
+        ]
+        let footerText = "\(studentName) · \(designPattern)"
+        let footerRect = CGRect(x: margin, y: lineY + 4, width: pageWidth - margin * 2, height: 12)
+        (footerText as NSString).draw(in: footerRect, withAttributes: footerAttributes)
+    }
+    
+    private func drawFancyPageBorder(pageWidth: CGFloat, pageHeight: CGFloat, design: PDFDesignScheme) {
+        guard design.fancyPageBorder else { return }
+        let outerInset: CGFloat = 24
+        let innerInset: CGFloat = 36
+        let frameInset: CGFloat = 48
+        let cornerRadius: CGFloat = 20
+        let lineW: CGFloat = 1.2
+        let accent = design.accent
+        
+        // Outer ornamental frame — rounded rectangle
+        let outerRect = CGRect(x: outerInset, y: outerInset, width: pageWidth - outerInset * 2, height: pageHeight - outerInset * 2)
+        accent.withAlphaComponent(0.85).setStroke()
+        let outerPath = UIBezierPath(roundedRect: outerRect, cornerRadius: cornerRadius)
+        outerPath.lineWidth = lineW
+        outerPath.stroke()
+        
+        // Inner frame
+        let innerRect = CGRect(x: innerInset, y: innerInset, width: pageWidth - innerInset * 2, height: pageHeight - innerInset * 2)
+        accent.withAlphaComponent(0.5).setStroke()
+        let innerPath = UIBezierPath(roundedRect: innerRect, cornerRadius: cornerRadius - 6)
+        innerPath.lineWidth = 0.6
+        innerPath.stroke()
+        
+        // Ornamental curved corner flourishes (scrollwork S-curves)
+        let flourishSize: CGFloat = 28
+        accent.withAlphaComponent(0.7).setStroke()
+        let strokePath = UIBezierPath()
+        for (pt, flipH, flipV) in [
+            (CGPoint(x: frameInset, y: frameInset), false, false),
+            (CGPoint(x: pageWidth - frameInset, y: frameInset), true, false),
+            (CGPoint(x: pageWidth - frameInset, y: pageHeight - frameInset), true, true),
+            (CGPoint(x: frameInset, y: pageHeight - frameInset), false, true)
+        ] {
+            let sx: CGFloat = flipH ? -1 : 1
+            let sy: CGFloat = flipV ? -1 : 1
+            strokePath.move(to: CGPoint(x: pt.x, y: pt.y))
+            strokePath.addCurve(to: CGPoint(x: pt.x + sx * flourishSize * 0.7, y: pt.y + sy * flourishSize * 0.3),
+                               controlPoint1: CGPoint(x: pt.x + sx * flourishSize * 0.4, y: pt.y),
+                               controlPoint2: CGPoint(x: pt.x + sx * flourishSize * 0.7, y: pt.y + sy * flourishSize * 0.1))
+            strokePath.addCurve(to: CGPoint(x: pt.x + sx * flourishSize, y: pt.y + sy * flourishSize),
+                               controlPoint1: CGPoint(x: pt.x + sx * flourishSize * 0.85, y: pt.y + sy * flourishSize * 0.5),
+                               controlPoint2: CGPoint(x: pt.x + sx * flourishSize, y: pt.y + sy * flourishSize * 0.75))
+            strokePath.addCurve(to: CGPoint(x: pt.x + sx * flourishSize * 0.3, y: pt.y + sy * flourishSize * 0.7),
+                               controlPoint1: CGPoint(x: pt.x + sx * flourishSize, y: pt.y + sy * flourishSize * 0.9),
+                               controlPoint2: CGPoint(x: pt.x + sx * flourishSize * 0.5, y: pt.y + sy * flourishSize))
+            strokePath.addCurve(to: pt,
+                               controlPoint1: CGPoint(x: pt.x + sx * flourishSize * 0.1, y: pt.y + sy * flourishSize * 0.6),
+                               controlPoint2: CGPoint(x: pt.x, y: pt.y + sy * flourishSize * 0.3))
+        }
+        strokePath.lineWidth = 0.8
+        strokePath.lineJoinStyle = .round
+        strokePath.stroke()
+        
+        // Small curved corner brackets (arcs)
+        let bracketRadius: CGFloat = 12
+        accent.withAlphaComponent(0.6).setStroke()
+        for (cx, cy, startAngle, endAngle) in [
+            (outerInset + bracketRadius, outerInset + bracketRadius, CGFloat.pi, CGFloat.pi * 1.5),
+            (pageWidth - outerInset - bracketRadius, outerInset + bracketRadius, CGFloat.pi * 1.5, 0),
+            (pageWidth - outerInset - bracketRadius, pageHeight - outerInset - bracketRadius, 0, CGFloat.pi * 0.5),
+            (outerInset + bracketRadius, pageHeight - outerInset - bracketRadius, CGFloat.pi * 0.5, CGFloat.pi)
+        ] {
+            let arc = UIBezierPath(arcCenter: CGPoint(x: cx, y: cy), radius: bracketRadius, startAngle: startAngle, endAngle: endAngle, clockwise: true)
+            arc.lineWidth = 0.7
+            arc.stroke()
+        }
     }
     
     private func drawSection(
@@ -695,6 +1101,7 @@ class PDFCreator {
         design: PDFDesignScheme
     ) -> CGFloat {
         var currentY = yPosition
+        let (effectiveMargin, effectiveContentWidth) = effectiveTextLayout(pageWidth: pageWidth, margin: margin, contentWidth: contentWidth, design: design)
         
         // Section title with design-specific font
         let sectionTitleAttributes: [NSAttributedString.Key: Any] = [
@@ -702,13 +1109,13 @@ class PDFCreator {
             .foregroundColor: design.accent
         ]
         let sectionTitleBoundingRect = NSString(string: title).boundingRect(
-            with: CGSize(width: contentWidth, height: CGFloat.greatestFiniteMagnitude),
+            with: CGSize(width: effectiveContentWidth, height: CGFloat.greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: sectionTitleAttributes,
             context: nil
         )
         let sectionTitleHeight = ceil(sectionTitleBoundingRect.height)
-        title.draw(at: CGPoint(x: margin, y: currentY), withAttributes: sectionTitleAttributes)
+        title.draw(at: CGPoint(x: effectiveMargin, y: currentY), withAttributes: sectionTitleAttributes)
         currentY += sectionTitleHeight + design.textSpacing
         
         // Content in styled card
@@ -728,7 +1135,7 @@ class PDFCreator {
         let verticalPadding: CGFloat = 20
         
         let contentBoundingRect = NSString(string: content).boundingRect(
-            with: CGSize(width: contentWidth - (horizontalPadding * 2), height: CGFloat.greatestFiniteMagnitude),
+            with: CGSize(width: effectiveContentWidth - (horizontalPadding * 2), height: CGFloat.greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: contentAttributes,
             context: nil
@@ -736,12 +1143,12 @@ class PDFCreator {
         let contentHeight = ceil(contentBoundingRect.height)
         
         // Draw section background
-        let sectionBgRect = CGRect(x: margin, y: currentY - 10, width: contentWidth, height: contentHeight + (verticalPadding * 2) + 20)
+        let sectionBgRect = CGRect(x: effectiveMargin, y: currentY - 10, width: effectiveContentWidth, height: contentHeight + (verticalPadding * 2) + 20)
         design.sectionBackground.setFill()
         context.fill(sectionBgRect)
         
         // Draw card background with shadow
-        let cardRect = CGRect(x: margin, y: currentY, width: contentWidth, height: contentHeight + (verticalPadding * 2))
+        let cardRect = CGRect(x: effectiveMargin, y: currentY, width: effectiveContentWidth, height: contentHeight + (verticalPadding * 2))
         
         // Apply shadow if enabled
         if design.shadowOpacity > 0 {
@@ -752,7 +1159,7 @@ class PDFCreator {
             )
         }
         
-        design.card.setFill()
+        (design.textBlockCardColor ?? design.card).setFill()
         let cardPath = UIBezierPath(roundedRect: cardRect, cornerRadius: design.cornerRadius)
         cardPath.fill()
         
@@ -798,20 +1205,20 @@ class PDFCreator {
         case .leftAccent:
             // Left accent bar
             design.accent.setFill()
-            let accentBarRect = CGRect(x: margin, y: currentY, width: design.textBorderWidth, height: cardRect.height)
+            let accentBarRect = CGRect(x: effectiveMargin, y: currentY, width: design.textBorderWidth, height: cardRect.height)
             context.fill(accentBarRect)
         case .topBottom:
             // Top and bottom borders only
             design.accent.setStroke()
             let topPath = UIBezierPath()
-            topPath.move(to: CGPoint(x: margin, y: currentY))
-            topPath.addLine(to: CGPoint(x: margin + contentWidth, y: currentY))
+            topPath.move(to: CGPoint(x: effectiveMargin, y: currentY))
+            topPath.addLine(to: CGPoint(x: effectiveMargin + effectiveContentWidth, y: currentY))
             topPath.lineWidth = design.textBorderWidth
             topPath.stroke()
             
             let bottomPath = UIBezierPath()
-            bottomPath.move(to: CGPoint(x: margin, y: currentY + cardRect.height))
-            bottomPath.addLine(to: CGPoint(x: margin + contentWidth, y: currentY + cardRect.height))
+            bottomPath.move(to: CGPoint(x: effectiveMargin, y: currentY + cardRect.height))
+            bottomPath.addLine(to: CGPoint(x: effectiveMargin + effectiveContentWidth, y: currentY + cardRect.height))
             bottomPath.lineWidth = design.textBorderWidth
             bottomPath.stroke()
         }
@@ -847,47 +1254,47 @@ class PDFCreator {
         var currentSection: (title: String, content: [String])? = nil
         var allSections: [(title: String, content: [String])] = []
         
-        // Parse markdown sections
+        // Parse markdown sections (#, ##, ###)
+        func pdfParseHeading(_ line: String) -> String? {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            guard t.hasPrefix("#"), let spaceIdx = t.firstIndex(of: " ") else { return nil }
+            return String(t[t.index(after: spaceIdx)...]).trimmingCharacters(in: .whitespaces)
+        }
+        let pdfSkipTitles = ["Introduction", "General Portfolio"]
+        func pdfShouldSkipTitle(_ t: String) -> Bool {
+            pdfSkipTitles.contains(t) || (t.contains(" Portfolio") && (t.contains(" - ") || t.contains(" for ")))
+        }
+
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("## ") {
-                // Save previous section
+            if let heading = pdfParseHeading(trimmed) {
                 if let section = currentSection {
                     allSections.append(section)
                 }
-                // Start new section
-                let title = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-                currentSection = (title: title, content: [])
-            } else if trimmed.hasPrefix("# ") {
-                // Main title - skip or handle separately
-                continue
+                currentSection = (title: heading, content: [])
             } else if let section = currentSection {
-                // Add line to current section
                 var sectionContent = section.content
                 sectionContent.append(line)
                 currentSection = (title: section.title, content: sectionContent)
             } else {
-                // Content before first section
                 if allSections.isEmpty && currentSection == nil {
-                    // Create a default section for content before first ##
-                    currentSection = (title: "Introduction", content: [line])
+                    currentSection = (title: "", content: [line])
                 }
             }
         }
         
-        // Add last section
         if let section = currentSection {
             allSections.append(section)
         }
         
-        // If no sections found, render as single block
         if allSections.isEmpty {
-            let singleHeight = estimateDrawSectionHeight(title: "Portfolio Content", content: content, contentWidth: contentWidth, design: design)
+            let singleHeight = estimateDrawSectionHeight(title: "Portfolio Content", content: content, pageWidth: pageWidth, margin: margin, contentWidth: contentWidth, design: design)
             if currentY + singleHeight > pageHeight - margin {
                 context.beginPage()
                 let bgColor = getBackgroundColor(for: contentPairIndex, design: design)
                 bgColor.setFill()
                 context.fill(CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight))
+                drawFancyPageBorder(pageWidth: pageWidth, pageHeight: pageHeight, design: design)
                 currentY = margin
             }
             return drawSection(
@@ -903,11 +1310,12 @@ class PDFCreator {
             )
         }
         
-        // Render each section (drawPortfolioSection starts a new page when needed so heading isn't alone)
-        for section in allSections {
+        for (secIdx, section) in allSections.enumerated() {
+            let displayTitle = pdfShouldSkipTitle(section.title) ? "" : section.title
             currentY = drawPortfolioSection(
                 context: context,
-                title: section.title,
+                sectionIndex: secIdx,
+                title: displayTitle,
                 content: section.content,
                 yPosition: currentY,
                 pageWidth: pageWidth,
@@ -937,15 +1345,18 @@ class PDFCreator {
     private func estimateDrawSectionHeight(
         title: String,
         content: String,
+        pageWidth: CGFloat,
+        margin: CGFloat,
         contentWidth: CGFloat,
         design: PDFDesignScheme
     ) -> CGFloat {
+        let (_, effContentWidth) = effectiveTextLayout(pageWidth: pageWidth, margin: margin, contentWidth: contentWidth, design: design)
         let sectionTitleAttributes: [NSAttributedString.Key: Any] = [
             .font: design.sectionFont,
             .foregroundColor: design.accent
         ]
         let sectionTitleBoundingRect = NSString(string: title).boundingRect(
-            with: CGSize(width: contentWidth, height: CGFloat.greatestFiniteMagnitude),
+            with: CGSize(width: effContentWidth, height: CGFloat.greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: sectionTitleAttributes,
             context: nil
@@ -964,7 +1375,7 @@ class PDFCreator {
         let horizontalPadding: CGFloat = design.textBorderStyle == .leftAccent ? 30 : 20
         let verticalPadding: CGFloat = 20
         let contentBoundingRect = NSString(string: content).boundingRect(
-            with: CGSize(width: contentWidth - (horizontalPadding * 2), height: CGFloat.greatestFiniteMagnitude),
+            with: CGSize(width: effContentWidth - (horizontalPadding * 2), height: CGFloat.greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: contentAttributes,
             context: nil
@@ -1084,9 +1495,10 @@ class PDFCreator {
         return height
     }
     
-    // Draw a portfolio section with image placeholders
+    // Draw a portfolio section with image placeholders and varied layouts
     private func drawPortfolioSection(
         context: UIGraphicsPDFRendererContext,
+        sectionIndex: Int,
         title: String,
         content: [String],
         yPosition: CGFloat,
@@ -1150,7 +1562,9 @@ class PDFCreator {
         let textAttrs: [NSAttributedString.Key: Any] = [.font: design.bodyFont, .paragraphStyle: paragraphStyle]
         let horizontalPadding: CGFloat = design.textBorderStyle == .leftAccent ? 30 : 20
         let verticalPadding: CGFloat = 20
-        let textWidth = contentWidth - (horizontalPadding * 2)
+        let (_, effTextWidth) = effectiveTextLayout(pageWidth: pageWidth, margin: margin, contentWidth: contentWidth, design: design)
+        let (_, effImageWidth) = design.verticalFocusedLayout ? effectiveTextLayout(pageWidth: pageWidth, margin: margin, contentWidth: contentWidth, design: design) : effectiveImageLayout(pageWidth: pageWidth, margin: margin, contentWidth: contentWidth, design: design)
+        let textWidth = effTextWidth - (horizontalPadding * 2)
         
         func estimatedTextBlockHeight(for content: String) -> CGFloat {
             guard !content.isEmpty else { return 0 }
@@ -1170,7 +1584,7 @@ class PDFCreator {
                 let valid = img.id.count == 24 && !img.id.hasPrefix("fallback-") && !img.id.hasPrefix("missing-") && !img.id.hasPrefix("failed-")
                 if valid, let cached = imageCache[img.id] {
                     let aspect = cached.size.width / cached.size.height
-                    h = min(280, contentWidth / aspect)
+                    h = min(280, effImageWidth / aspect)
                 }
             }
             return h + design.imageSpacing
@@ -1182,12 +1596,14 @@ class PDFCreator {
             .foregroundColor: design.accent
         ]
         let sectionTitleBoundingRect = NSString(string: title).boundingRect(
-            with: CGSize(width: contentWidth, height: CGFloat.greatestFiniteMagnitude),
+            with: CGSize(width: effTextWidth, height: CGFloat.greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: sectionTitleAttributes,
             context: nil
         )
         let sectionTitleHeight = ceil(sectionTitleBoundingRect.height)
+        let ratio = design.narrowContentWidthRatio
+        let titleX = (design.verticalFocusedLayout && ratio != nil) ? (pageWidth - pageWidth * (ratio ?? 1)) / 2 : margin
         if let firstPair = contentPairs.first {
             let firstTextContent = firstPair.text.map { $0.content }.joined(separator: "\n")
             let firstPairHeight = estimatedTextBlockHeight(for: firstTextContent) + (firstPair.image.map { estimatedImageHeight(for: $0) } ?? 0)
@@ -1195,12 +1611,13 @@ class PDFCreator {
                 context.beginPage()
                 getBackgroundColor(for: contentPairIndex, design: design).setFill()
                 context.fill(CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight))
+drawFancyPageBorder(pageWidth: pageWidth, pageHeight: pageHeight, design: design)
                 currentY = margin
             }
         }
-        title.draw(at: CGPoint(x: margin, y: currentY), withAttributes: sectionTitleAttributes)
+        title.draw(at: CGPoint(x: titleX, y: currentY), withAttributes: sectionTitleAttributes)
         currentY += sectionTitleHeight + design.textSpacing
-        
+
         let newPageThreshold: CGFloat = 24
         for (pairIndex, pair) in contentPairs.enumerated() {
             let textContent = pair.text.map { $0.content }.joined(separator: "\n")
@@ -1208,13 +1625,11 @@ class PDFCreator {
             let imagePartHeight = pair.image.map { estimatedImageHeight(for: $0) } ?? 0
             let pairHeight = textBlockHeight + imagePartHeight
             let fitsOnPage = (currentY + pairHeight <= pageHeight - margin)
-            let shouldImageFirst = (contentPairIndex % 2 == 1)
+            let shouldImageFirst = design.verticalFocusedLayout ? false : (contentPairIndex % 2 == 1)
             let isFirstPair = (pairIndex == 0)
             
             if !fitsOnPage && (pair.text.isEmpty == false || pair.image != nil) {
-                // Pair doesn't fit. For first pair: heading + first element on this page, second element on next. Otherwise: each on own page.
                 if isFirstPair {
-                    // Draw only the first element on current page (with heading), then second element on next page
                     if shouldImageFirst {
                         if let imageTuple = pair.image {
                             currentY = renderImage(context: context, image: imageTuple, yPosition: currentY, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache)
@@ -1223,6 +1638,7 @@ class PDFCreator {
                             context.beginPage()
                             getBackgroundColor(for: contentPairIndex, design: design).setFill()
                             context.fill(CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight))
+                            drawFancyPageBorder(pageWidth: pageWidth, pageHeight: pageHeight, design: design)
                             currentY = renderTextBlock(context: context, content: textContent, yPosition: margin, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design)
                         }
                     } else {
@@ -1233,6 +1649,7 @@ class PDFCreator {
                             context.beginPage()
                             getBackgroundColor(for: contentPairIndex, design: design).setFill()
                             context.fill(CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight))
+                            drawFancyPageBorder(pageWidth: pageWidth, pageHeight: pageHeight, design: design)
                             currentY = renderImage(context: context, image: imageTuple, yPosition: margin, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache)
                         }
                     }
@@ -1242,18 +1659,21 @@ class PDFCreator {
                         context.beginPage()
                         getBackgroundColor(for: contentPairIndex, design: design).setFill()
                         context.fill(CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight))
+                        drawFancyPageBorder(pageWidth: pageWidth, pageHeight: pageHeight, design: design)
                         currentY = renderImage(context: context, image: imageTuple, yPosition: margin, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache)
                     }
                     if !pair.text.isEmpty {
                         context.beginPage()
                         getBackgroundColor(for: contentPairIndex + (shouldImageFirst && pair.image != nil ? 1 : 0), design: design).setFill()
                         context.fill(CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight))
+                        drawFancyPageBorder(pageWidth: pageWidth, pageHeight: pageHeight, design: design)
                         currentY = renderTextBlock(context: context, content: textContent, yPosition: margin, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design)
                     }
                     if !shouldImageFirst, let imageTuple = pair.image {
                         context.beginPage()
                         getBackgroundColor(for: contentPairIndex + (pair.text.isEmpty ? 0 : 1), design: design).setFill()
                         context.fill(CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight))
+                        drawFancyPageBorder(pageWidth: pageWidth, pageHeight: pageHeight, design: design)
                         currentY = renderImage(context: context, image: imageTuple, yPosition: margin, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache)
                     }
                 }
@@ -1262,25 +1682,262 @@ class PDFCreator {
             }
             
             if currentY > pageHeight - margin - newPageThreshold {
-                context.beginPage()
+context.beginPage()
                 getBackgroundColor(for: contentPairIndex, design: design).setFill()
                 context.fill(CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight))
+                drawFancyPageBorder(pageWidth: pageWidth, pageHeight: pageHeight, design: design)
                 currentY = margin
             }
-            
-            if shouldImageFirst, let imageTuple = pair.image {
-                currentY = renderImage(context: context, image: imageTuple, yPosition: currentY, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache)
-            }
-            if !pair.text.isEmpty {
-                currentY = renderTextBlock(context: context, content: textContent, yPosition: currentY, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design)
-            }
-            if !shouldImageFirst, let imageTuple = pair.image {
-                currentY = renderImage(context: context, image: imageTuple, yPosition: currentY, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache)
-            }
+
+            let layout = layoutForPair(sectionIndex: sectionIndex, pairIndex: pairIndex, hasImage: pair.image != nil, textLength: textContent.count, imageIndex: pair.image?.index, design: design)
+            let imageFirst = design.verticalFocusedLayout ? false : (contentPairIndex % 2 == 1)
+            currentY = renderContentPairWithLayout(
+                context: context,
+                layout: layout,
+                textContent: textContent,
+                imageTuple: pair.image,
+                yPosition: currentY,
+                pageWidth: pageWidth,
+                pageHeight: pageHeight,
+                margin: margin,
+                contentWidth: contentWidth,
+                design: design,
+                generatedImages: generatedImages,
+                imageCache: imageCache,
+                imageFirst: imageFirst
+            )
             contentPairIndex += 1
         }
         
         return currentY
+    }
+    
+    /// Renders a content pair (text + optional image) using the chosen layout for visual variety.
+    private func renderContentPairWithLayout(
+        context: UIGraphicsPDFRendererContext,
+        layout: PDFContentLayoutType,
+        textContent: String,
+        imageTuple: (type: String, content: String, index: Int?)?,
+        yPosition: CGFloat,
+        pageWidth: CGFloat,
+        pageHeight: CGFloat,
+        margin: CGFloat,
+        contentWidth: CGFloat,
+        design: PDFDesignScheme,
+        generatedImages: [PortfolioImage],
+        imageCache: [String: UIImage],
+        imageFirst: Bool
+    ) -> CGFloat {
+        let hasImage = imageTuple != nil
+        switch layout {
+        case .heroImage:
+            if hasImage, let img = imageTuple {
+                return renderHeroImage(context: context, image: img, text: textContent, yPosition: yPosition, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache)
+            }
+        case .imageLeftTextWrap, .imageRightTextWrap:
+            if hasImage, let img = imageTuple {
+                return renderImageWithTextWrap(context: context, image: img, text: textContent, imageOnLeft: layout == .imageLeftTextWrap, yPosition: yPosition, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache)
+            }
+        case .sideBySide:
+            if hasImage, let img = imageTuple {
+                return renderSideBySide(context: context, image: img, text: textContent, imageOnLeft: imageFirst, yPosition: yPosition, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache)
+            }
+        case .twoColumn, .magazineGrid:
+            if !hasImage, !textContent.isEmpty {
+                if layout == .twoColumn {
+                    return renderTwoColumnTextBlock(context: context, content: textContent, yPosition: yPosition, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design)
+                } else {
+                    return renderMagazineGridTextBlock(context: context, content: textContent, yPosition: yPosition, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design)
+                }
+            }
+        default:
+            break
+        }
+        // Fallback: original single-column layout
+        var y = yPosition
+        if imageFirst, let img = imageTuple {
+            y = renderImage(context: context, image: img, yPosition: y, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache)
+        }
+        if !textContent.isEmpty {
+            y = renderTextBlock(context: context, content: textContent, yPosition: y, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design)
+        }
+        if !imageFirst, let img = imageTuple {
+            y = renderImage(context: context, image: img, yPosition: y, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache)
+        }
+        return y
+    }
+    
+    private func renderHeroImage(context: UIGraphicsPDFRendererContext, image: (type: String, content: String, index: Int?), text: String, yPosition: CGFloat, pageWidth: CGFloat, pageHeight: CGFloat, margin: CGFloat, contentWidth: CGFloat, design: PDFDesignScheme, generatedImages: [PortfolioImage], imageCache: [String: UIImage]) -> CGFloat {
+        let (heroMargin, heroWidth): (CGFloat, CGFloat)
+        if design.verticalFocusedLayout {
+            (heroMargin, heroWidth) = effectiveTextLayout(pageWidth: pageWidth, margin: margin, contentWidth: contentWidth, design: design)
+        } else {
+            (heroMargin, heroWidth) = (0, pageWidth)
+        }
+        let heroHeight: CGFloat = min(pageHeight * 0.42, 320)
+        var img: UIImage?
+        if let idx = image.index, idx < generatedImages.count, let c = imageCache[generatedImages[idx].id] {
+            img = c
+        }
+        let heroRect = CGRect(x: heroMargin, y: yPosition, width: heroWidth, height: heroHeight)
+        if let img = img {
+            let aspect = img.size.width / img.size.height
+            let drawH = min(heroHeight, heroWidth / aspect)
+            let drawW = heroWidth
+            let drawRect = CGRect(x: heroMargin, y: yPosition + (heroHeight - drawH) / 2, width: drawW, height: drawH)
+            if design.cornerRadius > 0 {
+                context.cgContext.saveGState()
+                UIBezierPath(roundedRect: drawRect, cornerRadius: design.cornerRadius).addClip()
+            }
+            img.draw(in: drawRect)
+            if design.cornerRadius > 0 { context.cgContext.restoreGState() }
+        } else {
+            drawImagePlaceholder(context: context, rect: heroRect, description: image.content, design: design)
+        }
+        var currentY = yPosition + heroHeight + design.sectionSpacing
+        if !text.isEmpty {
+            currentY = renderTextBlock(context: context, content: text, yPosition: currentY, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design)
+        }
+        return currentY
+    }
+    
+    private func renderTwoColumnTextBlock(context: UIGraphicsPDFRendererContext, content: String, yPosition: CGFloat, pageWidth: CGFloat, pageHeight: CGFloat, margin: CGFloat, contentWidth: CGFloat, design: PDFDesignScheme) -> CGFloat {
+        let gap: CGFloat = 16
+        let colWidth = (contentWidth - gap) / 2
+        let horizontalPadding: CGFloat = design.textBorderStyle == .leftAccent ? 16 : 12
+        let verticalPadding: CGFloat = 14
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineSpacing = 4
+        paragraphStyle.paragraphSpacing = 8
+        let attrs: [NSAttributedString.Key: Any] = [.font: design.bodyFont, .foregroundColor: design.text, .paragraphStyle: paragraphStyle]
+        let textWidth = colWidth - (horizontalPadding * 2)
+        let mid = content.count / 2
+        let splitIdx = content.index(content.startIndex, offsetBy: min(mid, content.count))
+        let breakPoint = content[..<splitIdx].lastIndex(of: " ") ?? splitIdx
+        let col1Text = String(content[..<breakPoint]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let col2Text = String(content[breakPoint...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let r1 = NSString(string: col1Text).boundingRect(with: CGSize(width: textWidth, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attrs, context: nil)
+        let r2 = NSString(string: col2Text).boundingRect(with: CGSize(width: textWidth, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attrs, context: nil)
+        let cardHeight = max(ceil(r1.height), ceil(r2.height)) + (verticalPadding * 2)
+        let cardRect = CGRect(x: margin, y: yPosition, width: contentWidth, height: cardHeight)
+        drawTextCardBackgroundAndBorder(context: context, cardRect: cardRect, margin: margin, contentWidth: contentWidth, design: design, currentY: yPosition)
+        let col1Rect = CGRect(x: margin + horizontalPadding, y: yPosition + verticalPadding, width: textWidth, height: ceil(r1.height))
+        let col2Rect = CGRect(x: margin + colWidth + gap + horizontalPadding, y: yPosition + verticalPadding, width: textWidth, height: ceil(r2.height))
+        NSAttributedString(string: col1Text, attributes: attrs).draw(in: col1Rect)
+        NSAttributedString(string: col2Text, attributes: attrs).draw(in: col2Rect)
+        return yPosition + cardHeight + design.textSpacing
+    }
+    
+    private func renderMagazineGridTextBlock(context: UIGraphicsPDFRendererContext, content: String, yPosition: CGFloat, pageWidth: CGFloat, pageHeight: CGFloat, margin: CGFloat, contentWidth: CGFloat, design: PDFDesignScheme) -> CGFloat {
+        let gap: CGFloat = 12
+        let boxWidth = (contentWidth - gap) / 2
+        let boxHeight: CGFloat = 72
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineSpacing = 3
+        paragraphStyle.paragraphSpacing = 6
+        let attrs: [NSAttributedString.Key: Any] = [.font: design.bodyFont, .foregroundColor: design.text, .paragraphStyle: paragraphStyle]
+        let parts = content.replacingOccurrences(of: "\n", with: " ").split(separator: ". ", omittingEmptySubsequences: false).map { String($0) + ". " }
+        let chunkSize = max(1, (parts.count + 3) / 4)
+        var chunks: [String] = []
+        for i in stride(from: 0, to: parts.count, by: chunkSize) {
+            chunks.append(parts[i..<min(i + chunkSize, parts.count)].joined())
+        }
+        if chunks.isEmpty { chunks = [content] }
+        let rows = (chunks.count + 1) / 2
+        let gridHeight = CGFloat(rows) * (boxHeight + gap) + 24
+        let cardRect = CGRect(x: margin, y: yPosition, width: contentWidth, height: gridHeight)
+        drawTextCardBackgroundAndBorder(context: context, cardRect: cardRect, margin: margin, contentWidth: contentWidth, design: design, currentY: yPosition)
+        for (i, chunk) in chunks.enumerated() where !chunk.trimmingCharacters(in: .whitespaces).isEmpty {
+            let col = i % 2
+            let row = i / 2
+            let boxRect = CGRect(x: margin + CGFloat(col) * (boxWidth + gap) + 10, y: yPosition + CGFloat(row) * (boxHeight + gap) + 14, width: boxWidth - 8, height: boxHeight - 8)
+            let truncated = String(chunk.prefix(130)).trimmingCharacters(in: .whitespaces)
+            NSAttributedString(string: (truncated + (chunk.count > 130 ? "…" : "")), attributes: attrs).draw(in: boxRect)
+        }
+        return yPosition + gridHeight + design.textSpacing
+    }
+    
+    private func renderSideBySide(context: UIGraphicsPDFRendererContext, image: (type: String, content: String, index: Int?), text: String, imageOnLeft: Bool, yPosition: CGFloat, pageWidth: CGFloat, pageHeight: CGFloat, margin: CGFloat, contentWidth: CGFloat, design: PDFDesignScheme, generatedImages: [PortfolioImage], imageCache: [String: UIImage]) -> CGFloat {
+        let gap: CGFloat = 14
+        let imageWidth = contentWidth * 0.42
+        let textWidth = contentWidth - imageWidth - gap
+        let horizontalPadding: CGFloat = 12
+        let verticalPadding: CGFloat = 14
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineSpacing = 4
+        paragraphStyle.paragraphSpacing = 6
+        let attrs: [NSAttributedString.Key: Any] = [.font: design.bodyFont, .foregroundColor: design.text, .paragraphStyle: paragraphStyle]
+        let textBounding = NSString(string: text).boundingRect(with: CGSize(width: textWidth - horizontalPadding * 2, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attrs, context: nil)
+        var imageHeight: CGFloat = 180
+        if let idx = image.index, idx < generatedImages.count, let cached = imageCache[generatedImages[idx].id] {
+            let aspect = cached.size.width / cached.size.height
+            imageHeight = min(200, imageWidth / aspect)
+        }
+        let blockHeight = max(ceil(textBounding.height) + verticalPadding * 2, imageHeight + 20)
+        let cardRect = CGRect(x: margin, y: yPosition, width: contentWidth, height: blockHeight)
+        drawTextCardBackgroundAndBorder(context: context, cardRect: cardRect, margin: margin, contentWidth: contentWidth, design: design, currentY: yPosition)
+        let imgX = imageOnLeft ? margin + 10 : margin + textWidth + gap + 10
+        let txtX = imageOnLeft ? margin + imageWidth + gap + horizontalPadding : margin + horizontalPadding
+        let imageRect = CGRect(x: imgX, y: yPosition + (blockHeight - imageHeight) / 2, width: imageWidth - 10, height: imageHeight)
+        let txtRect = CGRect(x: txtX, y: yPosition + verticalPadding, width: textWidth - horizontalPadding * 2, height: ceil(textBounding.height))
+        renderImageAtRect(context: context, image: image, rect: imageRect, design: design, generatedImages: generatedImages, imageCache: imageCache)
+        NSAttributedString(string: text, attributes: attrs).draw(in: txtRect)
+        return yPosition + blockHeight + design.textSpacing
+    }
+    
+    private func renderImageAtRect(context: UIGraphicsPDFRendererContext, image: (type: String, content: String, index: Int?), rect: CGRect, design: PDFDesignScheme, generatedImages: [PortfolioImage], imageCache: [String: UIImage]) {
+        if design.opaqueImageBackground, image.index != 0 {
+            let bgRect = rect.insetBy(dx: -6, dy: -6)
+            design.card.setFill()
+            let bgPath = UIBezierPath(roundedRect: bgRect, cornerRadius: design.cornerRadius + 2)
+            bgPath.fill()
+        }
+        var img: UIImage?
+        if let idx = image.index, idx < generatedImages.count {
+            let pid = generatedImages[idx].id
+            if let c = imageCache[pid] { img = c }
+        }
+        if let img = img {
+            let aspect = img.size.width / img.size.height
+            let drawRect = aspect > rect.width / rect.height ? CGRect(x: rect.minX, y: rect.midY - (rect.width / aspect) / 2, width: rect.width, height: rect.width / aspect) : CGRect(x: rect.midX - (rect.height * aspect) / 2, y: rect.minY, width: rect.height * aspect, height: rect.height)
+            if design.cornerRadius > 0 {
+                context.cgContext.saveGState()
+                UIBezierPath(roundedRect: drawRect, cornerRadius: design.cornerRadius).addClip()
+            }
+            img.draw(in: drawRect)
+            if design.cornerRadius > 0 { context.cgContext.restoreGState() }
+        } else {
+            drawImagePlaceholder(context: context, rect: rect, description: image.content, design: design)
+        }
+    }
+    
+    private func renderImageWithTextWrap(context: UIGraphicsPDFRendererContext, image: (type: String, content: String, index: Int?), text: String, imageOnLeft: Bool, yPosition: CGFloat, pageWidth: CGFloat, pageHeight: CGFloat, margin: CGFloat, contentWidth: CGFloat, design: PDFDesignScheme, generatedImages: [PortfolioImage], imageCache: [String: UIImage]) -> CGFloat {
+        // Simple side-by-side layout (no text wrapping) — image on one side, text in column on other
+        let gap: CGFloat = 12
+        let imageWidth = contentWidth * 0.42
+        let horizontalPadding: CGFloat = design.textBorderStyle == .leftAccent ? 18 : 12
+        let verticalPadding: CGFloat = 14
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineSpacing = 5
+        paragraphStyle.paragraphSpacing = 8
+        let attrs: [NSAttributedString.Key: Any] = [.font: design.bodyFont, .foregroundColor: design.text, .paragraphStyle: paragraphStyle]
+        let textWidth = contentWidth - imageWidth - gap - horizontalPadding * 2
+        let textBounding = NSString(string: text).boundingRect(with: CGSize(width: textWidth, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attrs, context: nil)
+        var imageHeight: CGFloat = 180
+        if let idx = image.index, idx < generatedImages.count, let cached = imageCache[generatedImages[idx].id] {
+            let aspect = cached.size.width / cached.size.height
+            imageHeight = min(240, imageWidth / aspect)
+        }
+        let blockHeight = max(ceil(textBounding.height) + verticalPadding * 2, imageHeight + 20)
+        let cardRect = CGRect(x: margin, y: yPosition, width: contentWidth, height: blockHeight)
+        drawTextCardBackgroundAndBorder(context: context, cardRect: cardRect, margin: margin, contentWidth: contentWidth, design: design, currentY: yPosition)
+        let imgX = imageOnLeft ? margin + 10 : margin + contentWidth - imageWidth - 10
+        let txtX = imageOnLeft ? margin + imageWidth + gap + horizontalPadding : margin + horizontalPadding
+        let imageRect = CGRect(x: imgX, y: yPosition + (blockHeight - imageHeight) / 2, width: imageWidth - 10, height: imageHeight)
+        let txtRect = CGRect(x: txtX, y: yPosition + verticalPadding, width: textWidth, height: ceil(textBounding.height))
+        renderImageAtRect(context: context, image: image, rect: imageRect, design: design, generatedImages: generatedImages, imageCache: imageCache)
+        NSAttributedString(string: text, attributes: attrs).draw(in: txtRect)
+        return yPosition + blockHeight + design.textSpacing
     }
     
     // Helper function to render an image
@@ -1323,7 +1980,13 @@ class PDFCreator {
             }
         }
         
-        let imageRect = CGRect(x: margin, y: currentY, width: contentWidth, height: 200)
+        let (imageMargin, imageContentWidth): (CGFloat, CGFloat)
+        if design.verticalFocusedLayout {
+            (imageMargin, imageContentWidth) = effectiveTextLayout(pageWidth: pageWidth, margin: margin, contentWidth: contentWidth, design: design)
+        } else {
+            (imageMargin, imageContentWidth) = effectiveImageLayout(pageWidth: pageWidth, margin: margin, contentWidth: contentWidth, design: design)
+        }
+        let imageRect = CGRect(x: imageMargin, y: currentY, width: imageContentWidth, height: 200)
         
         if let img = matchingImage {
             let imageId = img.id
@@ -1338,13 +2001,13 @@ class PDFCreator {
                 print("[PDF] Image found in cache, rendering...")
                 let aspectRatio = cachedImage.size.width / cachedImage.size.height
                 let maxHeight: CGFloat = 280
-                var imageHeight = min(maxHeight, contentWidth / aspectRatio)
-                let availablePageHeight = pageHeight - margin - currentY - design.imageSpacing
+                var imageHeight = min(maxHeight, imageContentWidth / aspectRatio)
+                let availablePageHeight = pageHeight - imageMargin - currentY - design.imageSpacing
                 if imageHeight > availablePageHeight && availablePageHeight > 60 {
                     imageHeight = availablePageHeight
                 }
-                let imageWidth = min(contentWidth, imageHeight * aspectRatio)
-                let imageX = margin + (contentWidth - imageWidth) / 2
+                let drawWidth = min(imageContentWidth, imageHeight * aspectRatio)
+                let imageX = imageMargin + (imageContentWidth - drawWidth) / 2
                 let imageY = currentY
             
             // Apply shadow if enabled
@@ -1359,9 +2022,17 @@ class PDFCreator {
             let imageDrawRect = CGRect(
                 x: imageX,
                 y: imageY,
-                width: imageWidth,
+                width: drawWidth,
                 height: imageHeight
             )
+            
+            // Elegant style: opaque background behind non-hero images
+            if design.opaqueImageBackground, image.index != 0 {
+                let bgRect = imageDrawRect.insetBy(dx: -8, dy: -8)
+                design.card.setFill()
+                let bgPath = UIBezierPath(roundedRect: bgRect, cornerRadius: design.cornerRadius + 4)
+                bgPath.fill()
+            }
             
             // Draw rounded image if corner radius > 0
             if design.cornerRadius > 0 {
@@ -1387,6 +2058,17 @@ class PDFCreator {
         return currentY
     }
     
+    private func effectiveTextLayout(pageWidth: CGFloat, margin: CGFloat, contentWidth: CGFloat, design: PDFDesignScheme) -> (CGFloat, CGFloat) {
+        guard let ratio = design.narrowContentWidthRatio else { return (margin, contentWidth) }
+        let w = pageWidth * ratio
+        return ((pageWidth - w) / 2, w)
+    }
+    
+    private func effectiveImageLayout(pageWidth: CGFloat, margin: CGFloat, contentWidth: CGFloat, design: PDFDesignScheme) -> (margin: CGFloat, contentWidth: CGFloat) {
+        guard let imageMargin = design.imageEdgeMargin else { return (margin, contentWidth) }
+        return (imageMargin, pageWidth - imageMargin * 2)
+    }
+    
     // Helper to draw card background and border for a given rect (used for full and split text chunks)
     private func drawTextCardBackgroundAndBorder(
         context: UIGraphicsPDFRendererContext,
@@ -1405,7 +2087,7 @@ class PDFCreator {
                 color: UIColor.black.withAlphaComponent(design.shadowOpacity).cgColor
             )
         }
-        design.card.setFill()
+        (design.textBlockCardColor ?? design.card).setFill()
         UIBezierPath(roundedRect: cardRect, cornerRadius: design.cornerRadius).fill()
         context.cgContext.setShadow(offset: .zero, blur: 0)
         switch design.textBorderStyle {
@@ -1466,6 +2148,7 @@ class PDFCreator {
         design: PDFDesignScheme
     ) -> CGFloat {
         let currentY = yPosition
+        let (effectiveMargin, effectiveContentWidth) = effectiveTextLayout(pageWidth: pageWidth, margin: margin, contentWidth: contentWidth, design: design)
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = 5
         paragraphStyle.paragraphSpacing = 10
@@ -1477,7 +2160,7 @@ class PDFCreator {
         ]
         let horizontalPadding: CGFloat = design.textBorderStyle == .leftAccent ? 30 : 20
         let verticalPadding: CGFloat = 20
-        let textWidth = contentWidth - (horizontalPadding * 2)
+        let textWidth = effectiveContentWidth - (horizontalPadding * 2)
         let contentBoundingRect = NSString(string: content).boundingRect(
             with: CGSize(width: textWidth, height: CGFloat.greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
@@ -1485,8 +2168,8 @@ class PDFCreator {
             context: nil
         )
         let contentHeight = ceil(contentBoundingRect.height)
-        let cardRect = CGRect(x: margin, y: currentY, width: contentWidth, height: contentHeight + (verticalPadding * 2))
-        drawTextCardBackgroundAndBorder(context: context, cardRect: cardRect, margin: margin, contentWidth: contentWidth, design: design, currentY: currentY)
+        let cardRect = CGRect(x: effectiveMargin, y: currentY, width: effectiveContentWidth, height: contentHeight + (verticalPadding * 2))
+        drawTextCardBackgroundAndBorder(context: context, cardRect: cardRect, margin: effectiveMargin, contentWidth: effectiveContentWidth, design: design, currentY: currentY)
         let textRect = cardRect.insetBy(dx: horizontalPadding, dy: verticalPadding)
         NSAttributedString(string: content, attributes: contentAttributes).draw(in: textRect)
         return currentY + contentHeight + (verticalPadding * 2) + design.textSpacing

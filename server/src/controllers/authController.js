@@ -429,19 +429,10 @@ export async function usernamePasswordSignIn (req, res, next) {
       const { twoFactorCode } = req.body
       
       if (!twoFactorCode) {
-        // Send SMS code and return response indicating 2FA is required
-        const { sendLoginCode } = await import('./twoFactorController.js')
-        try {
-          await sendLoginCode(userId, user.twoFactorPhoneNumber)
-        } catch (error) {
-          console.error('[Sign In] Failed to send SMS code:', error)
-          // Continue anyway - code might have been sent
-        }
-        
         return res.status(200).json({
           requiresTwoFactor: true,
           userId: userId,
-          message: 'Verification code sent to your phone number'
+          message: 'Enter the code from your authenticator app'
         })
       }
       

@@ -41,13 +41,15 @@ final class ParentDashboardViewModel: ObservableObject {
         authViewModel?.students ?? []
     }
 
+    /// Assignments the student has marked complete but the parent has not yet graded.
+    /// Excludes incomplete assignments (student hasn't done the work) and already-graded assignments.
     var pendingGradingAssignments: [Assignment] {
-        let today = Calendar.current.startOfDay(for: Date())
         return assignments.filter { assignment in
-            if assignment.isCompleted { return false }
-            guard let dueDate = assignment.dueDate else { return false }
-            let dueDateStart = Calendar.current.startOfDay(for: dueDate)
-            return dueDateStart <= today
+            // Student must have marked it complete
+            guard assignment.completed else { return false }
+            // Parent must not have graded yet (no points awarded)
+            guard assignment.pointsAwarded == nil else { return false }
+            return true
         }
         .sorted { ($0.dueDate ?? Date()) > ($1.dueDate ?? Date()) }
     }

@@ -8,7 +8,7 @@
 import SwiftUI
 import UserNotifications
 
-private let studentDashboardSectionIds = ["welcome", "notifications", "dailyAssignments", "quote"]
+private let studentDashboardSectionIds = ["welcome", "notifications", "overdueAssignments", "dailyAssignments", "quote"]
 
 struct StudentDashboard: View {
     @EnvironmentObject var authViewModel: AuthViewModel
@@ -24,7 +24,6 @@ struct StudentDashboard: View {
     @State private var selectedNotification: Notification?
     @State private var showingUnhideSheet = false
     @State private var assignments: [Assignment] = []
-    @State private var completedAssignments: Set<String> = []
     @State private var isLoadingAssignments = false
     @State private var showingHelpConfirmation = false
     @State private var selectedAssignmentForHelp: Assignment?
@@ -99,7 +98,6 @@ struct StudentDashboard: View {
         .onAppear {
             updateOrientationLock(for: selectedDestination)
             authViewModel.updateUserFromDatabase()
-            loadCompletionStatus()
             Task {
                 await authViewModel.fetchNotifications()
                 await loadDailyAssignments()
@@ -288,6 +286,7 @@ struct StudentDashboard: View {
                 notifications: authViewModel.notifications,
                 onSelect: { selectedNotification = $0 }
             )
+        case "overdueAssignments": overdueAssignmentsSection
         case "dailyAssignments": dailyAssignmentsSection
         case "quote": inspirationalQuoteSection
         default: EmptyView()
@@ -298,6 +297,7 @@ struct StudentDashboard: View {
         switch sectionId {
         case "welcome": return "Welcome"
         case "notifications": return "Notifications"
+        case "overdueAssignments": return "Overdue Assignments"
         case "dailyAssignments": return "Today's Assignments"
         case "quote": return "Inspirational Quote"
         default: return sectionId
@@ -338,6 +338,53 @@ struct StudentDashboard: View {
         )
     }
     
+    // MARK: - Overdue Assignments Section
+    
+    private var overdueAssignmentsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.hatchEdCoralAccent)
+                Text("Overdue Assignments")
+                    .font(.headline)
+                    .foregroundColor(.hatchEdText)
+                Spacer()
+            }
+            
+            if isLoadingAssignments {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .padding()
+            } else if overdueAssignments.isEmpty {
+                Text("No overdue assignments!")
+                    .font(.subheadline)
+                    .foregroundColor(.hatchEdSecondaryText)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding()
+            } else {
+                ForEach(overdueAssignments) { assignment in
+                    AssignmentRow(
+                        assignment: assignment,
+                        isCompleted: assignment.isCompleted,
+                        showDueDate: true,
+                        onToggleComplete: {
+                            Task { await toggleAssignmentCompletion(assignment) }
+                        },
+                        onRequestHelp: {
+                            selectedAssignmentForHelp = assignment
+                            showingHelpConfirmation = true
+                        }
+                    )
+                }
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.hatchEdCardBackground)
+        )
+    }
+    
     // MARK: - Daily Assignments Section
     
     private var dailyAssignmentsSection: some View {
@@ -365,9 +412,10 @@ struct StudentDashboard: View {
                 ForEach(dailyAssignments) { assignment in
                     AssignmentRow(
                         assignment: assignment,
-                        isCompleted: assignment.isCompleted || completedAssignments.contains(assignment.id),
+                        isCompleted: assignment.isCompleted,
+                        showDueDate: false,
                         onToggleComplete: {
-                            toggleAssignmentCompletion(assignment)
+                            Task { await toggleAssignmentCompletion(assignment) }
                         },
                         onRequestHelp: {
                             selectedAssignmentForHelp = assignment
@@ -430,6 +478,16 @@ struct StudentDashboard: View {
     
     // MARK: - Helper Methods
     
+    private var overdueAssignments: [Assignment] {
+        let today = calendar.startOfDay(for: Date())
+        return assignments.filter { assignment in
+            guard !assignment.isCompleted,
+                  let dueDate = assignment.dueDate else { return false }
+            return calendar.startOfDay(for: dueDate) < today
+        }
+        .sorted { ($0.dueDate ?? Date()) < ($1.dueDate ?? Date()) }
+    }
+    
     private var dailyAssignments: [Assignment] {
         let today = calendar.startOfDay(for: Date())
         guard let endOfDay = calendar.date(byAdding: .day, value: 1, to: today) else {
@@ -456,24 +514,16 @@ struct StudentDashboard: View {
         isLoadingAssignments = false
     }
     
-    private func toggleAssignmentCompletion(_ assignment: Assignment) {
-        if completedAssignments.contains(assignment.id) {
-            completedAssignments.remove(assignment.id)
-        } else {
-            completedAssignments.insert(assignment.id)
-        }
-        // Save completion status to UserDefaults
-        saveCompletionStatus()
-    }
-    
-    private func saveCompletionStatus() {
-        let array = Array(completedAssignments)
-        UserDefaults.standard.set(array, forKey: "completedAssignments")
-    }
-    
-    private func loadCompletionStatus() {
-        if let array = UserDefaults.standard.array(forKey: "completedAssignments") as? [String] {
-            completedAssignments = Set(array)
+    @MainActor
+    private func toggleAssignmentCompletion(_ assignment: Assignment) async {
+        let newCompleted = !assignment.isCompleted
+        do {
+            let updated = try await api.updateAssignment(id: assignment.id, completed: newCompleted)
+            if let idx = assignments.firstIndex(where: { $0.id == assignment.id }) {
+                assignments[idx] = updated
+            }
+        } catch {
+            print("Failed to update assignment completion: \(error)")
         }
     }
     
@@ -557,6 +607,7 @@ struct StudentDashboard: View {
 private struct AssignmentRow: View {
     let assignment: Assignment
     let isCompleted: Bool
+    var showDueDate: Bool = false
     let onToggleComplete: () -> Void
     let onRequestHelp: () -> Void
     
@@ -580,7 +631,7 @@ private struct AssignmentRow: View {
                     HStack(spacing: 4) {
                         Image(systemName: "clock")
                             .font(.caption2)
-                        Text(dueDate, style: .time)
+                        Text(dueDate, style: showDueDate ? .date : .time)
                             .font(.caption)
                     }
                     .foregroundColor(.hatchEdSecondaryText)

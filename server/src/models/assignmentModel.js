@@ -54,7 +54,7 @@ export async function findAssignmentById (id) {
   return assignmentsCollection().findOne({ _id: new ObjectId(id) })
 }
 
-export async function updateAssignment (id, { title, workDates, workDurationsMinutes, dueDate, clearDueDate, instructions, pointsPossible, pointsAwarded, courseId }) {
+export async function updateAssignment (id, { title, workDates, workDurationsMinutes, dueDate, clearDueDate, instructions, pointsPossible, pointsAwarded, courseId, completed }) {
   const update = {}
   if (title !== undefined) update.title = title
   if (workDates !== undefined) {
@@ -90,8 +90,15 @@ export async function updateAssignment (id, { title, workDates, workDurationsMin
   if (pointsPossible !== undefined) update.pointsPossible = pointsPossible
   if (pointsAwarded !== undefined) {
     update.pointsAwarded = pointsAwarded
-    // Automatically mark as completed when points are awarded
+    // Automatically mark as completed when points are awarded (parent grading)
     update.completed = pointsAwarded != null
+  }
+  if (completed !== undefined) {
+    const existing = await findAssignmentById(id)
+    if (existing?.pointsAwarded == null) {
+      update.completed = Boolean(completed)
+    }
+    // Don't touch pointsAwarded - that's for parent grading only
   }
   if (courseId !== undefined) update.courseId = courseId ? new ObjectId(courseId) : null
   update.updatedAt = new Date()

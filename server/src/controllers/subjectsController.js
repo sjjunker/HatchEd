@@ -195,7 +195,7 @@ export async function getAssignmentsHandler (req, res) {
 
 export async function updateAssignmentHandler (req, res) {
   const { id } = req.params
-  const { title, workDates, workDurationsMinutes, dueDate, clearDueDate, instructions, pointsPossible, pointsAwarded, courseId } = req.body
+  const { title, workDates, workDurationsMinutes, dueDate, clearDueDate, instructions, pointsPossible, pointsAwarded, courseId, completed } = req.body
 
   const user = await findUserById(req.user.userId)
   if (!user || !user.familyId) {
@@ -211,7 +211,7 @@ export async function updateAssignmentHandler (req, res) {
     return res.status(403).json({ error: { message: 'Not authorized' } })
   }
 
-  const updated = await updateAssignment(id, { title, workDates, workDurationsMinutes, dueDate, clearDueDate, instructions, pointsPossible, pointsAwarded, courseId })
+  const updated = await updateAssignment(id, { title, workDates, workDurationsMinutes, dueDate, clearDueDate, instructions, pointsPossible, pointsAwarded, courseId, completed })
   if (!updated) {
     return res.status(404).json({ error: { message: 'Assignment not found or could not be updated' } })
   }

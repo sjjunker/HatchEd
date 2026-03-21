@@ -187,6 +187,7 @@ final class APIClient {
         let pointsPossible: Double?
         let pointsAwarded: Double?
         let courseId: String?
+        let completed: Bool?
     }
     
     // Courses
@@ -241,8 +242,8 @@ final class APIClient {
         return response.assignments
     }
     
-    func updateAssignment(id: String, title: String?, workDates: [Date]? = nil, workDurationsMinutes: [Int]? = nil, dueDate: Date?, clearDueDate: Bool? = nil, instructions: String?, pointsPossible: Double?, pointsAwarded: Double?, courseId: String? = nil) async throws -> Assignment {
-        let body = UpdateAssignmentRequest(title: title, workDates: workDates, workDurationsMinutes: workDurationsMinutes, dueDate: dueDate, clearDueDate: clearDueDate, instructions: instructions, pointsPossible: pointsPossible, pointsAwarded: pointsAwarded, courseId: courseId)
+    func updateAssignment(id: String, title: String? = nil, workDates: [Date]? = nil, workDurationsMinutes: [Int]? = nil, dueDate: Date? = nil, clearDueDate: Bool? = nil, instructions: String? = nil, pointsPossible: Double? = nil, pointsAwarded: Double? = nil, courseId: String? = nil, completed: Bool? = nil) async throws -> Assignment {
+        let body = UpdateAssignmentRequest(title: title, workDates: workDates, workDurationsMinutes: workDurationsMinutes, dueDate: dueDate, clearDueDate: clearDueDate, instructions: instructions, pointsPossible: pointsPossible, pointsAwarded: pointsAwarded, courseId: courseId, completed: completed)
         let response: AssignmentResponse = try await request(
             Endpoint(path: "api/subjects/assignments/\(id)", method: .patch, body: body),
             responseType: AssignmentResponse.self

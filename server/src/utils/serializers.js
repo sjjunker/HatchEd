@@ -68,6 +68,7 @@ export function serializeNotification (notification) {
     id: notification._id?.toString?.() ?? notification._id,
     title: notification.title ?? null,
     body: notification.body ?? null,
+    type: notification.type ?? null,
     createdAt: notification.createdAt,
     deletedAt: notification.deletedAt ?? null,
     userId: notification.userId?.toString?.() ?? notification.userId,

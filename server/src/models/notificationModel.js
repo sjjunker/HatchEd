@@ -23,10 +23,11 @@ export async function findNotificationsForFamily (familyId) {
     .toArray()
 }
 
-export async function createNotification ({ title, body, userId, familyId }) {
+export async function createNotification ({ title, body, userId, familyId, type }) {
   const notification = {
     title,
     body,
+    type: type || null,
     userId: userId ? new ObjectId(userId) : null,
     familyId: familyId ? new ObjectId(familyId) : null,
     read: false,
@@ -59,7 +60,7 @@ export async function createNotificationsForFamily ({ title, body, familyId }) {
   return notifications
 }
 
-export async function createNotificationsForParents ({ title, body, familyId }) {
+export async function createNotificationsForParents ({ title, body, familyId, type }) {
   // Get only parent users in the family
   const { listParentsForFamily } = await import('./userModel.js')
   const parents = await listParentsForFamily(familyId)
@@ -71,7 +72,8 @@ export async function createNotificationsForParents ({ title, body, familyId }) 
       title,
       body,
       userId: parent._id.toString(),
-      familyId
+      familyId,
+      type: type || null
     })
     notifications.push(notification)
   }

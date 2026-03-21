@@ -8,8 +8,11 @@
 
 import SwiftUI
 
+private let pushNotificationsForKey = "pushNotificationsForHelpRequests"
+
 struct Settings: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
+    @AppStorage(pushNotificationsForKey) private var pushNotificationsEnabled = true
     @State private var showingJoinFamily = false
     @State private var joinCode = ""
     @State private var errorMessage: String?
@@ -41,6 +44,8 @@ struct Settings: View {
                     Text("Family settings are only available for parent accounts.")
                         .foregroundColor(.hatchEdSecondaryText)
                 }
+                
+                notificationsSection
                 
                 // Only show 2FA for username/password users
                 if currentUser?.username != nil {
@@ -212,6 +217,17 @@ struct Settings: View {
         } catch {
             await MainActor.run {
                 errorMessage = error.localizedDescription
+            }
+        }
+    }
+    
+    // MARK: - Notifications Section
+    
+    private var notificationsSection: some View {
+        Section(header: Text("Notifications"), footer: Text("When enabled, you'll be notified when a student requests help for an assignment.")) {
+            Toggle(isOn: $pushNotificationsEnabled) {
+                Label("Help Request Notifications", systemImage: "bell.badge.fill")
+                    .foregroundColor(.hatchEdText)
             }
         }
     }

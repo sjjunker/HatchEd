@@ -49,10 +49,17 @@ struct NotificationsView: View {
                                 onSelect(notification)
                             } label: {
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Text(notification.title ?? "Untitled")
-                                        .font(.headline)
-                                        .foregroundColor(.hatchEdText)
-                                        .multilineTextAlignment(.leading)
+                                    HStack(spacing: 6) {
+                                        if notification.type == "helpRequest" {
+                                            Image(systemName: "exclamationmark.triangle.fill")
+                                                .font(.caption)
+                                                .foregroundColor(.hatchEdCoralAccent)
+                                        }
+                                        Text(notification.title ?? "Untitled")
+                                            .font(.headline)
+                                            .foregroundColor(.hatchEdText)
+                                            .multilineTextAlignment(.leading)
+                                    }
 
                                     Text(previewBody(for: notification))
                                         .font(.subheadline)
@@ -67,7 +74,11 @@ struct NotificationsView: View {
                                 }
                                 .padding()
                                 .frame(width: cardWidth, alignment: .leading)
-                                .background(Color.hatchEdSecondaryBackground)
+                                .background(cardBackgroundColor(for: notification))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(notification.type == "helpRequest" ? Color.hatchEdCoralAccent : Color.clear, lineWidth: 2)
+                                )
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                             }
                             .buttonStyle(.plain)
@@ -79,6 +90,12 @@ struct NotificationsView: View {
             }
         }
         .padding()
+    }
+
+    private func cardBackgroundColor(for notification: Notification) -> Color {
+        notification.type == "helpRequest"
+            ? Color.hatchEdCoralAccent.opacity(0.15)
+            : Color.hatchEdSecondaryBackground
     }
 
     private func previewBody(for notification: Notification) -> String {
@@ -93,7 +110,8 @@ struct NotificationsView: View {
 }
 
 #Preview {
-    let sample = Notification(id: "1", title: "New Assignment", body: "Don't forget to review the latest assignment for math. It includes new problems to solve.", createdAt: Date(), deletedAt: nil, userId: nil, read: false)
-    NotificationsView(notifications: [sample]) { _ in }
+    let sample = Notification(id: "1", title: "New Assignment", body: "Don't forget to review the latest assignment for math. It includes new problems to solve.", type: nil, createdAt: Date(), deletedAt: nil, userId: nil, read: false)
+    let helpSample = Notification(id: "2", title: "Help Request", body: "Alex needs help with: Math Homework", type: "helpRequest", createdAt: Date(), deletedAt: nil, userId: nil, read: false)
+    NotificationsView(notifications: [sample, helpSample]) { _ in }
 }
 

@@ -11,6 +11,7 @@ struct Notification: Identifiable, Codable, Equatable {
     let id: String
     let title: String?
     let body: String?
+    let type: String? // e.g. "helpRequest" for urgent help requests
     let createdAt: Date?
     let deletedAt: Date?
     let userId: String?

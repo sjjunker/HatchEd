@@ -12,6 +12,7 @@ private let studentDashboardSectionIds = ["welcome", "notifications", "overdueAs
 
 struct StudentDashboard: View {
     @EnvironmentObject var authViewModel: AuthViewModel
+    @AppStorage("pushNotificationsForHelpRequests") private var pushNotificationsEnabled = true
     @StateObject private var sectionState = DashboardSectionState(storage: DashboardSectionStorage(
         orderKey: "studentDashboardSectionOrder",
         hiddenKey: "studentDashboardHiddenSections",
@@ -553,12 +554,13 @@ struct StudentDashboard: View {
         let notificationBody = "\(studentName) needs help with: \(assignment.title)"
         
         do {
-            // Create notification request for parents
+            // Create notification request for parents (type: helpRequest for urgent styling)
             let request = CreateNotificationRequest(
                 title: notificationTitle,
                 body: notificationBody,
                 userId: nil, // nil means send to all parents in family
-                familyId: familyId
+                familyId: familyId,
+                type: "helpRequest"
             )
             
             // Create notification via API
@@ -568,8 +570,10 @@ struct StudentDashboard: View {
                 responseType: NotificationsResponse.self
             )
             
-            // Send local push notification
-            sendLocalNotification(title: notificationTitle, body: notificationBody)
+            // Send local notification when enabled (confirmation on student's device; parents see in-app)
+            if pushNotificationsEnabled {
+                sendLocalNotification(title: notificationTitle, body: notificationBody)
+            }
             
             // Refresh notifications
             await authViewModel.fetchNotifications()
@@ -662,5 +666,6 @@ private struct CreateNotificationRequest: Encodable {
     let body: String
     let userId: String?
     let familyId: String
+    let type: String?
 }
 

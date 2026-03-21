@@ -10,7 +10,7 @@ export async function listNotifications (req, res) {
 }
 
 export async function createNotificationHandler (req, res) {
-  const { title, body, userId, familyId } = req.body
+  const { title, body, userId, familyId, type } = req.body
   
   if (!title || !title.trim()) {
     return res.status(400).json({ error: { message: 'Notification title is required' } })
@@ -32,7 +32,8 @@ export async function createNotificationHandler (req, res) {
     const notifications = await createNotificationsForParents({
       title: title.trim(),
       body: body.trim(),
-      familyId: user.familyId.toString()
+      familyId: user.familyId.toString(),
+      type: type || 'helpRequest'
     })
     return res.status(201).json({ notifications: notifications.map(serializeNotification) })
   } else if (userId) {

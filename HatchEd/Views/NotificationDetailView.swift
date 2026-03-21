@@ -19,8 +19,8 @@ struct NotificationDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     HStack {
-                        Image(systemName: "bell.fill")
-                            .foregroundColor(.hatchEdWarning)
+                        Image(systemName: notification.type == "helpRequest" ? "exclamationmark.triangle.fill" : "bell.fill")
+                            .foregroundColor(notification.type == "helpRequest" ? .hatchEdCoralAccent : .hatchEdWarning)
                         Text(notification.title ?? "Untitled Notification")
                             .font(.title2.bold())
                             .foregroundColor(.hatchEdText)
@@ -44,9 +44,10 @@ struct NotificationDetailView: View {
                         .font(.body)
                         .foregroundColor(.hatchEdText)
                         .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .background(
                             RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.hatchEdCardBackground)
+                                .fill(notification.type == "helpRequest" ? Color.hatchEdCoralAccent.opacity(0.15) : Color.hatchEdCardBackground)
                         )
 
                     Spacer(minLength: 24)
@@ -82,6 +83,6 @@ struct NotificationDetailView: View {
 }
 
 #Preview {
-    let sample = Notification(id: "1", title: "Reminder", body: "Please review your student's latest assignment.", createdAt: Date(), deletedAt: nil, userId: nil, read: false)
+    let sample = Notification(id: "1", title: "Reminder", body: "Please review your student's latest assignment.", type: nil, createdAt: Date(), deletedAt: nil, userId: nil, read: false)
     NotificationDetailView(notification: sample) { _ in }
 }

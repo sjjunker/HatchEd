@@ -5,8 +5,10 @@ import { findUserById } from '../models/userModel.js'
 import { createPortfolio, findPortfoliosByFamilyId, findPortfoliosByStudentId, findPortfolioById, updatePortfolio, deletePortfolio, portfoliosCollection } from '../models/portfolioModel.js'
 import { findStudentWorkFilesByStudentId, createStudentWorkFile, findStudentWorkFileById, deleteStudentWorkFile } from '../models/studentWorkFileModel.js'
 import { findCoursesByStudentId } from '../models/courseModel.js'
+import { findAssignmentsByCourseId } from '../models/assignmentModel.js'
 import { findAttendanceForStudent } from '../models/attendanceModel.js'
-import { serializePortfolio, serializeStudentWorkFile, serializeCourse } from '../utils/serializers.js'
+import { calculateCourseGrade } from '../utils/gradeCalculator.js'
+import { serializePortfolio, serializeStudentWorkFile, serializeCourse, serializeAssignment } from '../utils/serializers.js'
 import { compilePortfolioWithChatGPT } from '../services/chatgptService.js'
 import multer from 'multer'
 import path from 'path'
@@ -71,7 +73,7 @@ export async function getPortfoliosHandler (req, res) {
     console.log('[Portfolio Controller] Sample portfolio structure:', {
       id: portfoliosWithDetails[0].id,
       studentName: portfoliosWithDetails[0].studentName,
-      designPattern: portfoliosWithDetails[0].designPattern,
+      audience: portfoliosWithDetails[0].audience,
       hasGeneratedImages: Array.isArray(portfoliosWithDetails[0].generatedImages),
       generatedImagesCount: portfoliosWithDetails[0].generatedImages?.length || 0
     })
@@ -81,11 +83,13 @@ export async function getPortfoliosHandler (req, res) {
 }
 
 export async function createPortfolioHandler (req, res) {
-  const { studentId, studentName, designPattern, studentWorkFileIds, usePhotoFileIds, studentRemarks, instructorRemarks, reportCardSnapshot, sectionData } = req.body
+  const { studentId, studentName, audience, studentWorkFileIds, sectionPhotoFileIds, studentRemarks, instructorRemarks, reportCardSnapshot, sectionData } = req.body
 
-  if (!studentId || !studentName || !designPattern) {
-    return res.status(400).json({ error: { message: 'Student ID, name, and design pattern are required' } })
+  if (!studentId || !studentName) {
+    return res.status(400).json({ error: { message: 'Student ID and name are required' } })
   }
+
+  const resolvedAudience = audience || 'family'
 
   const user = await findUserById(req.user.userId)
   if (!user || !user.familyId) {
@@ -105,9 +109,14 @@ export async function createPortfolioHandler (req, res) {
     })
   )
   const validWorkFiles = studentWorkFiles.filter(Boolean)
-  const providedPhotoWorkFiles = (usePhotoFileIds || [])
-    .map((id) => validWorkFiles.find((f) => f._id?.toString() === id))
-    .filter(Boolean)
+  // sectionPhotoFileIds: { aboutMe: "fileId", achievementsAndAwards: "fileId", ... }
+  const providedPhotoBySection = {}
+  for (const [sectionKey, fileId] of Object.entries(sectionPhotoFileIds || {})) {
+    const file = validWorkFiles.find((f) => f._id?.toString() === fileId)
+    if (file) {
+      providedPhotoBySection[sectionKey] = file
+    }
+  }
 
   // Read text from work files for quote extraction (text, DOCX, PDF, Pages from DB fileData)
   const { canExtractText, extractTextFromBuffer } = await import('../utils/documentTextExtractor.js')
@@ -125,13 +134,27 @@ export async function createPortfolioHandler (req, res) {
     }
   }
 
-  // Fetch courses for the student
+  // Fetch courses for the student (with assignments) and compute grades same as report cards
   const courses = await findCoursesByStudentId(studentId)
   const coursesWithDetails = await Promise.all(
     courses.map(async (course) => {
-      const student = await findUserById(course.studentUserId)
-      return serializeCourse(course, student)
+      const student = await findUserById(course.studentUserId ?? course.studentUserIds?.[0])
+      const assignments = await findAssignmentsByCourseId(course._id.toString())
+      const serializedAssignments = assignments.map((a) => serializeAssignment(a))
+      const courseWithAssignments = { ...course, assignments: serializedAssignments }
+      const serialized = serializeCourse(courseWithAssignments, student)
+      const grade = calculateCourseGrade(courseWithAssignments, studentId)
+      return { ...serialized, grade: grade != null ? grade : undefined }
     })
+  )
+
+  // Build reportCardSnapshot from server data with calculated grades (same as report cards)
+  const reportCardSnapshotFromServer = JSON.stringify(
+    coursesWithDetails.map((c) => ({
+      name: c.name,
+      grade: c.grade,
+      assignments: c.assignments
+    }))
   )
 
   // Fetch attendance records for the student
@@ -181,13 +204,13 @@ export async function createPortfolioHandler (req, res) {
     console.log('[Portfolio Controller] Starting portfolio compilation...')
     const compilationResult = await compilePortfolioWithChatGPT({
       studentName,
-      designPattern,
+      audience: resolvedAudience,
       studentWorkFiles: validWorkFiles,
-      providedPhotoWorkFiles,
+      providedPhotoBySection,
       textExcerpts,
       studentRemarks,
       instructorRemarks,
-      reportCardSnapshot,
+      reportCardSnapshot: reportCardSnapshotFromServer,
       attendanceSummary,
       courses: coursesWithDetails,
       sectionData
@@ -213,11 +236,11 @@ export async function createPortfolioHandler (req, res) {
       familyId: user.familyId,
       studentId,
       studentName,
-      designPattern,
+      audience: resolvedAudience,
       studentWorkFileIds: studentWorkFileIds || [],
       studentRemarks,
       instructorRemarks,
-      reportCardSnapshot,
+      reportCardSnapshot: reportCardSnapshotFromServer,
       sectionData: sectionData || null,
       compiledContent,
       snippet,
@@ -226,13 +249,13 @@ export async function createPortfolioHandler (req, res) {
     
     console.log('[Portfolio Controller] Portfolio created successfully:', portfolio._id)
 
-    // Extract placeholder order: [PROVIDED_PHOTO: n] and [IMAGE: description]
-    const providedPhotoRegex = /\[PROVIDED_PHOTO:\s*(\d+)\]/g
+    // Extract placeholder order: [PROVIDED_PHOTO: sectionKey] and [IMAGE: description]
+    const providedPhotoRegex = /\[PROVIDED_PHOTO:\s*(\w+)\]/g
     const imageRegex = /\[IMAGE:\s*([^\]]+)\]/g
     const placeholders = []
     const contentWithPlaceholderMarkers = compiledContent
-      .replace(providedPhotoRegex, (_, n) => {
-        placeholders.push({ type: 'provided', n: parseInt(n, 10) })
+      .replace(providedPhotoRegex, (_, sectionKey) => {
+        placeholders.push({ type: 'provided', sectionKey })
         return `\u0000P${placeholders.length - 1}\u0000`
       })
     const tempContent = contentWithPlaceholderMarkers.replace(imageRegex, (_, desc) => {
@@ -243,11 +266,7 @@ export async function createPortfolioHandler (req, res) {
     const generatedCount = placeholders.filter(p => p.type === 'generated').length
     console.log('[Portfolio Controller] Placeholders:', placeholders.length, '(provided:', providedCount, ', generated:', generatedCount, ')')
 
-    // Reference user-provided photos by their existing studentWorkFile _id (no copy to portfolioImages)
-    const providedImageRecords = providedPhotoWorkFiles.map((file) => ({
-      id: file._id.toString(),
-      description: 'Provided photo'
-    }))
+    // Map section keys to provided photo records (by studentWorkFile _id)
 
     // Store generated (DALL-E) images
     let storedGeneratedImages = []
@@ -264,15 +283,48 @@ export async function createPortfolioHandler (req, res) {
       }
     }
 
-    // Build merged image list in placeholder order
+    // Build merged image list in placeholder order - match generated images by description when possible
+    const usedGeneratedIndices = new Set()
+    const norm = (s) => (s || '').toLowerCase().trim().replace(/\s+/g, ' ')
+    const findBestMatchingGenerated = (placeholderDesc) => {
+      const pNorm = norm(placeholderDesc)
+      if (!pNorm) return null
+      for (let j = 0; j < storedGeneratedImages.length; j++) {
+        if (usedGeneratedIndices.has(j)) continue
+        const sNorm = norm(storedGeneratedImages[j].description)
+        if (sNorm === pNorm || sNorm.includes(pNorm) || pNorm.includes(sNorm)) {
+          usedGeneratedIndices.add(j)
+          return storedGeneratedImages[j]
+        }
+      }
+      return null
+    }
     let genIdx = 0
     const mergedImages = []
     for (let i = 0; i < placeholders.length; i++) {
       const p = placeholders[i]
-      if (p.type === 'provided' && p.n >= 1 && p.n <= providedImageRecords.length) {
-        mergedImages.push(providedImageRecords[p.n - 1])
-      } else if (p.type === 'generated' && genIdx < storedGeneratedImages.length) {
-        mergedImages.push(storedGeneratedImages[genIdx++])
+      if (p.type === 'provided' && p.sectionKey) {
+        const file = providedPhotoBySection[p.sectionKey]
+        if (file) {
+          mergedImages.push({ id: file._id.toString(), description: 'Provided photo' })
+        } else {
+          mergedImages.push({ id: `missing-${i}`, description: '' })
+        }
+      } else if (p.type === 'generated') {
+        const byDesc = findBestMatchingGenerated(p.description)
+        if (byDesc) {
+          mergedImages.push(byDesc)
+        } else {
+          while (genIdx < storedGeneratedImages.length && usedGeneratedIndices.has(genIdx)) genIdx++
+          if (genIdx < storedGeneratedImages.length) {
+            const byOrder = storedGeneratedImages[genIdx]
+            usedGeneratedIndices.add(genIdx)
+            genIdx++
+            mergedImages.push(byOrder)
+          } else {
+            mergedImages.push({ id: `missing-${i}`, description: p.description || '' })
+          }
+        }
       } else {
         mergedImages.push({ id: `missing-${i}`, description: '' })
       }

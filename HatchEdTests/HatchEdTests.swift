@@ -17,6 +17,6 @@ struct HatchEdTests {
     }
 
     @Test func appImportsSucceed() {
-        #expect(PortfolioDesignPattern.general.rawValue == "General")
+        #expect(PortfolioAudience.family.rawValue == "Family & Keepsake")
     }
 }

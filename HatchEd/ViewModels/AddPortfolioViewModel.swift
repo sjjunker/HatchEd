@@ -11,10 +11,10 @@ import SwiftUI
 @MainActor
 final class AddPortfolioViewModel: ObservableObject {
     @Published var selectedStudent: User?
-    @Published var selectedDesignPattern: PortfolioDesignPattern = .general
+    @Published var selectedAudience: PortfolioAudience = .family
     @Published var selectedWorkFiles: Set<StudentWorkFile> = []
-    /// IDs of selected image work files that should appear in the portfolio instead of AI-generated images.
-    @Published var usePhotoFileIds: Set<String> = []
+    /// Section key -> work file ID for user-provided photos per section (e.g. "aboutMe" -> "fileId").
+    @Published var sectionPhotoFileIds: [String: String] = [:]
     @Published var studentRemarks = ""
     @Published var instructorRemarks = ""
     @Published var aboutMe = ""
@@ -46,7 +46,9 @@ final class AddPortfolioViewModel: ObservableObject {
             availableWorkFiles = files
             // Auto-include all best-work files unless parent explicitly removes
             selectedWorkFiles = Set(files)
-            usePhotoFileIds = usePhotoFileIds.filter { id in files.contains(where: { $0.id == id }) }
+            // Keep only section photos that reference files still in the list
+            let validIds = Set(files.map { $0.id })
+            sectionPhotoFileIds = sectionPhotoFileIds.filter { validIds.contains($0.value) }
         } catch {
             print("Failed to load student work files: \(error)")
             availableWorkFiles = []
@@ -57,20 +59,45 @@ final class AddPortfolioViewModel: ObservableObject {
     func toggleWorkFile(_ file: StudentWorkFile) {
         if selectedWorkFiles.contains(file) {
             selectedWorkFiles.remove(file)
-            usePhotoFileIds.remove(file.id)
+            sectionPhotoFileIds = sectionPhotoFileIds.filter { $0.value != file.id }
         } else {
             selectedWorkFiles.insert(file)
         }
     }
 
-    func toggleUsePhotoInPortfolio(_ file: StudentWorkFile) {
-        guard file.fileType.hasPrefix("image/") else { return }
-        if usePhotoFileIds.contains(file.id) {
-            usePhotoFileIds.remove(file.id)
+    func setSectionPhoto(sectionKey: String, fileId: String?) {
+        if let fileId = fileId {
+            sectionPhotoFileIds[sectionKey] = fileId
         } else {
-            usePhotoFileIds.insert(file.id)
+            sectionPhotoFileIds.removeValue(forKey: sectionKey)
         }
     }
+
+    /// Uploads a photo from the device and returns the created StudentWorkFile.
+    func uploadSectionPhoto(studentId: String, data: Data, fileName: String, mimeType: String) async throws -> StudentWorkFile {
+        try await api.uploadStudentWorkFile(
+            studentId: studentId,
+            fileName: fileName,
+            fileData: data,
+            fileType: mimeType
+        )
+    }
+
+    func sectionPhotoFileId(for sectionKey: String) -> String? {
+        sectionPhotoFileIds[sectionKey]
+    }
+
+    var imageWorkFiles: [StudentWorkFile] {
+        availableWorkFiles.filter { $0.fileType.hasPrefix("image/") }
+    }
+
+    static let sectionsWithPhotos: [(key: String, title: String)] = [
+        ("aboutMe", "About Me"),
+        ("achievementsAndAwards", "Achievements and Awards"),
+        ("attendanceNotes", "Attendance Notes"),
+        ("extracurricularActivities", "Extracurricular Activities"),
+        ("serviceLog", "Service Log")
+    ]
 
     func createPortfolio() async throws -> Portfolio {
         guard let student = selectedStudent else {
@@ -94,9 +121,9 @@ final class AddPortfolioViewModel: ObservableObject {
             let (portfolio, warnings) = try await api.createPortfolio(
                 studentId: student.id,
                 studentName: student.name ?? "Student",
-                designPattern: selectedDesignPattern,
+                audience: selectedAudience,
                 studentWorkFileIds: Array(selectedWorkFiles.map { $0.id }),
-                usePhotoFileIds: Array(usePhotoFileIds),
+                sectionPhotoFileIds: sectionPhotoFileIds.isEmpty ? nil : sectionPhotoFileIds,
                 studentRemarks: studentRemarks.isEmpty ? nil : studentRemarks,
                 instructorRemarks: instructorRemarks.isEmpty ? nil : instructorRemarks,
                 reportCardSnapshot: reportCardSnapshot,
@@ -112,5 +139,9 @@ final class AddPortfolioViewModel: ObservableObject {
 
     func clearError() {
         errorMessage = nil
+    }
+
+    func setError(_ message: String?) {
+        errorMessage = message
     }
 }

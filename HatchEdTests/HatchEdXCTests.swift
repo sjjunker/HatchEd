@@ -13,9 +13,9 @@ final class HatchEdXCTests: XCTestCase {
 
     // MARK: - Portfolio
 
-    func testPortfolioDesignPatternRawValues() {
-        XCTAssertEqual(PortfolioDesignPattern.general.rawValue, "General")
-        XCTAssertEqual(PortfolioDesignPattern.artistic.rawValue, "Artistic")
+    func testPortfolioAudienceRawValues() {
+        XCTAssertEqual(PortfolioAudience.family.rawValue, "Family & Keepsake")
+        XCTAssertEqual(PortfolioAudience.college.rawValue, "College Admissions")
     }
 
     func testPortfolioDecodesFromJSON() throws {
@@ -24,7 +24,7 @@ final class HatchEdXCTests: XCTestCase {
             "id": "p1",
             "studentId": "s1",
             "studentName": "Alex",
-            "designPattern": "Academic",
+            "audience": "College Admissions",
             "studentWorkFileIds": [],
             "compiledContent": "Content here",
             "snippet": "Preview",
@@ -37,7 +37,7 @@ final class HatchEdXCTests: XCTestCase {
         let portfolio = try decoder.decode(Portfolio.self, from: data)
         XCTAssertEqual(portfolio.id, "p1")
         XCTAssertEqual(portfolio.studentName, "Alex")
-        XCTAssertEqual(portfolio.designPattern, .academic)
+        XCTAssertEqual(portfolio.audience, .college)
         XCTAssertEqual(portfolio.compiledContent, "Content here")
         XCTAssertEqual(portfolio.snippet, "Preview")
     }
@@ -48,7 +48,7 @@ final class HatchEdXCTests: XCTestCase {
             "id": "p2",
             "studentId": "s2",
             "studentName": "Sam",
-            "designPattern": "General",
+            "audience": "family",
             "compiledContent": "",
             "snippet": "",
             "generatedImages": []
@@ -66,7 +66,7 @@ final class HatchEdXCTests: XCTestCase {
     /// Custom Portfolio decoding: invalid generatedImages (e.g. object) yields empty array.
     func testPortfolioDecodesWhenGeneratedImagesInvalid() throws {
         let json = """
-        {"id":"p4","studentId":"s4","studentName":"Pat","designPattern":"Creative","compiledContent":"","snippet":"","generatedImages":{}}
+        {"id":"p4","studentId":"s4","studentName":"Pat","audience":"family","compiledContent":"","snippet":"","generatedImages":{}}
         """
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601

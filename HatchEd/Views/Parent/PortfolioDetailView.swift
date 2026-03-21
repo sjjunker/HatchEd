@@ -8,6 +8,7 @@
 import SwiftUI
 import PDFKit
 import UIKit
+import WebKit
 
 struct PortfolioDetailView: View {
     let portfolio: Portfolio
@@ -15,13 +16,13 @@ struct PortfolioDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var pdfData: Data?
     @State private var showingShareSheet = false
-    @State private var showingStyleSelection = false
+    @State private var showingExportOptions = false
     @State private var pendingPDFAction: PDFAction? = nil
-    @State private var selectedStyle: PDFStyle = .professional
 
     private var designAccent: Color {
-        portfolio.designPattern.accentColor
+        portfolio.audience.accentColor
     }
+
 
     var body: some View {
         NavigationView {
@@ -39,12 +40,10 @@ struct PortfolioDetailView: View {
                                     .font(.title2)
                                     .fontWeight(.bold)
                                     .foregroundColor(.hatchEdText)
-                                if portfolio.designPattern != .general {
-                                    Text(portfolio.designPattern.rawValue + " Portfolio")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(designAccent)
-                                }
+                                Text(portfolio.portfolioLabel + " Portfolio")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(designAccent)
                                 if let createdAt = portfolio.createdAt {
                                     Text("Created \(createdAt.formatted(date: .long, time: .omitted))")
                                         .font(.caption)
@@ -62,10 +61,10 @@ struct PortfolioDetailView: View {
                             .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
                     )
                     
-                    // Compiled Content (includes Remarks section)
+                    // Compiled Content (HTML with inline images)
                     VStack(alignment: .leading, spacing: 16) {
                         sectionHeader("Portfolio Content")
-                        PortfolioContentView(portfolio: portfolio, designAccent: designAccent)
+                        PortfolioHTMLContentView(portfolio: portfolio, designAccent: designAccent)
                     }
                     .padding(20)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -87,7 +86,7 @@ struct PortfolioDetailView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
-                        showingStyleSelection = true
+                        showingExportOptions = true
                     } label: {
                         Image(systemName: "square.and.arrow.down")
                     }
@@ -98,17 +97,17 @@ struct PortfolioDetailView: View {
                     ShareSheet(activityItems: [pdfData])
                 }
             }
-            .sheet(isPresented: $showingStyleSelection) {
-                PDFStyleSelectionSheet(selectedStyle: $selectedStyle, onPrint: {
-                    showingStyleSelection = false
+            .sheet(isPresented: $showingExportOptions) {
+                PortfolioExportSheet(onPrint: {
+                    showingExportOptions = false
                     pendingPDFAction = .print
                     Task { await generatePDF() }
                 }, onShare: {
-                    showingStyleSelection = false
+                    showingExportOptions = false
                     pendingPDFAction = .share
                     Task { await generatePDF() }
                 }, onCancel: {
-                    showingStyleSelection = false
+                    showingExportOptions = false
                 })
             }
         }
@@ -140,50 +139,14 @@ struct PortfolioDetailView: View {
     
     @MainActor
     private func generatePDF() async {
-        // Pre-load all images asynchronously before PDF generation
-        var imageCache: [String: UIImage] = [:]
-        
-        // Load each image from database via GET /api/portfolios/images/:id (no URLs stored)
-        let api = APIClient.shared
-        await withTaskGroup(of: (String, UIImage?).self) { group in
-            for image in portfolio.generatedImages {
-                group.addTask {
-                    let imageId = image.id
-                    guard imageId.count == 24, !imageId.hasPrefix("fallback-"), !imageId.hasPrefix("missing-"), !imageId.hasPrefix("failed-") else {
-                        return (imageId, nil)
-                    }
-                    let url = api.portfolioImageURL(imageId: imageId)
-                    do {
-                        var request = URLRequest(url: url)
-                        request.setValue("image/*", forHTTPHeaderField: "Accept")
-                        if let token = api.getAuthToken() {
-                            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-                        }
-                        let (data, response) = try await URLSession.shared.data(for: request)
-                        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
-                              let uiImage = UIImage(data: data) else {
-                            return (imageId, nil)
-                        }
-                        return (imageId, uiImage)
-                    } catch {
-                        return (imageId, nil)
-                    }
-                }
-            }
-            for await (imageId, image) in group {
-                if let image = image {
-                    imageCache[imageId] = image
-                }
-            }
+        guard let html = await buildPortfolioHTMLWithImages(portfolio: portfolio) else {
+            pdfData = Data()
+            showingShareSheet = true
+            return
         }
-        
-        print("[PDF] Image cache populated with \(imageCache.count) images out of \(portfolio.generatedImages.count) total")
-        
-        // Create PDF from portfolio content with selected style and pre-loaded images
-        let pdfCreator = PDFCreator()
-        let data = pdfCreator.createPDF(from: portfolio, style: selectedStyle, imageCache: imageCache)
+        let data = await createPDFFromHTML(html: html, title: "\(portfolio.studentName) - \(portfolio.portfolioLabel) Portfolio")
         pdfData = data
-        
+
         switch pendingPDFAction {
         case .print:
             pendingPDFAction = nil
@@ -221,292 +184,244 @@ struct PortfolioDetailView: View {
     }
 }
 
-// Renders portfolio compiled content with inline images (AI-generated + user-provided from studentWorkFiles)
-private struct PortfolioContentView: View {
+// Renders portfolio HTML content in WKWebView with [IMAGE] placeholders replaced by actual images
+private struct PortfolioHTMLContentView: View {
     let portfolio: Portfolio
     var designAccent: Color = .hatchEdAccent
-    
-    /// Splits content by [IMAGE] and pairs segments with generatedImages by order.
-    private var segments: [(text: String, imageId: String?)] {
-        let parts = portfolio.compiledContent.components(separatedBy: "[IMAGE]")
-        var result: [(text: String, imageId: String?)] = []
-        let images = portfolio.generatedImages
-        for (i, part) in parts.enumerated() {
-            let t = part.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !t.isEmpty {
-                result.append((text: part, imageId: nil))
-            }
-            if i < parts.count - 1, i < images.count {
-                let id = images[i].id
-                let valid = id.count == 24 && !id.hasPrefix("fallback-") && !id.hasPrefix("missing-") && !id.hasPrefix("failed-")
-                result.append((text: "", imageId: valid ? id : nil))
-            }
-        }
-        return result
-    }
-    
+
+    @State private var htmlToDisplay: String?
+    @State private var isLoading = true
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
-                if !segment.text.isEmpty {
-                    portfolioTextBlock(segment.text)
-                }
-                if let imageId = segment.imageId {
-                    PortfolioRemoteImageView(imageId: imageId, accentColor: designAccent)
-                }
-            }
-        }
-    }
-    
-    /// Parses text with # section headers and renders with typography hierarchy.
-    @ViewBuilder
-    private func portfolioTextBlock(_ text: String) -> some View {
-        let sections = parseSections(text)
-        VStack(alignment: .leading, spacing: 20) {
-            ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
-                if section.title == "Remarks" {
-                    remarksFormattedSection(content: section.content)
-                } else if section.title == "Instructor Remarks", let (instructorPart, aiPart) = splitAtClosingQuote(section.content), !aiPart.isEmpty {
-                    VStack(alignment: .leading, spacing: 16) {
-                        standardSection(title: "Instructor Remarks", content: instructorPart)
-                        Divider().padding(.vertical, 8)
-                        standardSection(title: "Final Word", content: aiPart)
-                    }
-                } else {
-                    standardSection(title: section.title, content: section.content)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func standardSection(title: String, content: String) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if !title.isEmpty {
-                Text(title)
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(designAccent)
-            }
-            if !content.isEmpty {
-                sectionBody(content)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func remarksFormattedSection(content: String) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Remarks")
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(designAccent)
-            remarksContentBlock(content)
-        }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(designAccent.opacity(0.06))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(designAccent.opacity(0.2), lineWidth: 1)
-        )
-    }
-
-    /// Splits remarks content by "Student Remarks:", "Instructor Remarks:", and "AI Comments:" (displayed as "Final Word") for structured display.
-    /// Each paragraph is shown on its own line.
-    @ViewBuilder
-    private func remarksContentBlock(_ content: String) -> some View {
-        let parts = splitRemarksContent(content)
-        if parts.count > 1 {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(parts.enumerated()), id: \.offset) { partIndex, part in
-                    let paragraphs = part.text.components(separatedBy: "\n\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-                    ForEach(Array(paragraphs.enumerated()), id: \.offset) { paraIndex, paragraph in
-                        if partIndex > 0 || paraIndex > 0 {
-                            Divider()
-                                .padding(.vertical, 12)
-                        }
-                        if paraIndex == 0 && !part.label.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(part.label)
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.hatchEdText)
-                                sectionBody(paragraph)
-                            }
-                        } else {
-                            sectionBody(paragraph)
-                        }
-                    }
-                }
-            }
-        } else if let first = parts.first, !first.text.isEmpty {
-            let paragraphs = first.text.components(separatedBy: "\n\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(paragraphs.enumerated()), id: \.offset) { i, p in
-                    if i > 0 {
-                        Divider()
-                            .padding(.vertical, 12)
-                    }
-                    sectionBody(p)
-                }
-            }
-        }
-    }
-
-    private func splitRemarksContent(_ content: String) -> [(label: String, text: String)] {
-        let markers: [(String, String)] = [
-            ("Student Remarks:", "Student Remarks"),
-            ("Instructor Remarks:", "Instructor Remarks"),
-            ("AI Comments:", "Final Word")
-        ]
-        var result: [(label: String, text: String)] = []
-        var remaining = content
-
-        while !remaining.isEmpty {
-            var earliestRange: Range<String.Index>?
-            var earliestLabel: String?
-            for (marker, label) in markers {
-                if let r = remaining.range(of: marker, options: .caseInsensitive),
-                   earliestRange == nil || r.lowerBound < earliestRange!.lowerBound {
-                    earliestRange = r
-                    earliestLabel = label
-                }
-            }
-            let (markerRange, label) = (earliestRange, earliestLabel ?? "")
-
-            if let range = markerRange {
-                let before = String(remaining[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if !before.isEmpty {
-                    result.append(("", before))
-                }
-                remaining = String(remaining[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-                // Find content end: either next paragraph (\n\n) or start of next marker
-                var contentEnd: String.Index?
-                if let paraEnd = remaining.range(of: "\n\n") {
-                    contentEnd = paraEnd.lowerBound
-                }
-                for (marker, _) in markers {
-                    if let nextMarker = remaining.range(of: marker, options: .caseInsensitive),
-                       contentEnd == nil || nextMarker.lowerBound < contentEnd! {
-                        contentEnd = nextMarker.lowerBound
-                    }
-                }
-                if let end = contentEnd {
-                    let text = String(remaining[..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !text.isEmpty {
-                        // If Instructor Remarks contains quoted text, split at closing quote: quoted part = instructor, rest = AI comments
-                        if label == "Instructor Remarks", let (instructorPart, aiPart) = splitAtClosingQuote(text) {
-                            result.append(("Instructor Remarks", instructorPart))
-                            if !aiPart.isEmpty {
-                                result.append(("Final Word", aiPart))
-                            }
-                        } else {
-                            result.append((label, text))
-                        }
-                    }
-                    remaining = String(remaining[end...]).trimmingCharacters(in: .whitespacesAndNewlines)
-                } else {
-                    if !remaining.isEmpty {
-                        let text = remaining
-                        if label == "Instructor Remarks", let (instructorPart, aiPart) = splitAtClosingQuote(text) {
-                            result.append(("Instructor Remarks", instructorPart))
-                            if !aiPart.isEmpty {
-                                result.append(("Final Word", aiPart))
-                            }
-                        } else {
-                            result.append((label, text))
-                        }
-                    }
-                    break
-                }
+        Group {
+            if isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 40)
+            } else if let html = htmlToDisplay {
+                PortfolioWebView(html: html)
+                    .frame(minHeight: 400)
             } else {
-                let text = remaining.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !text.isEmpty {
-                    result.append(("", text))
-                }
-                break
+                Text("Unable to load portfolio content.")
+                    .foregroundColor(.hatchEdSecondaryText)
+                    .frame(maxWidth: .infinity)
+                    .padding()
             }
         }
-        return result.isEmpty ? [("", content)] : result
-    }
-
-    /// Splits text at the closing quote of the first quoted passage. Returns (quoted part, rest) or nil if no closing quote.
-    private func splitAtClosingQuote(_ text: String) -> (String, String)? {
-        let quote: Character = "\""
-        guard let first = text.firstIndex(of: quote) else { return nil }
-        let afterFirst = text.index(after: first)
-        guard afterFirst < text.endIndex, let second = text[afterFirst...].firstIndex(of: quote) else { return nil }
-        let throughClosing = text.index(after: second)
-        let instructorPart = String(text[..<throughClosing]).trimmingCharacters(in: .whitespacesAndNewlines)
-        let aiPart = throughClosing < text.endIndex
-            ? String(text[throughClosing...]).trimmingCharacters(in: .whitespacesAndNewlines)
-            : ""
-        return (instructorPart, aiPart)
-    }
-
-    @ViewBuilder
-    private func sectionBody(_ content: String) -> some View {
-        if let attr = try? AttributedString(markdown: content) {
-            Text(attr)
-                .font(.body)
-                .foregroundColor(.hatchEdText)
-                .lineSpacing(6)
-        } else {
-            Text(content)
-                .font(.body)
-                .foregroundColor(.hatchEdText)
-                .lineSpacing(6)
+        .task {
+            await loadHTMLWithImages()
         }
     }
-    
-    private func parseSections(_ text: String) -> [(title: String, content: String)] {
-        let lines = text.components(separatedBy: .newlines)
-        var result: [(title: String, content: String)] = []
-        var currentTitle = ""
-        var currentContent: [String] = []
 
-        /// Strip leading # symbols and return the heading text, or nil if not a heading line.
-        func parseHeading(_ line: String) -> String? {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard trimmed.hasPrefix("#"), let spaceIdx = trimmed.firstIndex(of: " ") else { return nil }
-            return String(trimmed[trimmed.index(after: spaceIdx)...]).trimmingCharacters(in: .whitespaces)
-        }
+    @MainActor
+    private func loadHTMLWithImages() async {
+        let content = portfolio.compiledContent
+        let images = portfolio.generatedImages
+        let api = APIClient.shared
 
-        /// Titles to skip (treat as empty / content only).
-        let skipTitles = ["Introduction", "General Portfolio"]
-        func shouldSkipTitle(_ t: String) -> Bool {
-            skipTitles.contains(t) || (t.contains(" Portfolio") && (t.contains(" - ") || t.contains(" for ")))
-        }
-
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if let heading = parseHeading(trimmed) {
-                if !currentContent.isEmpty || !currentTitle.isEmpty {
-                    let content = currentContent.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-                    let title = shouldSkipTitle(currentTitle) ? "" : currentTitle
-                    if !content.isEmpty || !title.isEmpty {
-                        result.append((title, content))
+        // Fetch all images in parallel
+        var imageDataByIndex: [Int: (mimeType: String, base64: String)] = [:]
+        await withTaskGroup(of: (Int, (String, String)?).self) { group in
+            for (index, img) in images.enumerated() {
+                let id = img.id
+                guard id.count == 24, !id.hasPrefix("fallback-"), !id.hasPrefix("missing-"), !id.hasPrefix("failed-") else { continue }
+                group.addTask {
+                    let url = api.portfolioImageURL(imageId: id)
+                    do {
+                        var request = URLRequest(url: url)
+                        request.setValue("image/*", forHTTPHeaderField: "Accept")
+                        if let token = api.getAuthToken() {
+                            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                        }
+                        let (data, response) = try await URLSession.shared.data(for: request)
+                        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                            return (index, nil)
+                        }
+                        let mime = http.value(forHTTPHeaderField: "Content-Type") ?? "image/png"
+                        let base64 = data.base64EncodedString()
+                        return (index, (mime, base64))
+                    } catch {
+                        return (index, nil)
                     }
                 }
-                currentTitle = heading
-                currentContent = []
-            } else {
-                currentContent.append(line)
+            }
+            for await (index, result) in group {
+                if let result = result {
+                    imageDataByIndex[index] = result
+                }
             }
         }
-        if !currentContent.isEmpty || !currentTitle.isEmpty {
-            let content = currentContent.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-            let title = shouldSkipTitle(currentTitle) ? "" : currentTitle
-            if !content.isEmpty || !title.isEmpty {
-                result.append((title, content))
+
+        // Replace [IMAGE] placeholders with <img src="data:..."> in order
+        var imageIndex = 0
+        let parts = content.components(separatedBy: "[IMAGE]")
+        var builtParts: [String] = []
+        for (i, part) in parts.enumerated() {
+            builtParts.append(part)
+            if i < parts.count - 1, imageIndex < images.count {
+                if let (mime, base64) = imageDataByIndex[imageIndex] {
+                    builtParts.append("<span style=\"display:block;clear:both;page-break-inside:avoid;margin:1em 0\"><img src=\"data:\(mime);base64,\(base64)\" style=\"max-width:100%;max-height:650px;width:auto;height:auto;object-fit:contain;border-radius:8px;margin:12px 0;display:block;clear:both;\" alt=\"\" /></span>")
+                }
+                imageIndex += 1
             }
         }
-        return result
+        var finalHTML = builtParts.joined()
+
+        // Ensure valid HTML document for display
+        if !finalHTML.lowercased().contains("<!doctype") && !finalHTML.lowercased().hasPrefix("<html") {
+            finalHTML = """
+            <!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+            <style>*{box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;font-size:16px;line-height:1.6;color:#333;padding:0;margin:0}h1,h2,h3{color:#1a1a1a;margin-top:1.5em}h2{border-bottom:1px solid #eee;padding-bottom:.25em}section,article,.keepsake-section,div[class*="section"],div[class*="card"]{overflow:auto;clear:both}img{max-width:100%;max-height:650px;width:auto;height:auto;object-fit:contain;display:block;clear:both;vertical-align:top}p{margin:1em 0}ul{margin:1em 0;padding-left:1.5em}</style>
+            </head><body>\(finalHTML)</body></html>
+            """
+        } else if let headEnd = finalHTML.range(of: "</head>", options: .caseInsensitive) {
+            let css = "section,article,.keepsake-section,div[class*='section'],div[class*='card']{overflow:auto !important;clear:both !important}img{display:block !important;clear:both !important;vertical-align:top !important}"
+            finalHTML.insert(contentsOf: "<style>\(css)</style>", at: headEnd.lowerBound)
+        }
+
+        htmlToDisplay = finalHTML
+        isLoading = false
     }
+}
+
+// WKWebView wrapper for displaying HTML
+private struct PortfolioWebView: UIViewRepresentable {
+    let html: String
+
+    func makeUIView(context: Context) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        config.dataDetectorTypes = []
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.scrollView.isScrollEnabled = true
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.backgroundColor = .clear
+        return webView
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        webView.loadHTMLString(html, baseURL: nil)
+    }
+}
+
+// MARK: - HTML/PDF Helpers
+@MainActor
+private func buildPortfolioHTMLWithImages(portfolio: Portfolio) async -> String? {
+    let content = portfolio.compiledContent
+    let images = portfolio.generatedImages
+    let api = APIClient.shared
+
+    var imageDataByIndex: [Int: (mimeType: String, base64: String)] = [:]
+    await withTaskGroup(of: (Int, (String, String)?).self) { group in
+        for (index, img) in images.enumerated() {
+            let id = img.id
+            guard id.count == 24, !id.hasPrefix("fallback-"), !id.hasPrefix("missing-"), !id.hasPrefix("failed-") else { continue }
+            group.addTask {
+                let url = api.portfolioImageURL(imageId: id)
+                do {
+                    var request = URLRequest(url: url)
+                    request.setValue("image/*", forHTTPHeaderField: "Accept")
+                    if let token = api.getAuthToken() {
+                        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                    }
+                    let (data, response) = try await URLSession.shared.data(for: request)
+                    guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                        return (index, nil)
+                    }
+                    let mime = http.value(forHTTPHeaderField: "Content-Type") ?? "image/png"
+                    return (index, (mime, data.base64EncodedString()))
+                } catch {
+                    return (index, nil)
+                }
+            }
+        }
+        for await (index, result) in group {
+            if let result = result { imageDataByIndex[index] = result }
+        }
+    }
+
+    var imageIndex = 0
+    let parts = content.components(separatedBy: "[IMAGE]")
+    var builtParts: [String] = []
+    for (i, part) in parts.enumerated() {
+        builtParts.append(part)
+        if i < parts.count - 1, imageIndex < images.count {
+            if let (mime, base64) = imageDataByIndex[imageIndex] {
+                builtParts.append("<span style=\"display:block;clear:both;page-break-inside:avoid;margin:1em 0\"><img src=\"data:\(mime);base64,\(base64)\" style=\"max-width:100%;max-height:650px;width:auto;height:auto;object-fit:contain;border-radius:8px;margin:12px 0;display:block;clear:both;\" alt=\"\" /></span>")
+            }
+            imageIndex += 1
+        }
+    }
+    var finalHTML = builtParts.joined()
+    let overlapPreventionCSS = "section,article,.keepsake-section,div[class*='section'],div[class*='card']{overflow:auto !important;clear:both !important}img{display:block !important;clear:both !important;vertical-align:top !important}"
+    if !finalHTML.lowercased().contains("<!doctype") && !finalHTML.lowercased().hasPrefix("<html") {
+        finalHTML = """
+        <!DOCTYPE html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box}body{font-family:system-ui,sans-serif;font-size:12pt;line-height:1.6;color:#333;padding:48px;margin:0}h1,h2,h3{color:#1a1a1a}h2{margin-top:1.5em;border-bottom:1px solid #eee}section,article,.keepsake-section,div[class*="section"],div[class*="card"]{overflow:auto;clear:both}img{max-width:100%;max-height:650px;width:auto;height:auto;object-fit:contain;display:block;clear:both;vertical-align:top}p{margin:1em 0}ul{margin:1em 0;padding-left:1.5em}@media print{body{padding:0;margin:0}h2,h3{page-break-after:avoid}img{page-break-inside:avoid;page-break-before:auto;page-break-after:auto}}</style></head><body>\(finalHTML)</body></html>
+        """
+    } else if let headEnd = finalHTML.range(of: "</head>", options: .caseInsensitive) {
+        finalHTML.insert(contentsOf: "<style>\(overlapPreventionCSS)</style>", at: headEnd.lowerBound)
+    }
+    return finalHTML
+}
+
+@MainActor
+private func createPDFFromHTML(html: String, title: String) async -> Data {
+    let config = WKWebViewConfiguration()
+    // Use a tall frame so content lays out fully; ensures contentSize reflects full height
+    let pageWidth: CGFloat = 612
+    let pageHeight: CGFloat = 792
+    let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: pageWidth, height: 20000), configuration: config)
+    webView.loadHTMLString(html, baseURL: nil)
+
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        var observation: NSKeyValueObservation?
+        observation = webView.observe(\.estimatedProgress) { wv, _ in
+            if wv.estimatedProgress >= 1.0 {
+                observation?.invalidate()
+                continuation.resume()
+            }
+        }
+    }
+
+    // Allow layout to complete (images, etc.)
+    try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 sec
+
+    // Get full content height via JS; contentSize may lag for long content
+    let jsHeight: CGFloat = await withCheckedContinuation { cont in
+        webView.evaluateJavaScript("Math.max(document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight)") { result, _ in
+            let h = (result as? NSNumber)?.doubleValue ?? 0
+            cont.resume(returning: CGFloat(h))
+        }
+    }
+    let contentHeight = max(webView.scrollView.contentSize.height, jsHeight, pageHeight)
+
+    // Expand web view bounds so UIPrintPageRenderer sees full content for pagination
+    let originalBounds = webView.bounds
+    webView.bounds = CGRect(x: 0, y: 0, width: pageWidth, height: contentHeight)
+
+    let formatter = webView.viewPrintFormatter()
+    let renderer = UIPrintPageRenderer()
+    renderer.addPrintFormatter(formatter, startingAtPageAt: 0)
+
+    let margin: CGFloat = 36
+    let printableRect = CGRect(x: margin, y: margin, width: pageWidth - 2 * margin, height: pageHeight - 2 * margin)
+    let paperRect = CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
+    renderer.setValue(NSValue(cgRect: paperRect), forKey: "paperRect")
+    renderer.setValue(NSValue(cgRect: printableRect), forKey: "printableRect")
+
+    webView.bounds = originalBounds
+
+    let pdfData = NSMutableData()
+    UIGraphicsBeginPDFContextToData(pdfData, paperRect, nil)
+    renderer.prepare(forDrawingPages: NSRange(location: 0, length: renderer.numberOfPages))
+    let printRect = UIGraphicsGetPDFContextBounds()
+    for i in 0..<renderer.numberOfPages {
+        UIGraphicsBeginPDFPage()
+        renderer.drawPage(at: i, in: printRect)
+    }
+    UIGraphicsEndPDFContext()
+
+    return pdfData as Data
 }
 
 // Loads and displays one portfolio image (portfolioImages or studentWorkFiles) via GET /api/portfolios/images/:id
@@ -876,7 +791,7 @@ class PDFCreator {
         let pdfMetaData = [
             kCGPDFContextCreator: "HatchEd",
             kCGPDFContextAuthor: portfolio.studentName,
-            kCGPDFContextTitle: "\(portfolio.studentName) - \(portfolio.designPattern.rawValue) Portfolio"
+            kCGPDFContextTitle: "\(portfolio.studentName) - \(portfolio.portfolioLabel) Portfolio"
         ]
         let format = UIGraphicsPDFRendererFormat()
         format.documentInfo = pdfMetaData as [String: Any]
@@ -945,17 +860,15 @@ class PDFCreator {
             let titleHeight = ceil(titleBoundingRect.height)
             title.draw(at: CGPoint(x: margin, y: style == .minimal ? 30 : 50), withAttributes: titleAttributes)
             
-            // Subtitle (omit for General)
-            if portfolio.designPattern != .general {
-                let subtitleColor = style == .minimal ? design.secondaryText : UIColor.white.withAlphaComponent(0.95)
-                let subtitleAttributes: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: design.sectionFont.pointSize - 4, weight: .medium),
-                    .foregroundColor: subtitleColor
-                ]
-                let subtitle = "\(portfolio.designPattern.rawValue) Portfolio"
-                subtitle.draw(at: CGPoint(x: margin, y: (style == .minimal ? 30 : 50) + titleHeight + 10), withAttributes: subtitleAttributes)
-            }
-            
+            // Subtitle
+            let subtitleColor = style == .minimal ? design.secondaryText : UIColor.white.withAlphaComponent(0.95)
+            let subtitleAttributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: design.sectionFont.pointSize - 4, weight: .medium),
+                .foregroundColor: subtitleColor
+            ]
+            let subtitle = "\(portfolio.portfolioLabel) Portfolio"
+            subtitle.draw(at: CGPoint(x: margin, y: (style == .minimal ? 30 : 50) + titleHeight + 10), withAttributes: subtitleAttributes)
+
             yPosition = headerHeight + design.sectionSpacing / 2
             
             // Parse and render portfolio content with sections
@@ -975,7 +888,7 @@ class PDFCreator {
             )
             
             // Footer on last page
-            let footerPattern = portfolio.designPattern == .general ? "Portfolio" : "\(portfolio.designPattern.rawValue) Portfolio"
+            let footerPattern = "\(portfolio.portfolioLabel) Portfolio"
             drawPageFooter(
                 context: context,
                 pageRect: pageRect,
@@ -1632,7 +1545,7 @@ drawFancyPageBorder(pageWidth: pageWidth, pageHeight: pageHeight, design: design
                 if isFirstPair {
                     if shouldImageFirst {
                         if let imageTuple = pair.image {
-                            currentY = renderImage(context: context, image: imageTuple, yPosition: currentY, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache)
+                            currentY = renderImage(context: context, image: imageTuple, yPosition: currentY, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache, contentPairIndex: contentPairIndex)
                         }
                         if !pair.text.isEmpty {
                             context.beginPage()
@@ -1650,7 +1563,7 @@ drawFancyPageBorder(pageWidth: pageWidth, pageHeight: pageHeight, design: design
                             getBackgroundColor(for: contentPairIndex, design: design).setFill()
                             context.fill(CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight))
                             drawFancyPageBorder(pageWidth: pageWidth, pageHeight: pageHeight, design: design)
-                            currentY = renderImage(context: context, image: imageTuple, yPosition: margin, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache)
+                            currentY = renderImage(context: context, image: imageTuple, yPosition: margin, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache, contentPairIndex: contentPairIndex)
                         }
                     }
                 } else {
@@ -1660,7 +1573,7 @@ drawFancyPageBorder(pageWidth: pageWidth, pageHeight: pageHeight, design: design
                         getBackgroundColor(for: contentPairIndex, design: design).setFill()
                         context.fill(CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight))
                         drawFancyPageBorder(pageWidth: pageWidth, pageHeight: pageHeight, design: design)
-                        currentY = renderImage(context: context, image: imageTuple, yPosition: margin, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache)
+                        currentY = renderImage(context: context, image: imageTuple, yPosition: margin, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache, contentPairIndex: contentPairIndex)
                     }
                     if !pair.text.isEmpty {
                         context.beginPage()
@@ -1674,7 +1587,7 @@ drawFancyPageBorder(pageWidth: pageWidth, pageHeight: pageHeight, design: design
                         getBackgroundColor(for: contentPairIndex + (pair.text.isEmpty ? 0 : 1), design: design).setFill()
                         context.fill(CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight))
                         drawFancyPageBorder(pageWidth: pageWidth, pageHeight: pageHeight, design: design)
-                        currentY = renderImage(context: context, image: imageTuple, yPosition: margin, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache)
+                        currentY = renderImage(context: context, image: imageTuple, yPosition: margin, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache, contentPairIndex: contentPairIndex + (pair.text.isEmpty ? 0 : 1))
                     }
                 }
                 contentPairIndex += 1
@@ -1704,7 +1617,8 @@ context.beginPage()
                 design: design,
                 generatedImages: generatedImages,
                 imageCache: imageCache,
-                imageFirst: imageFirst
+                imageFirst: imageFirst,
+                contentPairIndex: contentPairIndex
             )
             contentPairIndex += 1
         }
@@ -1726,7 +1640,8 @@ context.beginPage()
         design: PDFDesignScheme,
         generatedImages: [PortfolioImage],
         imageCache: [String: UIImage],
-        imageFirst: Bool
+        imageFirst: Bool,
+        contentPairIndex: Int
     ) -> CGFloat {
         let hasImage = imageTuple != nil
         switch layout {
@@ -1756,13 +1671,13 @@ context.beginPage()
         // Fallback: original single-column layout
         var y = yPosition
         if imageFirst, let img = imageTuple {
-            y = renderImage(context: context, image: img, yPosition: y, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache)
+            y = renderImage(context: context, image: img, yPosition: y, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache, contentPairIndex: contentPairIndex)
         }
         if !textContent.isEmpty {
             y = renderTextBlock(context: context, content: textContent, yPosition: y, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design)
         }
         if !imageFirst, let img = imageTuple {
-            y = renderImage(context: context, image: img, yPosition: y, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache)
+            y = renderImage(context: context, image: img, yPosition: y, pageWidth: pageWidth, pageHeight: pageHeight, margin: margin, contentWidth: contentWidth, design: design, generatedImages: generatedImages, imageCache: imageCache, contentPairIndex: contentPairIndex)
         }
         return y
     }
@@ -1940,7 +1855,7 @@ context.beginPage()
         return yPosition + blockHeight + design.textSpacing
     }
     
-    // Helper function to render an image
+    // Helper function to render an image (keeps image on a single page; starts new page if needed)
     private func renderImage(
         context: UIGraphicsPDFRendererContext,
         image: (type: String, content: String, index: Int?),
@@ -1951,7 +1866,8 @@ context.beginPage()
         contentWidth: CGFloat,
         design: PDFDesignScheme,
         generatedImages: [PortfolioImage],
-        imageCache: [String: UIImage]
+        imageCache: [String: UIImage],
+        contentPairIndex: Int
     ) -> CGFloat {
         var currentY = yPosition
         
@@ -2002,9 +1918,15 @@ context.beginPage()
                 let aspectRatio = cachedImage.size.width / cachedImage.size.height
                 let maxHeight: CGFloat = 280
                 var imageHeight = min(maxHeight, imageContentWidth / aspectRatio)
+                let maxImageHeightOnPage = pageHeight - margin * 2 - design.imageSpacing
+                imageHeight = min(imageHeight, maxImageHeightOnPage)
                 let availablePageHeight = pageHeight - imageMargin - currentY - design.imageSpacing
-                if imageHeight > availablePageHeight && availablePageHeight > 60 {
-                    imageHeight = availablePageHeight
+                if imageHeight > availablePageHeight {
+                    context.beginPage()
+                    getBackgroundColor(for: contentPairIndex, design: design).setFill()
+                    context.fill(CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight))
+                    drawFancyPageBorder(pageWidth: pageWidth, pageHeight: pageHeight, design: design)
+                    currentY = margin
                 }
                 let drawWidth = min(imageContentWidth, imageHeight * aspectRatio)
                 let imageX = imageMargin + (imageContentWidth - drawWidth) / 2
@@ -2232,61 +2154,31 @@ private enum PDFAction {
     case share
 }
 
-// PDF Style Selection Sheet
-struct PDFStyleSelectionSheet: View {
-    @Binding var selectedStyle: PDFStyle
+// Export options: Share or Print (PDF is generated from HTML; no style selection)
+struct PortfolioExportSheet: View {
     let onPrint: () -> Void
     let onShare: () -> Void
     let onCancel: () -> Void
-    
+
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Choose PDF Style")) {
-                    ForEach(PDFStyle.allCases) { style in
-                        Button {
-                            selectedStyle = style
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(style.rawValue)
-                                        .font(.headline)
-                                        .foregroundColor(.hatchEdText)
-                                    Text(style.description)
-                                        .font(.caption)
-                                        .foregroundColor(.hatchEdSecondaryText)
-                                }
-                                Spacer()
-                                if selectedStyle == style {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(.hatchEdAccent)
-                                } else {
-                                    Image(systemName: "circle")
-                                        .foregroundColor(.hatchEdSecondaryText)
-                                }
-                            }
-                        }
-                    }
+                Button {
+                    onShare()
+                } label: {
+                    Label("Share PDF", systemImage: "square.and.arrow.up")
+                }
+                Button {
+                    onPrint()
+                } label: {
+                    Label("Print", systemImage: "printer")
                 }
             }
-            .navigationTitle("PDF Style")
+            .navigationTitle("Export")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", action: onCancel)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    HStack(spacing: 12) {
-                        Button("Print") {
-                            onPrint()
-                        }
-                        .fontWeight(.semibold)
-                        .foregroundColor(.hatchEdAccent)
-                        Button("Share") {
-                            onShare()
-                        }
-                        .fontWeight(.medium)
-                    }
                 }
             }
         }

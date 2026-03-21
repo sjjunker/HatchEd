@@ -77,15 +77,13 @@ extension Color {
     }
 }
 
-// MARK: - Portfolio Design Pattern Accent Colors
-extension PortfolioDesignPattern {
+// MARK: - Portfolio Audience Accent Colors
+extension PortfolioAudience {
     var accentColor: Color {
         switch self {
-        case .artistic: return Color(red: 0.7, green: 0.4, blue: 0.9)
-        case .scientific: return Color(red: 0.1, green: 0.5, blue: 0.7)
-        case .general: return Color.hatchEdAccent
-        case .academic: return Color(red: 0.2, green: 0.35, blue: 0.6)
-        case .creative: return Color(red: 0.95, green: 0.5, blue: 0.2)
+        case .college: return Color(red: 0.2, green: 0.35, blue: 0.6)
+        case .stateCompliance: return Color(red: 0.1, green: 0.5, blue: 0.7)
+        case .family: return Color.hatchEdCoralAccent
         }
     }
 }

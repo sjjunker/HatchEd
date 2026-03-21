@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>HatchEd needs access to your photos to add images to portfolio sections.</string>
 	<key>API_BASE_URL</key>
 	<string>https://hatched-46ar.onrender.com</string>
 	<key>API_BASE_URL_DEV</key>

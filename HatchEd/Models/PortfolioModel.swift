@@ -7,14 +7,40 @@
 
 import Foundation
 
-enum PortfolioDesignPattern: String, Codable, CaseIterable, Identifiable {
-    case artistic = "Artistic"
-    case scientific = "Scientific"
-    case general = "General"
-    case academic = "Academic"
-    case creative = "Creative"
-    
+/// Audience for the portfolio—shapes tone, emphasis, and content focus.
+enum PortfolioAudience: String, Codable, CaseIterable, Identifiable {
+    case college = "College Admissions"
+    case stateCompliance = "State Compliance"
+    case family = "Family & Keepsake"
+
+    /// Decodes server format ("college", "family", "stateCompliance", "state") or display format
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        switch raw.lowercased() {
+        case "college", "college admissions": self = .college
+        case "statecompliance", "state compliance", "state": self = .stateCompliance
+        case "family", "family & keepsake": self = .family
+        default: self = .family
+        }
+    }
+
     var id: String { rawValue }
+    
+    var shortLabel: String {
+        switch self {
+        case .college: return "College"
+        case .stateCompliance: return "State"
+        case .family: return "Family"
+        }
+    }
+}
+
+extension Portfolio {
+    /// Label for display (e.g. "College Admissions Portfolio").
+    var portfolioLabel: String {
+        audience.rawValue
+    }
 }
 
 /// Reference to an image stored in the portfolioImages collection. No URL stored; load via GET /api/portfolios/images/:id.
@@ -52,7 +78,7 @@ struct Portfolio: Identifiable, Codable, Equatable {
     let id: String
     var studentId: String
     var studentName: String
-    var designPattern: PortfolioDesignPattern
+    var audience: PortfolioAudience
     var studentWorkFileIds: [String]
     var studentRemarks: String?
     var instructorRemarks: String?
@@ -68,7 +94,7 @@ struct Portfolio: Identifiable, Codable, Equatable {
         case id
         case studentId
         case studentName
-        case designPattern
+        case audience
         case studentWorkFileIds
         case studentRemarks
         case instructorRemarks
@@ -86,7 +112,7 @@ struct Portfolio: Identifiable, Codable, Equatable {
         id = try container.decode(String.self, forKey: .id)
         studentId = try container.decode(String.self, forKey: .studentId)
         studentName = try container.decode(String.self, forKey: .studentName)
-        designPattern = try container.decode(PortfolioDesignPattern.self, forKey: .designPattern)
+        audience = try container.decode(PortfolioAudience.self, forKey: .audience)
         studentWorkFileIds = try container.decodeIfPresent([String].self, forKey: .studentWorkFileIds) ?? []
         studentRemarks = try container.decodeIfPresent(String.self, forKey: .studentRemarks)
         instructorRemarks = try container.decodeIfPresent(String.self, forKey: .instructorRemarks)
@@ -111,7 +137,7 @@ struct Portfolio: Identifiable, Codable, Equatable {
         try container.encode(id, forKey: .id)
         try container.encode(studentId, forKey: .studentId)
         try container.encode(studentName, forKey: .studentName)
-        try container.encode(designPattern, forKey: .designPattern)
+        try container.encode(audience, forKey: .audience)
         try container.encode(studentWorkFileIds, forKey: .studentWorkFileIds)
         try container.encodeIfPresent(studentRemarks, forKey: .studentRemarks)
         try container.encodeIfPresent(instructorRemarks, forKey: .instructorRemarks)
@@ -127,7 +153,7 @@ struct Portfolio: Identifiable, Codable, Equatable {
     init(id: String = UUID().uuidString, 
          studentId: String,
          studentName: String,
-         designPattern: PortfolioDesignPattern,
+         audience: PortfolioAudience = .family,
          studentWorkFileIds: [String] = [],
          studentRemarks: String? = nil,
          instructorRemarks: String? = nil,
@@ -141,7 +167,7 @@ struct Portfolio: Identifiable, Codable, Equatable {
         self.id = id
         self.studentId = studentId
         self.studentName = studentName
-        self.designPattern = designPattern
+        self.audience = audience
         self.studentWorkFileIds = studentWorkFileIds
         self.studentRemarks = studentRemarks
         self.instructorRemarks = instructorRemarks

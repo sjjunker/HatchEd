@@ -11,20 +11,18 @@ import Foundation
 
 struct ModelTests {
 
-    // MARK: - PortfolioDesignPattern
+    // MARK: - PortfolioAudience
 
-    @Test func portfolioDesignPatternRawValues() {
-        #expect(PortfolioDesignPattern.artistic.rawValue == "Artistic")
-        #expect(PortfolioDesignPattern.scientific.rawValue == "Scientific")
-        #expect(PortfolioDesignPattern.general.rawValue == "General")
-        #expect(PortfolioDesignPattern.academic.rawValue == "Academic")
-        #expect(PortfolioDesignPattern.creative.rawValue == "Creative")
+    @Test func portfolioAudienceRawValues() {
+        #expect(PortfolioAudience.college.rawValue == "College Admissions")
+        #expect(PortfolioAudience.stateCompliance.rawValue == "State Compliance")
+        #expect(PortfolioAudience.family.rawValue == "Family & Keepsake")
     }
 
-    @Test func portfolioDesignPatternAllCases() {
-        let all = PortfolioDesignPattern.allCases
-        #expect(all.count == 5)
-        #expect(all.contains(.general))
+    @Test func portfolioAudienceAllCases() {
+        let all = PortfolioAudience.allCases
+        #expect(all.count == 3)
+        #expect(all.contains(.family))
     }
 
     // MARK: - Portfolio decoding
@@ -35,7 +33,7 @@ struct ModelTests {
             "id": "portfolio-1",
             "studentId": "student-1",
             "studentName": "Test Student",
-            "designPattern": "General",
+            "audience": "family",
             "studentWorkFileIds": [],
             "compiledContent": "",
             "snippet": "",
@@ -49,7 +47,7 @@ struct ModelTests {
         #expect(portfolio.id == "portfolio-1")
         #expect(portfolio.studentId == "student-1")
         #expect(portfolio.studentName == "Test Student")
-        #expect(portfolio.designPattern == .general)
+        #expect(portfolio.audience == .family)
         #expect(portfolio.studentWorkFileIds.isEmpty)
         #expect(portfolio.compiledContent == "")
         #expect(portfolio.snippet == "")
@@ -62,7 +60,7 @@ struct ModelTests {
             "id": "p2",
             "studentId": "s2",
             "studentName": "Jane",
-            "designPattern": "Artistic",
+            "audience": "College Admissions",
             "studentWorkFileIds": ["f1"],
             "sectionData": {
                 "aboutMe": "Likes art",
@@ -81,7 +79,7 @@ struct ModelTests {
         decoder.dateDecodingStrategy = .iso8601
         let portfolio = try decoder.decode(Portfolio.self, from: data)
         #expect(portfolio.studentName == "Jane")
-        #expect(portfolio.designPattern == .artistic)
+        #expect(portfolio.audience == .college)
         #expect(portfolio.sectionData?.aboutMe == "Likes art")
         #expect(portfolio.compiledContent == "Content")
         #expect(portfolio.snippet == "Snippet")
@@ -93,7 +91,7 @@ struct ModelTests {
             "id": "p3",
             "studentId": "s3",
             "studentName": "Bob",
-            "designPattern": "General",
+            "audience": "family",
             "studentWorkFileIds": [],
             "compiledContent": "",
             "snippet": "",
@@ -188,7 +186,7 @@ struct ModelTests {
             "id": "p4",
             "studentId": "s4",
             "studentName": "Pat",
-            "designPattern": "Creative",
+            "audience": "family",
             "compiledContent": "",
             "snippet": "",
             "generatedImages": {}
@@ -206,7 +204,7 @@ struct ModelTests {
         let portfolio = Portfolio(
             studentId: "s1",
             studentName: "Test",
-            designPattern: .academic,
+            audience: .college,
             studentWorkFileIds: ["f1"],
             compiledContent: "Content",
             snippet: "Snippet",

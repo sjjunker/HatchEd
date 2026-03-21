@@ -170,7 +170,7 @@ export function serializePortfolio (portfolio) {
     id: portfolio._id?.toString?.() ?? portfolio._id,
     studentId: portfolio.studentId?.toString?.() ?? portfolio.studentId,
     studentName: portfolio.studentName,
-    designPattern: portfolio.designPattern,
+    audience: portfolio.audience ?? 'family',
     studentWorkFileIds: portfolio.studentWorkFileIds?.map(id => id.toString()) ?? [],
     studentRemarks: portfolio.studentRemarks ?? null,
     instructorRemarks: portfolio.instructorRemarks ?? null,

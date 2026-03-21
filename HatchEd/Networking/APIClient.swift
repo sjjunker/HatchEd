@@ -344,9 +344,9 @@ final class APIClient {
     struct CreatePortfolioRequest: Encodable {
         let studentId: String
         let studentName: String
-        let designPattern: String
+        let audience: String
         let studentWorkFileIds: [String]
-        let usePhotoFileIds: [String]?
+        let sectionPhotoFileIds: [String: String]?
         let studentRemarks: String?
         let instructorRemarks: String?
         let reportCardSnapshot: String?
@@ -370,9 +370,9 @@ final class APIClient {
     func createPortfolio(
         studentId: String,
         studentName: String,
-        designPattern: PortfolioDesignPattern,
+        audience: PortfolioAudience,
         studentWorkFileIds: [String],
-        usePhotoFileIds: [String]? = nil,
+        sectionPhotoFileIds: [String: String]? = nil,
         studentRemarks: String?,
         instructorRemarks: String?,
         reportCardSnapshot: String?,
@@ -381,9 +381,9 @@ final class APIClient {
         let body = CreatePortfolioRequest(
             studentId: studentId,
             studentName: studentName,
-            designPattern: designPattern.rawValue,
+            audience: audience.rawValue,
             studentWorkFileIds: studentWorkFileIds,
-            usePhotoFileIds: usePhotoFileIds?.isEmpty == true ? nil : usePhotoFileIds,
+            sectionPhotoFileIds: sectionPhotoFileIds?.isEmpty == true ? nil : sectionPhotoFileIds,
             studentRemarks: studentRemarks,
             instructorRemarks: instructorRemarks,
             reportCardSnapshot: reportCardSnapshot,

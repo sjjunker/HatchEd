@@ -6,6 +6,14 @@
 //
 
 import SwiftUI
+import PhotosUI
+
+private struct SectionPhotoImageTransfer: Transferable {
+    let data: Data
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(importedContentType: .image) { Self(data: $0) }
+    }
+}
 
 struct TextEditorPlaceholder: ViewModifier {
     var placeholder: String
@@ -37,6 +45,8 @@ struct AddPortfolioView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = AddPortfolioViewModel()
     @State private var showingCreateWarnings = false
+    @State private var selectedPhotoForSection: [String: [PhotosPickerItem]] = [:]
+    @State private var isUploadingPhotoForSection: [String: Bool] = [:]
 
     var body: some View {
         NavigationView {
@@ -59,10 +69,10 @@ struct AddPortfolioView: View {
                         }
                     }
                 }
-                Section(header: Text("Design Pattern")) {
-                    Picker("Pattern", selection: $viewModel.selectedDesignPattern) {
-                        ForEach(PortfolioDesignPattern.allCases) { pattern in
-                            Text(pattern.rawValue).tag(pattern)
+                Section(header: Text("Audience"), footer: Text("The portfolio will be tailored for your selected audience—tone, emphasis, and content focus will adapt accordingly.")) {
+                    Picker("Audience", selection: $viewModel.selectedAudience) {
+                        ForEach(PortfolioAudience.allCases) { audience in
+                            Text(audience.rawValue).tag(audience)
                         }
                     }
                 }
@@ -94,13 +104,6 @@ struct AddPortfolioView: View {
                                 }
                                 .contentShape(Rectangle())
                                 .onTapGesture { viewModel.toggleWorkFile(file) }
-                                if viewModel.selectedWorkFiles.contains(file) && file.fileType.hasPrefix("image/") {
-                                    Toggle("Use this photo in portfolio (instead of AI-generated)", isOn: Binding(
-                                        get: { viewModel.usePhotoFileIds.contains(file.id) },
-                                        set: { _ in viewModel.toggleUsePhotoInPortfolio(file) }
-                                    ))
-                                    .font(.caption)
-                                }
                             }
                             .padding(.vertical, 4)
                         }
@@ -119,26 +122,31 @@ struct AddPortfolioView: View {
                     TextEditor(text: $viewModel.aboutMe)
                         .frame(minHeight: 100)
                         .placeholder("Enter information about the student's interests, goals, and personality...", when: $viewModel.aboutMe)
+                    sectionPhotoPicker(sectionKey: "aboutMe")
                 }
                 Section(header: Text("Achievements and Awards")) {
                     TextEditor(text: $viewModel.achievementsAndAwards)
                         .frame(minHeight: 100)
                         .placeholder("List academic achievements, awards, recognitions, and honors...", when: $viewModel.achievementsAndAwards)
+                    sectionPhotoPicker(sectionKey: "achievementsAndAwards")
                 }
                 Section(header: Text("Attendance Notes")) {
                     TextEditor(text: $viewModel.attendanceNotes)
                         .frame(minHeight: 80)
                         .placeholder("Add any notes about attendance or commitment to learning...", when: $viewModel.attendanceNotes)
+                    sectionPhotoPicker(sectionKey: "attendanceNotes")
                 }
                 Section(header: Text("Extracurricular Activities")) {
                     TextEditor(text: $viewModel.extracurricularActivities)
                         .frame(minHeight: 100)
                         .placeholder("List extracurricular activities, clubs, sports, and interests...", when: $viewModel.extracurricularActivities)
+                    sectionPhotoPicker(sectionKey: "extracurricularActivities")
                 }
                 Section(header: Text("Service Log")) {
                     TextEditor(text: $viewModel.serviceLog)
                         .frame(minHeight: 100)
                         .placeholder("Document community service, volunteer work, and service learning activities...", when: $viewModel.serviceLog)
+                    sectionPhotoPicker(sectionKey: "serviceLog")
                 }
                 
                 Section(footer: Text("A copy of the current report card will be automatically included. Yearly accomplishments by subject will be generated from course data.")) {
@@ -250,6 +258,79 @@ struct AddPortfolioView: View {
         formatter.countStyle = .file
         return formatter.string(fromByteCount: bytes)
     }
-    
+
+    @ViewBuilder
+    private func sectionPhotoPicker(sectionKey: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            PhotosPicker(
+                selection: Binding(
+                    get: { selectedPhotoForSection[sectionKey, default: []] },
+                    set: { newValue in
+                        var copy = selectedPhotoForSection
+                        copy[sectionKey] = newValue
+                        selectedPhotoForSection = copy
+                        if let item = newValue.first {
+                            Task { await handlePhotoPicked(sectionKey: sectionKey, item: item) }
+                        }
+                    }
+                ),
+                maxSelectionCount: 1,
+                matching: .images
+            ) {
+                HStack(spacing: 6) {
+                    Image(systemName: "photo.on.rectangle.angled")
+                    Text("Choose from device photos")
+                    if isUploadingPhotoForSection[sectionKey] == true {
+                        Spacer()
+                        ProgressView()
+                            .scaleEffect(0.8)
+                    }
+                }
+            }
+            .disabled(viewModel.selectedStudent == nil || isUploadingPhotoForSection[sectionKey] == true)
+
+            if !viewModel.imageWorkFiles.isEmpty {
+                Picker("Or use existing work file", selection: Binding(
+                    get: { viewModel.sectionPhotoFileId(for: sectionKey) ?? "" },
+                    set: { viewModel.setSectionPhoto(sectionKey: sectionKey, fileId: $0.isEmpty ? nil : $0) }
+                )) {
+                    Text("None").tag("")
+                    ForEach(viewModel.imageWorkFiles, id: \.id) { file in
+                        Text(file.fileName).tag(file.id)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+        }
+    }
+
+    private func handlePhotoPicked(sectionKey: String, item: PhotosPickerItem) async {
+        guard let studentId = viewModel.selectedStudent?.id else { return }
+        await MainActor.run { isUploadingPhotoForSection[sectionKey] = true }
+        defer {
+            Task { @MainActor in
+                isUploadingPhotoForSection[sectionKey] = false
+                var copy = selectedPhotoForSection
+                copy[sectionKey] = []
+                selectedPhotoForSection = copy
+            }
+        }
+        do {
+            guard let transfer = try await item.loadTransferable(type: SectionPhotoImageTransfer.self) else {
+                await MainActor.run { viewModel.setError("Could not load photo") }
+                return
+            }
+            let file = try await viewModel.uploadSectionPhoto(
+                studentId: studentId,
+                data: transfer.data,
+                fileName: "section-photo-\(sectionKey).jpg",
+                mimeType: "image/jpeg"
+            )
+            await viewModel.loadStudentWorkFiles(studentId: studentId)
+            await MainActor.run { viewModel.setSectionPhoto(sectionKey: sectionKey, fileId: file.id) }
+        } catch {
+            await MainActor.run { viewModel.setError(error.localizedDescription) }
+        }
+    }
 }
 

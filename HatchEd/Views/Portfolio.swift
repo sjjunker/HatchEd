@@ -164,7 +164,7 @@ private struct PortfolioRow: View {
     let portfolio: Portfolio
 
     private var designAccent: Color {
-        portfolio.designPattern.accentColor
+        portfolio.audience.accentColor
     }
 
     var body: some View {
@@ -182,7 +182,7 @@ private struct PortfolioRow: View {
                                 .font(.headline)
                                 .fontWeight(.semibold)
                                 .foregroundColor(.hatchEdText)
-                            Text(portfolio.designPattern == .general ? "Portfolio" : (portfolio.designPattern.rawValue + " Portfolio"))
+                            Text(portfolio.portfolioLabel + " Portfolio")
                                 .font(.subheadline)
                                 .foregroundColor(designAccent)
                         }

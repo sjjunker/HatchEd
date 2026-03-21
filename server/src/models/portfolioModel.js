@@ -55,12 +55,12 @@ function decryptPortfolio (doc) {
   return out
 }
 
-export async function createPortfolio ({ familyId, studentId, studentName, designPattern, studentWorkFileIds, studentRemarks, instructorRemarks, reportCardSnapshot, sectionData, compiledContent, snippet, generatedImages }) {
+export async function createPortfolio ({ familyId, studentId, studentName, audience, studentWorkFileIds, studentRemarks, instructorRemarks, reportCardSnapshot, sectionData, compiledContent, snippet, generatedImages }) {
   const raw = {
     familyId: new ObjectId(familyId),
     studentId: new ObjectId(studentId),
     studentName: studentName ?? '',
-    designPattern,
+    audience: audience ?? 'family',
     studentWorkFileIds: studentWorkFileIds.map(id => new ObjectId(id)),
     studentRemarks: studentRemarks ?? null,
     instructorRemarks: instructorRemarks ?? null,

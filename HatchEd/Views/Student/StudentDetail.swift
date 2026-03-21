@@ -468,7 +468,7 @@ struct StudentDetail: View {
                         HStack {
                             Image(systemName: "folder.fill")
                                 .foregroundColor(.hatchEdAccent)
-                            Text(portfolio.designPattern.rawValue + " Portfolio")
+                            Text(portfolio.portfolioLabel == "Portfolio" ? "Portfolio" : (portfolio.portfolioLabel + " Portfolio"))
                                 .font(.subheadline.bold())
                                 .foregroundColor(.hatchEdText)
                             if let created = portfolio.createdAt {

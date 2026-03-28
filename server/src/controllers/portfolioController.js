@@ -414,6 +414,10 @@ export async function deletePortfolioHandler (req, res) {
     return res.status(403).json({ error: { message: 'Access denied' } })
   }
 
+  if (user.role !== 'parent') {
+    return res.status(403).json({ error: { message: 'Only parents can delete portfolios' } })
+  }
+
   // Delete associated images from database
   try {
     const { deleteImagesByPortfolioId } = await import('../models/portfolioImageModel.js')

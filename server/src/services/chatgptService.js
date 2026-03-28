@@ -82,6 +82,26 @@ function stripMarkdownCodeFencesFromAiHtml (text) {
 }
 
 /**
+ * List-card preview: strip tags (compiled HTML) so snippets are readable plain text.
+ * @param {string} html
+ * @param {number} [maxLen=200]
+ * @returns {string}
+ */
+function plainTextSnippetFromHtml (html, maxLen = 200) {
+  if (!html || typeof html !== 'string') return ''
+  const s = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\[IMAGE:\s*[^\]]+\]/g, ' ')
+    .replace(/\[PROVIDED_PHOTO:\s*[^\]]+\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (s.length <= maxLen) return s
+  return s.substring(0, maxLen).trimEnd() + '...'
+}
+
+/**
  * Remove [IMAGE: ...] placeholders in sections that already have a user-provided photo
  * so we never call DALL-E for those sections (model sometimes ignores instructions).
  * @param {string} content
@@ -643,8 +663,7 @@ export async function compilePortfolioWithChatGPT ({ studentName, audience, stud
       }
     }
 
-    // Generate snippet (first 200 characters)
-    const snippet = portfolioText.substring(0, 200) + (portfolioText.length > 200 ? '...' : '')
+    const snippet = plainTextSnippetFromHtml(portfolioText, 200)
 
     return {
       content: portfolioText,
@@ -804,7 +823,7 @@ function getFallbackCompilation ({ studentName, audience, studentWorkFiles, stud
   push(`</body></html>`)
 
   const compiledContent = parts.join('')
-  const snippet = compiledContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 200) + (compiledContent.length > 200 ? '...' : '')
+  const snippet = plainTextSnippetFromHtml(compiledContent, 200)
   return { content: compiledContent, snippet }
 }
 

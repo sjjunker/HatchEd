@@ -6,6 +6,7 @@
 //  Updated with assistance from Cursor (ChatGPT) on 11/7/25.
 //
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 struct PortfolioView: View {
@@ -16,6 +17,8 @@ struct PortfolioView: View {
     @State private var studentWorkFilesByStudentId: [String: [StudentWorkFile]] = [:]
     @State private var uploadTargetStudent: User?
     @State private var isUploadingWorkFile = false
+    @State private var portfolioPendingDelete: Portfolio?
+    @State private var deleteErrorMessage: String?
 
     private var isParent: Bool { authViewModel.currentUser?.role == "parent" }
 
@@ -81,7 +84,49 @@ struct PortfolioView: View {
             }
         }
         .sheet(item: $selectedPortfolio) { portfolio in
-            PortfolioDetailView(portfolio: portfolio, isStudent: !isParent)
+            PortfolioDetailView(
+                portfolio: portfolio,
+                isStudent: !isParent,
+                onDeleted: {
+                    Task {
+                        await viewModel.loadPortfolios()
+                        selectedPortfolio = nil
+                    }
+                }
+            )
+        }
+        .confirmationDialog(
+            "Delete portfolio?",
+            isPresented: Binding(
+                get: { portfolioPendingDelete != nil },
+                set: { if !$0 { portfolioPendingDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let p = portfolioPendingDelete {
+                    Task { await deletePortfolioConfirmed(p) }
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                portfolioPendingDelete = nil
+            }
+        } message: {
+            if let p = portfolioPendingDelete {
+                Text(
+                    "This permanently removes “\(p.portfolioLabel) Portfolio” for \(p.studentName), including all AI-generated images for this portfolio. Student work files in Best work are not deleted. This cannot be undone."
+                )
+            }
+        }
+        .alert("Could not delete portfolio", isPresented: Binding(
+            get: { deleteErrorMessage != nil },
+            set: { if !$0 { deleteErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { deleteErrorMessage = nil }
+        } message: {
+            if let deleteErrorMessage {
+                Text(deleteErrorMessage)
+            }
         }
         .sheet(item: $uploadTargetStudent) { student in
             UploadBestWorkSheet(student: student) {
@@ -127,6 +172,19 @@ struct PortfolioView: View {
         } catch {}
     }
 
+    private func deletePortfolioConfirmed(_ portfolio: Portfolio) async {
+        portfolioPendingDelete = nil
+        do {
+            try await APIClient.shared.deletePortfolio(id: portfolio.id)
+            if selectedPortfolio?.id == portfolio.id {
+                selectedPortfolio = nil
+            }
+            await viewModel.loadPortfolios()
+        } catch {
+            deleteErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
     private var emptyStateView: some View {
         VStack(spacing: 16) {
             Image(systemName: "folder")
@@ -153,65 +211,166 @@ struct PortfolioView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             ForEach(viewModel.portfolios) { portfolio in
-                PortfolioRow(portfolio: portfolio)
-                    .onTapGesture { selectedPortfolio = portfolio }
+                PortfolioRow(
+                    portfolio: portfolio,
+                    canDelete: isParent,
+                    onSelect: { selectedPortfolio = portfolio },
+                    onDeleteRequest: { portfolioPendingDelete = portfolio }
+                )
             }
+        }
+    }
+}
+
+/// First stored image for this portfolio (generated or provided work sample), suitable for list thumbnails.
+fileprivate func firstPortfolioThumbnailImageId(for portfolio: Portfolio) -> String? {
+    for img in portfolio.generatedImages {
+        let id = img.id
+        guard id.count == 24, !id.hasPrefix("fallback-"), !id.hasPrefix("missing-"), !id.hasPrefix("failed-") else { continue }
+        return id
+    }
+    return nil
+}
+
+/// Small square preview for portfolio list cards (authenticated GET like `PortfolioRemoteImageView`).
+private struct PortfolioCardThumbnailView: View {
+    let imageId: String?
+    var accentColor: Color
+
+    private let size: CGFloat = 60
+
+    @State private var image: UIImage?
+    @State private var loadFailed = false
+
+    var body: some View {
+        Group {
+            if let image = image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: size, height: size)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(accentColor.opacity(0.22), lineWidth: 1)
+                    )
+            } else if imageId == nil {
+                placeholderIcon
+            } else if loadFailed {
+                placeholderIcon
+            } else {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.hatchEdSecondaryBackground.opacity(0.4))
+                    .frame(width: size, height: size)
+                    .overlay(ProgressView().scaleEffect(0.85))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(accentColor.opacity(0.12), lineWidth: 1)
+                    )
+            }
+        }
+        .accessibilityHidden(true)
+        .task(id: imageId) {
+            await loadThumbnail()
+        }
+    }
+
+    private var placeholderIcon: some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(Color.hatchEdSecondaryBackground.opacity(0.75))
+            .frame(width: size, height: size)
+            .overlay(
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(.title3)
+                    .foregroundColor(.hatchEdSecondaryText.opacity(0.85))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(accentColor.opacity(0.12), lineWidth: 1)
+            )
+    }
+
+    @MainActor
+    private func loadThumbnail() async {
+        image = nil
+        loadFailed = false
+        guard let imageId, !imageId.isEmpty else { return }
+        let url = APIClient.shared.portfolioImageURL(imageId: imageId)
+        do {
+            var request = URLRequest(url: url)
+            request.setValue("image/*", forHTTPHeaderField: "Accept")
+            if let token = APIClient.shared.getAuthToken() {
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            }
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let ui = UIImage(data: data) else {
+                loadFailed = true
+                return
+            }
+            image = ui
+        } catch {
+            loadFailed = true
         }
     }
 }
 
 private struct PortfolioRow: View {
     let portfolio: Portfolio
+    var canDelete: Bool = false
+    var onSelect: () -> Void = {}
+    var onDeleteRequest: () -> Void = {}
 
     private var designAccent: Color {
         portfolio.audience.accentColor
     }
 
+    private var thumbnailImageId: String? {
+        firstPortfolioThumbnailImageId(for: portfolio)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 16) {
+            HStack(alignment: .center, spacing: 12) {
                 RoundedRectangle(cornerRadius: 3)
                     .fill(designAccent)
                     .frame(width: 4)
                     .padding(.leading, 16)
-                    .padding(.top, 4)
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(portfolio.studentName)
-                                .font(.headline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.hatchEdText)
-                            Text(portfolio.portfolioLabel + " Portfolio")
-                                .font(.subheadline)
-                                .foregroundColor(designAccent)
-                        }
-                        Spacer()
-                        if let createdAt = portfolio.createdAt {
-                            Text(createdAt.formatted(date: .abbreviated, time: .omitted))
-                                .font(.caption)
-                                .foregroundColor(.hatchEdSecondaryText)
-                        }
-                    }
-                    if !portfolio.snippet.isEmpty {
-                        Text(portfolio.snippet)
+                PortfolioCardThumbnailView(imageId: thumbnailImageId, accentColor: designAccent)
+                HStack(alignment: .top, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(portfolio.studentName)
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.hatchEdText)
+                        Text(portfolio.portfolioLabel + " Portfolio")
                             .font(.subheadline)
+                            .foregroundColor(designAccent)
+                    }
+                    Spacer(minLength: 8)
+                    if canDelete {
+                        Button {
+                            onDeleteRequest()
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.body)
+                                .foregroundColor(.hatchEdCoralAccent)
+                                .accessibilityLabel("Delete portfolio")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if let createdAt = portfolio.createdAt {
+                        Text(createdAt.formatted(date: .abbreviated, time: .omitted))
+                            .font(.caption)
                             .foregroundColor(.hatchEdSecondaryText)
-                            .lineLimit(3)
-                            .lineSpacing(4)
-                            .padding(.top, 4)
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(Color.hatchEdSecondaryBackground.opacity(0.6))
-                            )
                     }
                 }
                 .padding(.trailing, 16)
             }
-            .padding(.vertical, 16)
+            .contentShape(Rectangle())
+            .onTapGesture { onSelect() }
+            .padding(.vertical, 14)
         }
         .background(
             RoundedRectangle(cornerRadius: 16)
@@ -233,18 +392,39 @@ private struct BestWorkSectionView: View {
     let onAdd: () -> Void
     let onDelete: (StudentWorkFile) async -> Void
 
+    @State private var isExpanded = true
+
     private var studentDisplayName: String {
         student.name ?? "Student"
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Best work: \(studentDisplayName)")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.hatchEdText)
-                Spacer()
+            HStack(alignment: .center, spacing: 10) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isExpanded.toggle()
+                    }
+                } label: {
+                    HStack(alignment: .center, spacing: 8) {
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.hatchEdSecondaryText)
+                            .frame(width: 12, alignment: .center)
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        Text("Best work: \(studentDisplayName)")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.hatchEdText)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Best work, \(studentDisplayName)")
+                .accessibilityHint(isExpanded ? "Collapse file list" : "Expand file list")
+
                 Button {
                     onAdd()
                 } label: {
@@ -252,37 +432,40 @@ private struct BestWorkSectionView: View {
                         .font(.subheadline)
                         .foregroundColor(.hatchEdAccent)
                 }
+                .accessibilityLabel("Add best work for \(studentDisplayName)")
             }
-            if files.isEmpty {
-                Text("No files yet. Add photos or documents to represent \(studentDisplayName)'s best work.")
-                    .font(.caption)
-                    .foregroundColor(.hatchEdSecondaryText)
-                    .padding(.vertical, 8)
-            } else {
-                VStack(spacing: 8) {
-                    ForEach(files) { file in
-                        HStack {
-                            Image(systemName: fileTypeIcon(file.fileType))
-                                .foregroundColor(.hatchEdAccent)
-                                .frame(width: 24)
-                            Text(file.fileName)
-                                .font(.caption)
-                                .foregroundColor(.hatchEdText)
-                                .lineLimit(1)
-                            Spacer()
-                            Button(role: .destructive) {
-                                Task { await onDelete(file) }
-                            } label: {
-                                Image(systemName: "trash")
-                                    .font(.caption)
-                            }
-                        }
-                        .padding(.horizontal, 12)
+            if isExpanded {
+                if files.isEmpty {
+                    Text("No files yet. Add photos or documents to represent \(studentDisplayName)'s best work.")
+                        .font(.caption)
+                        .foregroundColor(.hatchEdSecondaryText)
                         .padding(.vertical, 8)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.hatchEdCardBackground)
-                        )
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(files) { file in
+                            HStack {
+                                Image(systemName: fileTypeIcon(file.fileType))
+                                    .foregroundColor(.hatchEdAccent)
+                                    .frame(width: 24)
+                                Text(file.fileName)
+                                    .font(.caption)
+                                    .foregroundColor(.hatchEdText)
+                                    .lineLimit(1)
+                                Spacer()
+                                Button(role: .destructive) {
+                                    Task { await onDelete(file) }
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .font(.caption)
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(Color.hatchEdCardBackground)
+                            )
+                        }
                     }
                 }
             }

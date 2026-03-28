@@ -361,6 +361,14 @@ final class APIClient {
         return response.portfolios
     }
 
+    /// Deletes a portfolio and all AI-generated images stored for it (MongoDB `portfolioImages`). Does not delete student work files.
+    func deletePortfolio(id: String) async throws {
+        _ = try await request(
+            Endpoint(path: "api/portfolios/\(id)", method: .delete),
+            responseType: SuccessResponse.self
+        )
+    }
+
     /// URL to load a portfolio image from the database (GET returns image bytes). No URLs are stored; use this with image.id.
     func portfolioImageURL(imageId: String) -> URL {
         baseURL.appendingPathComponent("api/portfolios/images/\(imageId)")

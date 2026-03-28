@@ -225,11 +225,16 @@ fileprivate func portfolioTransformImgTagForVisualRendering(_ tag: String) -> St
 struct PortfolioDetailView: View {
     let portfolio: Portfolio
     var isStudent: Bool = false
+    /// Called after a successful delete (e.g. refresh list). Sheet presenters should set this; push navigation may omit it.
+    var onDeleted: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var pdfData: Data?
     @State private var showingShareSheet = false
     @State private var showingExportOptions = false
     @State private var pendingPDFAction: PDFAction? = nil
+    @State private var showDeleteConfirmation = false
+    @State private var isDeletingPortfolio = false
+    @State private var portfolioDeleteError: String?
 
     private var designAccent: Color {
         portfolio.audience.accentColor
@@ -296,12 +301,46 @@ struct PortfolioDetailView: View {
                         dismiss()
                     }
                 }
-                ToolbarItem(placement: .confirmationAction) {
+                ToolbarItemGroup(placement: .confirmationAction) {
                     Button {
                         showingExportOptions = true
                     } label: {
                         Image(systemName: "square.and.arrow.down")
                     }
+                    .accessibilityLabel("Export or print")
+                    if !isStudent {
+                        Button(role: .destructive) {
+                            showDeleteConfirmation = true
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .disabled(isDeletingPortfolio)
+                        .accessibilityLabel("Delete portfolio")
+                    }
+                }
+            }
+            .confirmationDialog(
+                "Delete this portfolio?",
+                isPresented: $showDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    Task { await deletePortfolioAndDismiss() }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(
+                    "This permanently removes “\(portfolio.portfolioLabel) Portfolio” for \(portfolio.studentName), including all AI-generated images for this portfolio. Files in Best work are not deleted. You cannot undo this."
+                )
+            }
+            .alert("Could not delete portfolio", isPresented: Binding(
+                get: { portfolioDeleteError != nil },
+                set: { if !$0 { portfolioDeleteError = nil } }
+            )) {
+                Button("OK", role: .cancel) { portfolioDeleteError = nil }
+            } message: {
+                if let portfolioDeleteError {
+                    Text(portfolioDeleteError)
                 }
             }
             .sheet(isPresented: $showingShareSheet) {
@@ -322,6 +361,19 @@ struct PortfolioDetailView: View {
                     showingExportOptions = false
                 })
             }
+        }
+    }
+
+    @MainActor
+    private func deletePortfolioAndDismiss() async {
+        isDeletingPortfolio = true
+        defer { isDeletingPortfolio = false }
+        do {
+            try await APIClient.shared.deletePortfolio(id: portfolio.id)
+            onDeleted?()
+            dismiss()
+        } catch {
+            portfolioDeleteError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 

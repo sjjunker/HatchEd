@@ -464,7 +464,12 @@ struct StudentDetail: View {
                     .font(.subheadline)
             } else {
                 ForEach(viewModelState.portfolios) { portfolio in
-                    NavigationLink(destination: PortfolioDetailView(portfolio: portfolio, isStudent: false)) {
+                    NavigationLink(destination: PortfolioDetailView(portfolio: portfolio, isStudent: false, onDeleted: {
+                        Task {
+                            await viewModel.loadPortfolios()
+                            await MainActor.run { viewModelState = viewModel.makeSnapshot() }
+                        }
+                    })) {
                         HStack {
                             Image(systemName: "folder.fill")
                                 .foregroundColor(.hatchEdAccent)

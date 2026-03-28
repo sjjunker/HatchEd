@@ -550,26 +550,6 @@ struct TaskDetailSheetView: View {
                                 .fill(Color.hatchEdCardBackground)
                         )
                     }
-                    
-                    // Date Information
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Date")
-                            .font(.headline)
-                            .foregroundColor(.hatchEdText)
-                        
-                        HStack {
-                            Image(systemName: "calendar")
-                                .foregroundColor(.hatchEdAccent)
-                            Text(dateFormatter.string(from: task.startDate))
-                                .font(.body)
-                                .foregroundColor(.hatchEdText)
-                        }
-                    }
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color.hatchEdCardBackground)
-                    )
                 }
                 .padding()
     }

@@ -392,7 +392,7 @@ private struct BestWorkSectionView: View {
     let onAdd: () -> Void
     let onDelete: (StudentWorkFile) async -> Void
 
-    @State private var isExpanded = true
+    @State private var isExpanded = false
 
     private var studentDisplayName: String {
         student.name ?? "Student"

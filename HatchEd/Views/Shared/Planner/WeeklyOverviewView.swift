@@ -305,7 +305,7 @@ private struct TasksForDay: View {
                                     onSelectTask?(task)
                                 } label: {
                                     HStack(spacing: 6) {
-                                        dueAwareAssignmentSymbol(isDue: task.id.hasPrefix("assignment-due-"), baseColor: .white)
+                                        clusterPopoutRowIcon(for: task)
                                         Text(task.title)
                                             .font(.caption2.bold())
                                             .foregroundColor(.white)
@@ -410,7 +410,6 @@ private struct TasksForDay: View {
 
     @ViewBuilder
     private func markerView(for slot: TaskSlot, isCluster: Bool) -> some View {
-        let strokeColor = Color.clear
         switch slot.markerKind {
         case .task:
             Image(systemName: "checkmark.circle")
@@ -421,27 +420,25 @@ private struct TasksForDay: View {
             dueAwareAssignmentSymbol(isDue: slot.hasDueItem, baseColor: slot.primary.color)
                 .frame(width: markerSize(for: slot).width, height: markerSize(for: slot).height)
         case .mixed:
-            Capsule(style: .continuous)
-                .fill(slot.primary.color.opacity(0.9))
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(strokeColor, lineWidth: 2)
-                )
-                .overlay(
-                    HStack(spacing: 3) {
-                        Image(systemName: "checkmark.circle")
-                            .font(.system(size: 8.5, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.95))
-                        dueAwareAssignmentSymbol(isDue: slot.hasDueItem, baseColor: .white.opacity(0.95))
-                            .scaleEffect(0.65)
-                        if isCluster {
-                            Text("\(slot.tasks.count)")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundColor(.white)
-                        }
-                    }
-                )
-                .frame(width: markerSize(for: slot).width, height: markerSize(for: slot).height)
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "tray.full")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(slot.primary.color)
+                    .frame(width: markerSize(for: slot).width, height: markerSize(for: slot).height)
+                if isCluster {
+                    Text("\(slot.tasks.count)")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 3)
+                        .padding(.vertical, 1)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(slot.primary.color.opacity(0.95))
+                        )
+                        .offset(x: 6, y: -6)
+                }
+            }
+            .frame(width: markerSize(for: slot).width, height: markerSize(for: slot).height)
         }
     }
 
@@ -452,7 +449,7 @@ private struct TasksForDay: View {
         case .assignment:
             return CGSize(width: 21, height: 21)
         case .mixed:
-            return CGSize(width: 30, height: 18)
+            return CGSize(width: 21, height: 21)
         }
     }
 
@@ -463,7 +460,11 @@ private struct TasksForDay: View {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.caption2)
                     .foregroundColor(.white.opacity(0.95))
-            case .assignment, .mixed:
+            case .mixed:
+                Image(systemName: "tray.full")
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.95))
+            case .assignment:
                 dueAwareAssignmentSymbol(isDue: slot.hasDueItem, baseColor: .white.opacity(0.95))
                     .scaleEffect(0.8)
             }
@@ -481,6 +482,18 @@ private struct TasksForDay: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(slot.primary.color.opacity(0.88))
         )
+    }
+
+    @ViewBuilder
+    private func clusterPopoutRowIcon(for task: PlannerTask) -> some View {
+        let base = Color.white.opacity(0.95)
+        if task.id.hasPrefix("assignment-") {
+            dueAwareAssignmentSymbol(isDue: task.id.hasPrefix("assignment-due-"), baseColor: base)
+        } else {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(base)
+        }
     }
 
     private func dueAwareAssignmentSymbol(isDue: Bool, baseColor: Color) -> some View {

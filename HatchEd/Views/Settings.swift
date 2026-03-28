@@ -44,9 +44,11 @@ struct Settings: View {
                     Text("Family settings are only available for parent accounts.")
                         .foregroundColor(.hatchEdSecondaryText)
                 }
-                
-                notificationsSection
-                
+
+                if isParent {
+                    notificationsSection
+                }
+
                 // Only show 2FA for username/password users
                 if currentUser?.username != nil {
                     twoFactorSection

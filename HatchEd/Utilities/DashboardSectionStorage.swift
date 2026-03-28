@@ -70,7 +70,11 @@ struct DashboardSectionStorage {
                   let decoded = try? JSONDecoder().decode([String].self, from: data) else {
                 return defaultOrder
             }
-            return decoded
+            var merged = decoded
+            for id in defaultOrder where !merged.contains(id) {
+                merged.append(id)
+            }
+            return merged
         }
         set {
             guard let data = try? JSONEncoder().encode(newValue) else { return }

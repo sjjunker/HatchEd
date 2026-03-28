@@ -131,6 +131,8 @@ export function serializeAssignment (assignment) {
     courseId: assignment.courseId?.toString?.() ?? assignment.courseId ?? null,
     questions: assignment.questions ?? [],
     completed: assignment.completed ?? false, // Default to false if not set
+    workSessionsCompleted: assignment.workSessionsCompleted ?? 0,
+    strictWorkSessionProgress: assignment.strictWorkSessionProgress === true,
     createdAt: assignment.createdAt,
     updatedAt: assignment.updatedAt
   }

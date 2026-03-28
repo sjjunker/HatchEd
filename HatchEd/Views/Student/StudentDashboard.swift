@@ -8,7 +8,7 @@
 import SwiftUI
 import UserNotifications
 
-private let studentDashboardSectionIds = ["welcome", "notifications", "overdueAssignments", "dailyAssignments", "quote"]
+private let studentDashboardSectionIds = ["welcome", "notifications", "overdueAssignments", "dailyAssignments", "incompleteAssignments", "quote"]
 
 struct StudentDashboard: View {
     @EnvironmentObject var authViewModel: AuthViewModel
@@ -289,6 +289,7 @@ struct StudentDashboard: View {
             )
         case "overdueAssignments": overdueAssignmentsSection
         case "dailyAssignments": dailyAssignmentsSection
+        case "incompleteAssignments": incompleteAssignmentsSection
         case "quote": inspirationalQuoteSection
         default: EmptyView()
         }
@@ -300,6 +301,7 @@ struct StudentDashboard: View {
         case "notifications": return "Notifications"
         case "overdueAssignments": return "Overdue Assignments"
         case "dailyAssignments": return "Today's Assignments"
+        case "incompleteAssignments": return "Incomplete Assignments"
         case "quote": return "Inspirational Quote"
         default: return sectionId
         }
@@ -371,6 +373,9 @@ struct StudentDashboard: View {
                         onToggleComplete: {
                             Task { await toggleAssignmentCompletion(assignment) }
                         },
+                        onIncrementWorkSession: {
+                            Task { await incrementWorkSession(assignment) }
+                        },
                         onRequestHelp: {
                             selectedAssignmentForHelp = assignment
                             showingHelpConfirmation = true
@@ -417,6 +422,64 @@ struct StudentDashboard: View {
                         showDueDate: false,
                         onToggleComplete: {
                             Task { await toggleAssignmentCompletion(assignment) }
+                        },
+                        onIncrementWorkSession: {
+                            Task { await incrementWorkSession(assignment) }
+                        },
+                        onRequestHelp: {
+                            selectedAssignmentForHelp = assignment
+                            showingHelpConfirmation = true
+                        }
+                    )
+                }
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.hatchEdCardBackground)
+        )
+    }
+    
+    // MARK: - Incomplete Assignments Section
+    
+    private var incompleteAssignmentsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Image(systemName: "tray.full")
+                        .foregroundColor(.hatchEdAccent)
+                    Text("Incomplete Assignments")
+                        .font(.headline)
+                        .foregroundColor(.hatchEdText)
+                    Spacer()
+                }
+                Text("Everything still in progress. Tasks may also appear under Overdue or Today.")
+                    .font(.caption)
+                    .foregroundColor(.hatchEdSecondaryText)
+            }
+            
+            if isLoadingAssignments {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .padding()
+            } else if incompleteAssignments.isEmpty {
+                Text("Nothing left to do!")
+                    .font(.subheadline)
+                    .foregroundColor(.hatchEdSecondaryText)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding()
+            } else {
+                ForEach(incompleteAssignments) { assignment in
+                    AssignmentRow(
+                        assignment: assignment,
+                        isCompleted: assignment.isCompleted,
+                        showDueDate: true,
+                        onToggleComplete: {
+                            Task { await toggleAssignmentCompletion(assignment) }
+                        },
+                        onIncrementWorkSession: {
+                            Task { await incrementWorkSession(assignment) }
                         },
                         onRequestHelp: {
                             selectedAssignmentForHelp = assignment
@@ -496,11 +559,32 @@ struct StudentDashboard: View {
         }
         
         return assignments.filter { assignment in
-            guard let dueDate = assignment.dueDate else { return false }
+            guard !assignment.isCompleted,
+                  let dueDate = assignment.dueDate else { return false }
             let dueDateStart = calendar.startOfDay(for: dueDate)
             return dueDateStart >= today && dueDateStart < endOfDay
         }
         .sorted { ($0.dueDate ?? Date()) < ($1.dueDate ?? Date()) }
+    }
+    
+    /// All assignments the student still needs to finish (not marked done and not graded).
+    /// Includes work scheduled only via work dates (no course due date), future due dates, etc.
+    /// Same item may also appear under Overdue or Today when a due date falls in those windows.
+    private var incompleteAssignments: [Assignment] {
+        assignments.filter { assignment in
+            !assignment.completed && assignment.pointsAwarded == nil
+        }
+        .sorted { a, b in
+            let aNoDue = a.dueDate == nil
+            let bNoDue = b.dueDate == nil
+            if aNoDue != bNoDue { return aNoDue }
+            switch (a.dueDate, b.dueDate) {
+            case (nil, nil): return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+            case (nil, _): return false
+            case (_, nil): return true
+            case let (ad?, bd?): return ad < bd
+            }
+        }
     }
     
     @MainActor
@@ -518,6 +602,12 @@ struct StudentDashboard: View {
     @MainActor
     private func toggleAssignmentCompletion(_ assignment: Assignment) async {
         let newCompleted = !assignment.isCompleted
+        if newCompleted {
+            let n = assignment.workSessionTotal
+            if n > 0 && assignment.workSessionsCompleted < n {
+                return
+            }
+        }
         do {
             let updated = try await api.updateAssignment(id: assignment.id, completed: newCompleted)
             if let idx = assignments.firstIndex(where: { $0.id == assignment.id }) {
@@ -525,6 +615,18 @@ struct StudentDashboard: View {
             }
         } catch {
             print("Failed to update assignment completion: \(error)")
+        }
+    }
+
+    @MainActor
+    private func incrementWorkSession(_ assignment: Assignment) async {
+        do {
+            let updated = try await api.updateAssignment(id: assignment.id, incrementWorkSession: true)
+            if let idx = assignments.firstIndex(where: { $0.id == assignment.id }) {
+                assignments[idx] = updated
+            }
+        } catch {
+            print("Failed to log work session: \(error)")
         }
     }
     
@@ -613,24 +715,74 @@ private struct AssignmentRow: View {
     let isCompleted: Bool
     var showDueDate: Bool = false
     let onToggleComplete: () -> Void
+    let onIncrementWorkSession: () -> Void
     let onRequestHelp: () -> Void
-    
+
+    private var sessionsCompleteForGrading: Bool {
+        assignment.workSessionTotal == 0 || assignment.workSessionsCompleted >= assignment.workSessionTotal
+    }
+
+    /// All work sessions logged; student can tap the circle to mark done for grading.
+    private var readyToMarkComplete: Bool {
+        !isCompleted && assignment.workSessionTotal > 0 && sessionsCompleteForGrading
+    }
+
     var body: some View {
         HStack(spacing: 12) {
-            Button(action: onToggleComplete) {
-                Image(systemName: isCompleted ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isCompleted ? .hatchEdSuccess : .hatchEdSecondaryText)
+            if assignment.workSessionTotal > 0 && !sessionsCompleteForGrading {
+                Image(systemName: "circle")
+                    .foregroundColor(.hatchEdSecondaryText.opacity(0.45))
                     .font(.title3)
+            } else {
+                Button(action: onToggleComplete) {
+                    Image(systemName: isCompleted ? "checkmark.circle.fill" : "circle")
+                        .foregroundColor(isCompleted ? .hatchEdSuccess : .hatchEdSecondaryText)
+                        .font(.title3)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-            
-            VStack(alignment: .leading, spacing: 4) {
+
+            VStack(alignment: .leading, spacing: 6) {
                 Text(assignment.title)
                     .font(.body)
                     .fontWeight(.medium)
                     .foregroundColor(isCompleted ? .hatchEdSecondaryText : .hatchEdText)
                     .strikethrough(isCompleted)
-                
+
+                if assignment.workSessionTotal > 0 {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Work sessions: \(assignment.workSessionsCompleted)/\(assignment.workSessionTotal)")
+                            .font(.caption)
+                            .foregroundColor(.hatchEdSecondaryText)
+                        if assignment.workSessionsCompleted < assignment.workSessionTotal {
+                            Button(action: onIncrementWorkSession) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.body)
+                                    Text("Log work session")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .padding(.horizontal, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(assignment.mayIncrementWorkSession() ? Color.hatchEdAccent : Color.hatchEdSecondaryBackground)
+                                )
+                                .foregroundColor(assignment.mayIncrementWorkSession() ? Color.hatchEdWhite : .hatchEdSecondaryText)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!assignment.mayIncrementWorkSession())
+                        } else if readyToMarkComplete {
+                            Text("All sessions logged — tap the circle when you’re ready to turn it in.")
+                                .font(.caption)
+                                .foregroundColor(.hatchEdSuccess)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+
                 if let dueDate = assignment.dueDate {
                     HStack(spacing: 4) {
                         Image(systemName: "clock")
@@ -639,11 +791,19 @@ private struct AssignmentRow: View {
                             .font(.caption)
                     }
                     .foregroundColor(.hatchEdSecondaryText)
+                } else if let firstWork = assignment.workDates.sorted().first {
+                    HStack(spacing: 4) {
+                        Image(systemName: "hammer.fill")
+                            .font(.caption2)
+                        Text("Work: \(firstWork, style: .date)")
+                            .font(.caption)
+                    }
+                    .foregroundColor(.hatchEdSecondaryText)
                 }
             }
-            
+
             Spacer()
-            
+
             Button(action: onRequestHelp) {
                 Image(systemName: "questionmark.circle")
                     .foregroundColor(.hatchEdWarning)
@@ -654,8 +814,22 @@ private struct AssignmentRow: View {
         .padding()
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(isCompleted ? Color.hatchEdSecondaryBackground.opacity(0.5) : Color.hatchEdCardBackground)
+                .fill(rowBackgroundColor)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(readyToMarkComplete ? Color.hatchEdSuccess.opacity(0.35) : Color.clear, lineWidth: 1)
+        )
+    }
+
+    private var rowBackgroundColor: Color {
+        if isCompleted {
+            return Color.hatchEdSecondaryBackground.opacity(0.5)
+        }
+        if readyToMarkComplete {
+            return Color.hatchEdSuccess.opacity(0.14)
+        }
+        return Color.hatchEdCardBackground
     }
 }
 

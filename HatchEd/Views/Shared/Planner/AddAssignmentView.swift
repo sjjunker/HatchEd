@@ -25,6 +25,7 @@ struct AddAssignmentView: View {
     @State private var isLoadingCourses: Bool = false
     @State private var isSaving: Bool = false
     @State private var errorMessage: String? = nil
+    @State private var strictWorkSessionProgress: Bool = false
 
     private let api = APIClient.shared
 
@@ -76,6 +77,13 @@ struct AddAssignmentView: View {
                             workDates.append(workDates.last ?? initialDate)
                             workDurationsMinutes.append(workDurationsMinutes.last ?? 60)
                         }
+                    }
+
+                    if !workDates.isEmpty {
+                        Toggle("Strict work-day schedule", isOn: $strictWorkSessionProgress)
+                        Text("When on, each session unlocks on or after its scheduled day (catch-up allowed). When off, sessions can be logged freely.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
                     
                     Toggle("Has Due Date", isOn: $hasDueDate)
@@ -215,7 +223,8 @@ struct AddAssignmentView: View {
                 instructions: nil,
                 pointsPossible: nil,
                 pointsAwarded: nil,
-                courseId: selectedCourse?.id
+                courseId: selectedCourse?.id,
+                strictWorkSessionProgress: workDates.isEmpty ? nil : strictWorkSessionProgress
             )
             onSaveAssignment(assignment)
             dismiss()

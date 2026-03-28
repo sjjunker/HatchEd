@@ -57,6 +57,22 @@ struct AssignmentGradingView: View {
                                     .foregroundColor(.hatchEdText)
                             }
                         }
+                        if assignment.workSessionTotal > 0 {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "calendar.badge.clock")
+                                    .foregroundColor(.hatchEdAccent)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Work sessions: \(assignment.workSessionsCompleted) / \(assignment.workSessionTotal)")
+                                        .font(.subheadline)
+                                        .foregroundColor(.hatchEdText)
+                                    if assignment.strictWorkSessionProgress {
+                                        Text("Strict schedule: sessions unlock by calendar day.")
+                                            .font(.caption)
+                                            .foregroundColor(.hatchEdSecondaryText)
+                                    }
+                                }
+                            }
+                        }
                     }
                     .padding()
                     .background(

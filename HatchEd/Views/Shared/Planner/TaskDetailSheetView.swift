@@ -36,6 +36,7 @@ struct TaskDetailSheetView: View {
     @State private var linkedResources: [Resource] = []
     @State private var previewFileURL: URL?
     @State private var previewResourceType: ResourceType?
+    @State private var editedStrictWorkSessionProgress: Bool = false
 
     private let api = APIClient.shared
     
@@ -98,6 +99,7 @@ struct TaskDetailSheetView: View {
         if let assignment = assignment {
             _editedStudent = State(initialValue: students.first { $0.id == assignment.studentId })
         }
+        _editedStrictWorkSessionProgress = State(initialValue: assignment?.strictWorkSessionProgress ?? false)
     }
     
     var body: some View {
@@ -394,6 +396,27 @@ struct TaskDetailSheetView: View {
                             )
                         }
 
+                        if !assignment.workDates.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Work session progress")
+                                    .font(.headline)
+                                    .foregroundColor(.hatchEdText)
+                                Text("\(assignment.workSessionsCompleted) of \(assignment.workDates.count) sessions logged")
+                                    .font(.body)
+                                    .foregroundColor(.hatchEdText)
+                                if assignment.strictWorkSessionProgress {
+                                    Text("Strict schedule: each session unlocks on its scheduled calendar day.")
+                                        .font(.caption)
+                                        .foregroundColor(.hatchEdSecondaryText)
+                                }
+                            }
+                            .padding()
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color.hatchEdCardBackground)
+                            )
+                        }
+
                         // Due Date
                         if let dueDate = assignment.dueDate {
                             VStack(alignment: .leading, spacing: 12) {
@@ -596,6 +619,12 @@ struct TaskDetailSheetView: View {
                     Toggle("Has Due Date", isOn: $hasDueDate)
                     if hasDueDate {
                         DatePicker("Due Date & Time", selection: $editedDueDate, displayedComponents: [.date, .hourAndMinute])
+                    }
+                    if !editedWorkDates.isEmpty {
+                        Toggle("Strict work-day schedule", isOn: $editedStrictWorkSessionProgress)
+                        Text("When on, the student can only log the next session on or after each work day (catch-up allowed). When off, they can log sessions freely up to the total.")
+                            .font(.caption)
+                            .foregroundColor(.hatchEdSecondaryText)
                     }
                 } else {
                     DatePicker("Date & Time", selection: $editedDate, displayedComponents: [.date, .hourAndMinute])
@@ -842,6 +871,7 @@ struct TaskDetailSheetView: View {
         // If this is an assignment, set student
         if let assignment = assignment {
             editedStudent = students.first { $0.id == assignment.studentId }
+            editedStrictWorkSessionProgress = assignment.strictWorkSessionProgress
         } else {
             editedStudent = primaryEditedStudent
         }
@@ -891,6 +921,7 @@ struct TaskDetailSheetView: View {
         // Reset student if needed
         if let assignment = assignment {
             editedStudent = students.first { $0.id == assignment.studentId }
+            editedStrictWorkSessionProgress = assignment.strictWorkSessionProgress
         } else {
             editedStudent = primaryEditedStudent
         }
@@ -922,7 +953,8 @@ struct TaskDetailSheetView: View {
                     instructions: nil,
                     pointsPossible: nil,
                     pointsAwarded: nil,
-                    courseId: editedCourse?.id
+                    courseId: editedCourse?.id,
+                    strictWorkSessionProgress: editedWorkDates.isEmpty ? false : editedStrictWorkSessionProgress
                 )
                 onAssignmentUpdated(updatedAssignment)
                 dismiss()
@@ -959,7 +991,8 @@ struct TaskDetailSheetView: View {
                         instructions: nil,
                         pointsPossible: nil,
                         pointsAwarded: nil,
-                        courseId: newCourse?.id
+                        courseId: newCourse?.id,
+                        strictWorkSessionProgress: false
                     )
                     
                     // Delete the original planner task

@@ -143,7 +143,7 @@ export async function deleteCourseHandler (req, res) {
 
 // Assignments
 export async function createAssignmentHandler (req, res) {
-  const { title, studentId, workDates, workDurationsMinutes, dueDate, instructions, pointsPossible, pointsAwarded, courseId } = req.body
+  const { title, studentId, workDates, workDurationsMinutes, dueDate, instructions, pointsPossible, pointsAwarded, courseId, strictWorkSessionProgress } = req.body
   if (!title || !title.trim()) {
     return res.status(400).json({ error: { message: 'Assignment title is required' } })
   }
@@ -171,7 +171,8 @@ export async function createAssignmentHandler (req, res) {
     instructions,
     pointsPossible,
     pointsAwarded,
-    courseId
+    courseId,
+    strictWorkSessionProgress
   })
   
   res.status(201).json({ assignment: serializeAssignment(assignment) })
@@ -183,7 +184,12 @@ export async function getAssignmentsHandler (req, res) {
     return res.json({ assignments: [] })
   }
 
-  const assignments = await findAssignmentsByFamilyId(user.familyId)
+  let assignments = await findAssignmentsByFamilyId(user.familyId)
+  if (user.role === 'student') {
+    const studentId = user._id.toString()
+    assignments = assignments.filter(a => a.studentId?.toString() === studentId)
+  }
+
   const assignmentsWithDetails = assignments.map(assignment => serializeAssignment(assignment))
   
   // Check for overdue assignments in the background
@@ -195,7 +201,7 @@ export async function getAssignmentsHandler (req, res) {
 
 export async function updateAssignmentHandler (req, res) {
   const { id } = req.params
-  const { title, workDates, workDurationsMinutes, dueDate, clearDueDate, instructions, pointsPossible, pointsAwarded, courseId, completed } = req.body
+  const body = req.body
 
   const user = await findUserById(req.user.userId)
   if (!user || !user.familyId) {
@@ -211,11 +217,62 @@ export async function updateAssignmentHandler (req, res) {
     return res.status(403).json({ error: { message: 'Not authorized' } })
   }
 
-  const updated = await updateAssignment(id, { title, workDates, workDurationsMinutes, dueDate, clearDueDate, instructions, pointsPossible, pointsAwarded, courseId, completed })
-  if (!updated) {
-    return res.status(404).json({ error: { message: 'Assignment not found or could not be updated' } })
+  if (user.role === 'student') {
+    if (assignment.studentId.toString() !== user._id.toString()) {
+      return res.status(403).json({ error: { message: 'Not authorized' } })
+    }
+    const allowed = new Set(['completed', 'incrementWorkSession'])
+    const keys = Object.keys(body).filter(k => body[k] !== undefined && body[k] !== null)
+    const bad = keys.filter(k => !allowed.has(k))
+    if (bad.length > 0) {
+      return res.status(403).json({ error: { message: 'Students may only update completion or work session progress.' } })
+    }
   }
-  res.json({ assignment: serializeAssignment(updated) })
+
+  if (body.incrementWorkSession === true) {
+    if (user.role !== 'student' || assignment.studentId.toString() !== user._id.toString()) {
+      return res.status(403).json({ error: { message: 'Only the assigned student can log a work session.' } })
+    }
+  }
+
+  if (body.workSessionsCompleted !== undefined && user.role !== 'parent') {
+    return res.status(403).json({ error: { message: 'Only parents can set work session count directly.' } })
+  }
+
+  if (body.strictWorkSessionProgress !== undefined && user.role !== 'parent') {
+    return res.status(403).json({ error: { message: 'Only parents can change strict work session mode.' } })
+  }
+
+  const skipWorkSessionCompletionCheck = user.role === 'parent'
+
+  try {
+    const updated = await updateAssignment(id, {
+      title: body.title,
+      workDates: body.workDates,
+      workDurationsMinutes: body.workDurationsMinutes,
+      dueDate: body.dueDate,
+      clearDueDate: body.clearDueDate,
+      instructions: body.instructions,
+      pointsPossible: body.pointsPossible,
+      pointsAwarded: body.pointsAwarded,
+      courseId: body.courseId,
+      completed: body.completed,
+      incrementWorkSession: body.incrementWorkSession,
+      workSessionsCompleted: body.workSessionsCompleted,
+      strictWorkSessionProgress: body.strictWorkSessionProgress,
+      skipWorkSessionCompletionCheck
+    })
+    if (!updated) {
+      return res.status(404).json({ error: { message: 'Assignment not found or could not be updated' } })
+    }
+    res.json({ assignment: serializeAssignment(updated) })
+  } catch (error) {
+    const code = error.code
+    if (code === 'NO_WORK_SESSIONS' || code === 'SESSIONS_COMPLETE' || code === 'SESSION_LOCKED' || code === 'INCOMPLETE_SESSIONS') {
+      return res.status(400).json({ error: { message: error.message, code } })
+    }
+    throw error
+  }
 }
 
 export async function deleteAssignmentHandler (req, res) {

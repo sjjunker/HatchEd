@@ -242,7 +242,7 @@ struct ModelTests {
 
     @Test func assignmentDecodesFromJSON() throws {
         let json = """
-        {"id": "a1", "title": "Essay", "studentId": "s1", "dueDate": null, "pointsPossible": 100, "pointsAwarded": 85, "questions": [], "completed": false}
+        {"id": "a1", "title": "Essay", "studentId": "s1", "workDates": [], "workDurationsMinutes": [], "dueDate": null, "pointsPossible": 100, "pointsAwarded": 85, "questions": [], "completed": false}
         """
         let data = Data(json.utf8)
         let decoder = JSONDecoder()
@@ -253,6 +253,19 @@ struct ModelTests {
         #expect(a.pointsPossible == 100)
         #expect(a.pointsAwarded == 85)
         #expect(a.isCompleted == true)
+    }
+
+    @Test func assignmentDecodesWorkSessionDefaultsWhenOmitted() throws {
+        let json = """
+        {"id": "a2", "title": "Lab", "studentId": "s1", "workDates": ["2026-03-01T12:00:00Z","2026-03-02T12:00:00Z"], "workDurationsMinutes": [60,60], "dueDate": null, "questions": [], "completed": false}
+        """
+        let data = Data(json.utf8)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let a = try decoder.decode(Assignment.self, from: data)
+        #expect(a.workSessionsCompleted == 0)
+        #expect(a.strictWorkSessionProgress == false)
+        #expect(a.workSessionTotal == 2)
     }
 
     // MARK: - Course

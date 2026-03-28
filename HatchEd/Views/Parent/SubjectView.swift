@@ -602,6 +602,7 @@ private struct AddItemView: View {
     @State private var selectedCourseForAssignment: Course?
     @State private var selectedStudentForAssignment: User?
     @State private var hasDueDate = false
+    @State private var assignmentStrictWorkSessionProgress = false
     
     var body: some View {
         Form {
@@ -675,6 +676,13 @@ private struct AddItemView: View {
                             assignmentWorkDates.append(assignmentWorkDates.last ?? Date())
                             assignmentWorkDurationsMinutes.append(assignmentWorkDurationsMinutes.last ?? 60)
                         }
+                    }
+
+                    if !assignmentWorkDates.isEmpty {
+                        Toggle("Strict work-day schedule", isOn: $assignmentStrictWorkSessionProgress)
+                        Text("When on, each session unlocks on or after its scheduled day (catch-up allowed).")
+                            .font(.caption)
+                            .foregroundColor(.hatchEdSecondaryText)
                     }
                     
                     Toggle("Has Due Date", isOn: $hasDueDate)
@@ -782,7 +790,8 @@ private struct AddItemView: View {
                     instructions: nil,
                     pointsPossible: nil,
                     pointsAwarded: nil,
-                    courseId: selectedCourseForAssignment?.id
+                    courseId: selectedCourseForAssignment?.id,
+                    strictWorkSessionProgress: assignmentWorkDates.isEmpty ? nil : assignmentStrictWorkSessionProgress
                 )
                 assignments.append(newAssignment)
             }

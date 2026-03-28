@@ -618,6 +618,11 @@ private struct AssignmentRow: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
+                if assignment.workSessionTotal > 0 {
+                    Text("Work sessions: \(assignment.workSessionsCompleted)/\(assignment.workSessionTotal)")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
             }
             
             Spacer()

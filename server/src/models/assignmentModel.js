@@ -2,6 +2,7 @@
 
 import { ObjectId } from 'mongodb'
 import { getCollection } from '../lib/mongo.js'
+import { sortedWorkDates, utcCalendarDayMs } from '../utils/workSessionUtils.js'
 
 const ASSIGNMENTS_COLLECTION = 'assignments'
 
@@ -9,7 +10,7 @@ function assignmentsCollection () {
   return getCollection(ASSIGNMENTS_COLLECTION)
 }
 
-export async function createAssignment ({ familyId, title, studentId, workDates, workDurationsMinutes, dueDate, instructions, pointsPossible, pointsAwarded, courseId }) {
+export async function createAssignment ({ familyId, title, studentId, workDates, workDurationsMinutes, dueDate, instructions, pointsPossible, pointsAwarded, courseId, strictWorkSessionProgress }) {
   const normalizedWorkDates = Array.isArray(workDates) ? workDates.filter(Boolean).map(date => new Date(date)) : []
   const normalizedDurations = normalizedWorkDates.map((_, index) => {
     const duration = Array.isArray(workDurationsMinutes) ? Number(workDurationsMinutes[index]) : NaN
@@ -27,6 +28,8 @@ export async function createAssignment ({ familyId, title, studentId, workDates,
     pointsAwarded: pointsAwarded ?? null,
     courseId: courseId ? new ObjectId(courseId) : null,
     questions: [],
+    workSessionsCompleted: 0,
+    strictWorkSessionProgress: strictWorkSessionProgress === true,
     completed: pointsAwarded != null, // Mark as completed if points are awarded
     createdAt: new Date(),
     updatedAt: new Date()
@@ -54,53 +57,112 @@ export async function findAssignmentById (id) {
   return assignmentsCollection().findOne({ _id: new ObjectId(id) })
 }
 
-export async function updateAssignment (id, { title, workDates, workDurationsMinutes, dueDate, clearDueDate, instructions, pointsPossible, pointsAwarded, courseId, completed }) {
+export async function updateAssignment (id, patch) {
+  const existing = await findAssignmentById(id)
+  if (!existing) return null
+
+  const skipWorkSessionCompletionCheck = patch.skipWorkSessionCompletionCheck === true
+
+  const normalizedWorkDates = patch.workDates !== undefined
+    ? (Array.isArray(patch.workDates) ? patch.workDates.filter(Boolean).map(date => new Date(date)) : [])
+    : existing.workDates
+  const N = Array.isArray(normalizedWorkDates) ? normalizedWorkDates.length : 0
+
+  let nextWorkSessions = existing.workSessionsCompleted ?? 0
+  let nextStrict = existing.strictWorkSessionProgress === true
+
+  if (patch.workDates !== undefined) {
+    nextWorkSessions = Math.min(nextWorkSessions, N)
+  }
+
+  if (patch.incrementWorkSession === true) {
+    if (N === 0) {
+      const e = new Error('No work sessions configured for this assignment.')
+      e.code = 'NO_WORK_SESSIONS'
+      throw e
+    }
+    if (nextWorkSessions >= N) {
+      const e = new Error('All work sessions are already marked complete.')
+      e.code = 'SESSIONS_COMPLETE'
+      throw e
+    }
+    if (nextStrict) {
+      const dates = sortedWorkDates(normalizedWorkDates)
+      const today = utcCalendarDayMs(new Date())
+      const required = utcCalendarDayMs(dates[nextWorkSessions])
+      if (today < required) {
+        const e = new Error('This work session is not available until its scheduled day.')
+        e.code = 'SESSION_LOCKED'
+        throw e
+      }
+    }
+    nextWorkSessions += 1
+  }
+
+  if (patch.workSessionsCompleted !== undefined) {
+    const v = Number(patch.workSessionsCompleted)
+    nextWorkSessions = Number.isFinite(v) ? Math.max(0, Math.min(N, Math.round(v))) : 0
+  }
+
+  if (patch.strictWorkSessionProgress !== undefined) {
+    nextStrict = Boolean(patch.strictWorkSessionProgress)
+  }
+
   const update = {}
-  if (title !== undefined) update.title = title
-  if (workDates !== undefined) {
-    const normalizedWorkDates = Array.isArray(workDates) ? workDates.filter(Boolean).map(date => new Date(date)) : []
+  if (patch.title !== undefined) update.title = patch.title
+
+  if (patch.workDates !== undefined) {
     update.workDates = normalizedWorkDates
-    if (workDurationsMinutes !== undefined) {
+    if (patch.workDurationsMinutes !== undefined) {
       update.workDurationsMinutes = normalizedWorkDates.map((_, index) => {
-        const duration = Array.isArray(workDurationsMinutes) ? Number(workDurationsMinutes[index]) : NaN
+        const duration = Array.isArray(patch.workDurationsMinutes) ? Number(patch.workDurationsMinutes[index]) : NaN
         return Number.isFinite(duration) ? Math.max(15, Math.round(duration)) : 60
       })
     } else {
-      const existingAssignment = await findAssignmentById(id)
-      const existingDurations = Array.isArray(existingAssignment?.workDurationsMinutes) ? existingAssignment.workDurationsMinutes : []
+      const existingDurations = Array.isArray(existing.workDurationsMinutes) ? existing.workDurationsMinutes : []
       update.workDurationsMinutes = normalizedWorkDates.map((_, index) => {
         const duration = Number(existingDurations[index])
         return Number.isFinite(duration) ? Math.max(15, Math.round(duration)) : 60
       })
     }
-  } else if (workDurationsMinutes !== undefined) {
-    update.workDurationsMinutes = Array.isArray(workDurationsMinutes)
-      ? workDurationsMinutes.map(value => {
+  } else if (patch.workDurationsMinutes !== undefined) {
+    update.workDurationsMinutes = Array.isArray(patch.workDurationsMinutes)
+      ? patch.workDurationsMinutes.map(value => {
         const duration = Number(value)
         return Number.isFinite(duration) ? Math.max(15, Math.round(duration)) : 60
       })
       : []
   }
-  if (clearDueDate === true) {
+
+  if (patch.clearDueDate === true) {
     update.dueDate = null
-  } else if (dueDate !== undefined) {
-    update.dueDate = dueDate ? new Date(dueDate) : null
+  } else if (patch.dueDate !== undefined) {
+    update.dueDate = patch.dueDate ? new Date(patch.dueDate) : null
   }
-  if (instructions !== undefined) update.instructions = instructions
-  if (pointsPossible !== undefined) update.pointsPossible = pointsPossible
-  if (pointsAwarded !== undefined) {
-    update.pointsAwarded = pointsAwarded
-    // Automatically mark as completed when points are awarded (parent grading)
-    update.completed = pointsAwarded != null
+  if (patch.instructions !== undefined) update.instructions = patch.instructions
+  if (patch.pointsPossible !== undefined) update.pointsPossible = patch.pointsPossible
+
+  if (patch.pointsAwarded !== undefined) {
+    update.pointsAwarded = patch.pointsAwarded
+    update.completed = patch.pointsAwarded != null
   }
-  if (completed !== undefined) {
-    const existing = await findAssignmentById(id)
-    if (existing?.pointsAwarded == null) {
-      update.completed = Boolean(completed)
+
+  if (patch.completed !== undefined && patch.pointsAwarded === undefined) {
+    if (existing.pointsAwarded == null) {
+      const wantComplete = Boolean(patch.completed)
+      if (wantComplete && N > 0 && nextWorkSessions < N && !skipWorkSessionCompletionCheck) {
+        const e = new Error('Complete all work sessions before marking this assignment done.')
+        e.code = 'INCOMPLETE_SESSIONS'
+        throw e
+      }
+      update.completed = wantComplete
     }
-    // Don't touch pointsAwarded - that's for parent grading only
   }
-  if (courseId !== undefined) update.courseId = courseId ? new ObjectId(courseId) : null
+
+  if (patch.courseId !== undefined) update.courseId = patch.courseId ? new ObjectId(patch.courseId) : null
+
+  update.workSessionsCompleted = nextWorkSessions
+  update.strictWorkSessionProgress = nextStrict
   update.updatedAt = new Date()
 
   const result = await assignmentsCollection().findOneAndUpdate(
@@ -109,12 +171,10 @@ export async function updateAssignment (id, { title, workDates, workDurationsMin
     { returnDocument: 'after' }
   )
 
-  // If findOneAndUpdate didn't return the document, fetch it manually
   if (result?.value) {
     return result.value
   }
-  
-  // Fallback: fetch the updated assignment
+
   return await findAssignmentById(id)
 }
 
@@ -129,4 +189,3 @@ export async function deleteAssignmentsByStudentId (studentId) {
   })
   return result.deletedCount
 }
-

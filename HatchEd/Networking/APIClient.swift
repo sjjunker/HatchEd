@@ -175,6 +175,7 @@ final class APIClient {
         let pointsPossible: Double?
         let pointsAwarded: Double?
         let courseId: String?
+        let strictWorkSessionProgress: Bool?
     }
     
     struct UpdateAssignmentRequest: Encodable {
@@ -188,6 +189,9 @@ final class APIClient {
         let pointsAwarded: Double?
         let courseId: String?
         let completed: Bool?
+        let incrementWorkSession: Bool?
+        let workSessionsCompleted: Int?
+        let strictWorkSessionProgress: Bool?
     }
     
     // Courses
@@ -225,8 +229,8 @@ final class APIClient {
     }
     
     // Assignments
-    func createAssignment(title: String, studentId: String, workDates: [Date]? = nil, workDurationsMinutes: [Int]? = nil, dueDate: Date?, instructions: String?, pointsPossible: Double?, pointsAwarded: Double?, courseId: String?) async throws -> Assignment {
-        let body = CreateAssignmentRequest(title: title, studentId: studentId, workDates: workDates, workDurationsMinutes: workDurationsMinutes, dueDate: dueDate, instructions: instructions, pointsPossible: pointsPossible, pointsAwarded: pointsAwarded, courseId: courseId)
+    func createAssignment(title: String, studentId: String, workDates: [Date]? = nil, workDurationsMinutes: [Int]? = nil, dueDate: Date?, instructions: String?, pointsPossible: Double?, pointsAwarded: Double?, courseId: String?, strictWorkSessionProgress: Bool? = nil) async throws -> Assignment {
+        let body = CreateAssignmentRequest(title: title, studentId: studentId, workDates: workDates, workDurationsMinutes: workDurationsMinutes, dueDate: dueDate, instructions: instructions, pointsPossible: pointsPossible, pointsAwarded: pointsAwarded, courseId: courseId, strictWorkSessionProgress: strictWorkSessionProgress)
         let response: AssignmentResponse = try await request(
             Endpoint(path: "api/subjects/assignments", method: .post, body: body),
             responseType: AssignmentResponse.self
@@ -242,8 +246,8 @@ final class APIClient {
         return response.assignments
     }
     
-    func updateAssignment(id: String, title: String? = nil, workDates: [Date]? = nil, workDurationsMinutes: [Int]? = nil, dueDate: Date? = nil, clearDueDate: Bool? = nil, instructions: String? = nil, pointsPossible: Double? = nil, pointsAwarded: Double? = nil, courseId: String? = nil, completed: Bool? = nil) async throws -> Assignment {
-        let body = UpdateAssignmentRequest(title: title, workDates: workDates, workDurationsMinutes: workDurationsMinutes, dueDate: dueDate, clearDueDate: clearDueDate, instructions: instructions, pointsPossible: pointsPossible, pointsAwarded: pointsAwarded, courseId: courseId, completed: completed)
+    func updateAssignment(id: String, title: String? = nil, workDates: [Date]? = nil, workDurationsMinutes: [Int]? = nil, dueDate: Date? = nil, clearDueDate: Bool? = nil, instructions: String? = nil, pointsPossible: Double? = nil, pointsAwarded: Double? = nil, courseId: String? = nil, completed: Bool? = nil, incrementWorkSession: Bool? = nil, workSessionsCompleted: Int? = nil, strictWorkSessionProgress: Bool? = nil) async throws -> Assignment {
+        let body = UpdateAssignmentRequest(title: title, workDates: workDates, workDurationsMinutes: workDurationsMinutes, dueDate: dueDate, clearDueDate: clearDueDate, instructions: instructions, pointsPossible: pointsPossible, pointsAwarded: pointsAwarded, courseId: courseId, completed: completed, incrementWorkSession: incrementWorkSession, workSessionsCompleted: workSessionsCompleted, strictWorkSessionProgress: strictWorkSessionProgress)
         let response: AssignmentResponse = try await request(
             Endpoint(path: "api/subjects/assignments/\(id)", method: .patch, body: body),
             responseType: AssignmentResponse.self

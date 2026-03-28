@@ -332,7 +332,7 @@ struct ModelTests {
     }
 
     @Test func plannerTaskColorOptionsCount() {
-        #expect(PlannerTask.colorOptions.count == 7)
+        #expect(PlannerTask.colorOptions.count == 12)
     }
 
     // MARK: - Question

@@ -223,9 +223,9 @@ final class ViewModelXCTests: XCTestCase {
         XCTAssertTrue(vm.selectedWorkFiles.isEmpty)
     }
 
-    func testAddPortfolioViewModel_SelectedDesignPattern_DefaultsToGeneral() {
+    func testAddPortfolioViewModel_SelectedAudience_DefaultsToFamily() {
         let vm = AddPortfolioViewModel()
-        XCTAssertEqual(vm.selectedDesignPattern, .general)
+        XCTAssertEqual(vm.selectedAudience, .family)
     }
 
     // MARK: - AuthViewModel (guard clauses and signOut only; no network)

@@ -130,9 +130,9 @@ struct ViewModelTests {
         #expect(vm.errorMessage == nil)
     }
 
-    @Test func addPortfolioViewModelDesignPatternDefaultsToGeneral() {
+    @Test func addPortfolioViewModelAudienceDefaultsToFamily() {
         let vm = AddPortfolioViewModel()
-        #expect(vm.selectedDesignPattern == .general)
+        #expect(vm.selectedAudience == .family)
     }
 
     @Test func addPortfolioViewModelSectionTextFieldsInitialEmpty() {

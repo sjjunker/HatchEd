@@ -8,7 +8,8 @@
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "build": "echo \"No build step required\"",
-    "lint": "eslint \"src/**/*.js\""
+    "lint": "eslint \"src/**/*.js\"",
+    "test": "node --test src/**/*.test.js"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",

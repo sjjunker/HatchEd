@@ -63,6 +63,15 @@ struct DashboardSectionStorage {
         self.hiddenKey = hiddenKey
         self.defaultOrder = defaultOrder
     }
+
+    /// Appends any section ids from `defaultOrder` that are missing from `saved` (for new dashboard sections after an app update).
+    static func mergeSavedOrder(_ saved: [String], defaultOrder: [String]) -> [String] {
+        var merged = saved
+        for id in defaultOrder where !merged.contains(id) {
+            merged.append(id)
+        }
+        return merged
+    }
     
     var sectionOrder: [String] {
         get {
@@ -70,11 +79,7 @@ struct DashboardSectionStorage {
                   let decoded = try? JSONDecoder().decode([String].self, from: data) else {
                 return defaultOrder
             }
-            var merged = decoded
-            for id in defaultOrder where !merged.contains(id) {
-                merged.append(id)
-            }
-            return merged
+            return Self.mergeSavedOrder(decoded, defaultOrder: defaultOrder)
         }
         set {
             guard let data = try? JSONEncoder().encode(newValue) else { return }

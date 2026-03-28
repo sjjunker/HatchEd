@@ -142,6 +142,6 @@ final class HatchEdXCTests: XCTestCase {
     // MARK: - PlannerTask
 
     func testPlannerTaskColorOptions() {
-        XCTAssertEqual(PlannerTask.colorOptions.count, 7)
+        XCTAssertEqual(PlannerTask.colorOptions.count, 12)
     }
 }

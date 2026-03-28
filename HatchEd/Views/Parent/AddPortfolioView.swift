@@ -8,13 +8,6 @@
 import SwiftUI
 import PhotosUI
 
-private struct SectionPhotoImageTransfer: Transferable {
-    let data: Data
-    static var transferRepresentation: some TransferRepresentation {
-        DataRepresentation(importedContentType: .image) { Self(data: $0) }
-    }
-}
-
 struct TextEditorPlaceholder: ViewModifier {
     var placeholder: String
     @Binding var text: String
@@ -316,15 +309,12 @@ struct AddPortfolioView: View {
             }
         }
         do {
-            guard let transfer = try await item.loadTransferable(type: SectionPhotoImageTransfer.self) else {
-                await MainActor.run { viewModel.setError("Could not load photo") }
-                return
-            }
+            let loaded = try await loadImageDataFromPhotosPickerItem(item)
             let file = try await viewModel.uploadSectionPhoto(
                 studentId: studentId,
-                data: transfer.data,
-                fileName: "section-photo-\(sectionKey).jpg",
-                mimeType: "image/jpeg"
+                data: loaded.data,
+                fileName: "section-photo-\(sectionKey).\(loaded.fileNameSuffix)",
+                mimeType: loaded.mimeType
             )
             await viewModel.loadStudentWorkFiles(studentId: studentId)
             await MainActor.run { viewModel.setSectionPhoto(sectionKey: sectionKey, fileId: file.id) }

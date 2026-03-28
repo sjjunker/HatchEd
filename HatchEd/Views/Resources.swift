@@ -44,16 +44,6 @@ private func readFileData(from url: URL) throws -> Data {
     return result
 }
 
-/// Transferable for loading image data from PhotosPickerItem (e.g. iCloud Photos).
-private struct ImageDataTransfer: Transferable {
-    let data: Data
-    static var transferRepresentation: some TransferRepresentation {
-        DataRepresentation(importedContentType: .image) { data in
-            Self(data: data)
-        }
-    }
-}
-
 private struct FolderDeletionCandidate {
     let folder: ResourceFolder
     let subfolderCount: Int
@@ -956,14 +946,11 @@ private struct AddResourceSheet: View {
             return
         }
         do {
-            if let imageData = try await item.loadTransferable(type: ImageDataTransfer.self) {
-                await MainActor.run {
-                    pendingFileData = imageData.data
-                    pendingFileName = "photo.jpg"
-                    pendingMimeType = "image/jpeg"
-                }
-            } else {
-                await MainActor.run { errorMessage = "Could not load photo. Try choosing from Files instead." }
+            let loaded = try await loadImageDataFromPhotosPickerItem(item)
+            await MainActor.run {
+                pendingFileData = loaded.data
+                pendingFileName = "photo.\(loaded.fileNameSuffix)"
+                pendingMimeType = loaded.mimeType
             }
         } catch {
             await MainActor.run { errorMessage = error.localizedDescription }

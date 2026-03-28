@@ -10,6 +10,218 @@ import PDFKit
 import UIKit
 import WebKit
 
+/// Escapes text for use inside a double-quoted HTML attribute.
+fileprivate func portfolioEscapeForHtmlAttribute(_ string: String) -> String {
+    string
+        .replacingOccurrences(of: "&", with: "&amp;")
+        .replacingOccurrences(of: "\"", with: "&quot;")
+        .replacingOccurrences(of: "<", with: "&lt;")
+}
+
+/// Runs in WKWebView after HTML load so any `<img>` missed by Swift regex (e.g. multiline tags) still
+/// moves `alt` to `aria-label` and clears `alt` for visual rendering. Hides `figcaption` under figures (often duplicates alt).
+fileprivate let portfolioWebViewImagePresentationScript = """
+(function(){
+  function moveAltToAria(img) {
+    var a = img.getAttribute('alt');
+    if (a != null && a.length > 0) {
+      if (!img.getAttribute('aria-label')) { img.setAttribute('aria-label', a); }
+      img.setAttribute('alt', '');
+    }
+    img.removeAttribute('title');
+  }
+  document.querySelectorAll('img').forEach(moveAltToAria);
+  document.querySelectorAll('figure figcaption').forEach(function(el) {
+    el.style.setProperty('display','none','important');
+  });
+  // Remove text nodes that are only leaked img-attribute fragments (e.g. model put [IMAGE] inside src; split left ` class="photo" alt="" >`).
+  function removeOrphanAttributeTextNodes() {
+    var patterns = [
+      /^\\s*["']?\\s*class\\s*=\\s*"[^"]*"\\s+alt\\s*=\\s*"[^"]*"(\\s*\\/?\\s*>)?\\s*$/i,
+      /^\\s*["']?\\s*alt\\s*=\\s*"[^"]*"\\s+class\\s*=\\s*"[^"]*"(\\s*\\/?\\s*>)?\\s*$/i
+    ];
+    var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    var dead = [];
+    var n;
+    while (n = w.nextNode()) {
+      var t = n.textContent;
+      if (!t) continue;
+      for (var i = 0; i < patterns.length; i++) {
+        if (patterns[i].test(t)) { dead.push(n); break; }
+      }
+    }
+    dead.forEach(function(node) { if (node.parentNode) node.parentNode.removeChild(node); });
+  }
+  removeOrphanAttributeTextNodes();
+})();
+"""
+
+/// Finds the `>` that closes an `<img` tag: respects quotes and skips `<!-- ... -->` (a `>` inside a comment must not close the tag).
+fileprivate func findClosingAngleBracketOfImgTag(in html: String, imgOpenStart: String.Index) -> String.Index? {
+    guard html[imgOpenStart..<html.endIndex].lowercased().hasPrefix("<img") else { return nil }
+    var j = html.index(imgOpenStart, offsetBy: 4)
+    var inDouble = false
+    var inSingle = false
+    while j < html.endIndex {
+        let ch = html[j]
+        if inDouble {
+            if ch == "\"" { inDouble = false }
+        } else if inSingle {
+            if ch == "'" { inSingle = false }
+        } else {
+            if ch == "<" {
+                let tail = html[j..<html.endIndex]
+                if tail.hasPrefix("<!--"), let close = html.range(of: "-->", range: j..<html.endIndex) {
+                    j = close.upperBound
+                    continue
+                }
+            }
+            if ch == "\"" {
+                inDouble = true
+            } else if ch == "'" {
+                inSingle = true
+            } else if ch == ">" {
+                return j
+            }
+        }
+        j = html.index(after: j)
+    }
+    return nil
+}
+
+/// Each `<img …>` span; `>` inside `<!-- -->` or inside quoted attributes does not end the tag.
+fileprivate func rangesOfImgTags(in html: String) -> [Range<String.Index>] {
+    var ranges: [Range<String.Index>] = []
+    var searchFrom = html.startIndex
+    while searchFrom < html.endIndex {
+        guard let imgMatch = html.range(of: "<img", options: .caseInsensitive, range: searchFrom..<html.endIndex) else { break }
+        let start = imgMatch.lowerBound
+        guard let gtIdx = findClosingAngleBracketOfImgTag(in: html, imgOpenStart: start) else {
+            searchFrom = html.index(after: start)
+            continue
+        }
+        let endExclusive = html.index(after: gtIdx)
+        ranges.append(start..<endExclusive)
+        searchFrom = endExclusive
+    }
+    return ranges
+}
+
+/// GPT occasionally wraps HTML in markdown fences; older saved rows may still contain ```html at the top.
+/// Strip for display only (does not mutate stored content).
+fileprivate func stripMarkdownHtmlFencesForDisplay(_ html: String) -> String {
+    var s = html.trimmingCharacters(in: .whitespacesAndNewlines)
+    for _ in 0..<4 {
+        let before = s
+        if s.hasPrefix("```") {
+            var rest = String(s.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+            let lower = rest.lowercased()
+            if lower.hasPrefix("html") {
+                rest = String(rest.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
+            } else if lower.hasPrefix("xml") {
+                rest = String(rest.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                rest = rest.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            s = rest
+        }
+        if s.hasSuffix("```") {
+            s = String(s.dropLast(3)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if s == before { break }
+    }
+    return s
+}
+
+/// If the model emitted `<img ... src="[IMAGE]" ...>`, splitting HTML on `[IMAGE]` tears the tag and leaves visible attribute text (e.g. `class="photo" alt=""`). Collapse the whole tag to one `[IMAGE]` token before injection.
+fileprivate func collapseMalformedImgTagsWithImagePlaceholder(_ html: String) -> String {
+    let pattern = "<img\\b[\\s\\S]*?\\bsrc\\s*=\\s*([\"'])\\[IMAGE\\]\\1[\\s\\S]*?>"
+    guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return html }
+    var s = html
+    for _ in 0..<32 {
+        let len = (s as NSString).length
+        let range = NSRange(location: 0, length: len)
+        let next = regex.stringByReplacingMatches(in: s, options: [], range: range, withTemplate: "[IMAGE]")
+        if next == s { break }
+        s = next
+    }
+    return s
+}
+
+/// Display-only transform for WKWebView / print HTML. Does not change stored `compiledContent`.
+/// Moves non-empty `alt` to `aria-label`, sets `alt=""` so WebKit does not paint alt text when an image fails,
+/// while VoiceOver still gets a name from `aria-label`. Strips `title` (tooltips). Removes echoed `alt="…"` paragraphs.
+fileprivate func portfolioHTMLForWebViewDisplay(_ html: String) -> String {
+    var result = stripMarkdownHtmlFencesForDisplay(html)
+    // Model HTML sometimes includes `<!-- ... -->` between attributes; strip so nothing can leak as text beside tags.
+    result = result.replacingOccurrences(of: #"<!--[\s\S]*?-->"#, with: "", options: .regularExpression)
+    let imgRanges = rangesOfImgTags(in: result).sorted { $0.lowerBound > $1.lowerBound }
+    for r in imgRanges {
+        let tag = String(result[r])
+        let transformed = portfolioTransformImgTagForVisualRendering(tag)
+        result.replaceSubrange(r, with: transformed)
+    }
+    result = result.replacingOccurrences(of: #"(?i)<p[^>]*>\s*alt\s*=\s*"[^"]*"\s*</p>"#, with: "", options: .regularExpression)
+    result = result.replacingOccurrences(of: #"(?i)<div[^>]*>\s*alt\s*=\s*"[^"]*"\s*</div>"#, with: "", options: .regularExpression)
+    // Do not regex-strip ` class="…" alt="…">` here — that pattern also appears inside valid <img> tags and would corrupt them (stray quotes in the UI).
+    return result
+}
+
+/// Rewrites a single `<img …>` tag: clear visible alt fallback, preserve accessible name via `aria-label`.
+fileprivate func portfolioTransformImgTagForVisualRendering(_ tag: String) -> String {
+    let ns = tag as NSString
+    let full = NSRange(location: 0, length: ns.length)
+
+    func firstCapture(_ pattern: String) -> String? {
+        guard let re = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+        guard let m = re.firstMatch(in: tag, options: [], range: full), m.numberOfRanges > 1,
+              let r = Range(m.range(at: 1), in: tag) else { return nil }
+        return String(tag[r])
+    }
+
+    // Allow newlines inside quoted alt/aria (valid in HTML; [^"]* misses only if unquoted)
+    var altText = firstCapture(#"\salt\s*=\s*"([\s\S]*?)""#)
+    if altText == nil {
+        altText = firstCapture(#"\salt\s*=\s*'([\s\S]*?)'"#)
+    }
+
+    var ariaFromTag = firstCapture(#"\saria-label\s*=\s*"([\s\S]*?)""#)
+    if ariaFromTag == nil {
+        ariaFromTag = firstCapture(#"\saria-label\s*=\s*'([\s\S]*?)'"#)
+    }
+
+    var stripped = tag
+    let removePatterns = [
+        #"\salt\s*=\s*"[\s\S]*?""#,
+        #"\salt\s*=\s*'[\s\S]*?'"#,
+        #"\stitle\s*=\s*"[\s\S]*?""#,
+        #"\stitle\s*=\s*'[\s\S]*?'"#,
+        #"\saria-label\s*=\s*"[\s\S]*?""#,
+        #"\saria-label\s*=\s*'[\s\S]*?'"#
+    ]
+    for p in removePatterns {
+        stripped = stripped.replacingOccurrences(of: p, with: "", options: .regularExpression)
+    }
+
+    let trimmedAlt = altText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let trimmedAria = ariaFromTag?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let labelForAria: String? = {
+        if !trimmedAlt.isEmpty { return trimmedAlt }
+        if !trimmedAria.isEmpty { return trimmedAria }
+        return nil
+    }()
+
+    guard let gtIdx = findClosingAngleBracketOfImgTag(in: stripped, imgOpenStart: stripped.startIndex) else { return tag }
+    let before = stripped[..<gtIdx]
+    let afterClose = stripped[gtIdx...]
+
+    var inject = " alt=\"\""
+    if let label = labelForAria {
+        inject += " aria-label=\"\(portfolioEscapeForHtmlAttribute(label))\""
+    }
+    return String(before) + inject + String(afterClose)
+}
+
 struct PortfolioDetailView: View {
     let portfolio: Portfolio
     var isStudent: Bool = false
@@ -215,7 +427,7 @@ private struct PortfolioHTMLContentView: View {
 
     @MainActor
     private func loadHTMLWithImages() async {
-        let content = portfolio.compiledContent
+        let content = collapseMalformedImgTagsWithImagePlaceholder(portfolio.compiledContent)
         let images = portfolio.generatedImages
         let api = APIClient.shared
 
@@ -265,7 +477,7 @@ private struct PortfolioHTMLContentView: View {
                 imageIndex += 1
             }
         }
-        var finalHTML = builtParts.joined()
+        var finalHTML = portfolioHTMLForWebViewDisplay(builtParts.joined())
 
         // Ensure valid HTML document for display
         if !finalHTML.lowercased().contains("<!doctype") && !finalHTML.lowercased().hasPrefix("<html") {
@@ -288,10 +500,25 @@ private struct PortfolioHTMLContentView: View {
 private struct PortfolioWebView: UIViewRepresentable {
     let html: String
 
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    final class Coordinator: NSObject, WKNavigationDelegate {
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            webView.evaluateJavaScript(portfolioWebViewImagePresentationScript, completionHandler: nil)
+            // Second pass: layout sometimes mutates DOM after first paint; re-apply alt/figcaption handling.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                webView.evaluateJavaScript(portfolioWebViewImagePresentationScript, completionHandler: nil)
+            }
+        }
+    }
+
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.dataDetectorTypes = []
         let webView = WKWebView(frame: .zero, configuration: config)
+        webView.navigationDelegate = context.coordinator
         webView.scrollView.isScrollEnabled = true
         webView.isOpaque = false
         webView.backgroundColor = .clear
@@ -307,7 +534,7 @@ private struct PortfolioWebView: UIViewRepresentable {
 // MARK: - HTML/PDF Helpers
 @MainActor
 private func buildPortfolioHTMLWithImages(portfolio: Portfolio) async -> String? {
-    let content = portfolio.compiledContent
+    let content = collapseMalformedImgTagsWithImagePlaceholder(portfolio.compiledContent)
     let images = portfolio.generatedImages
     let api = APIClient.shared
 
@@ -352,7 +579,7 @@ private func buildPortfolioHTMLWithImages(portfolio: Portfolio) async -> String?
             imageIndex += 1
         }
     }
-    var finalHTML = builtParts.joined()
+    var finalHTML = portfolioHTMLForWebViewDisplay(builtParts.joined())
     let overlapPreventionCSS = "section,article,.keepsake-section,div[class*='section'],div[class*='card']{overflow:auto !important;clear:both !important}img{display:block !important;clear:both !important;vertical-align:top !important}"
     if !finalHTML.lowercased().contains("<!doctype") && !finalHTML.lowercased().hasPrefix("<html") {
         finalHTML = """
@@ -380,6 +607,13 @@ private func createPDFFromHTML(html: String, title: String) async -> Data {
                 observation?.invalidate()
                 continuation.resume()
             }
+        }
+    }
+
+    // Match on-screen portfolio: normalize img alt / hide duplicate figcaptions before layout & PDF rasterization
+    await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+        webView.evaluateJavaScript(portfolioWebViewImagePresentationScript) { _, _ in
+            cont.resume()
         }
     }
 
@@ -874,7 +1108,7 @@ class PDFCreator {
             // Parse and render portfolio content with sections
             yPosition = renderPortfolioContent(
                 context: context,
-                content: portfolio.compiledContent,
+                content: stripMarkdownHtmlFencesForDisplay(portfolio.compiledContent),
                 yPosition: yPosition,
                 pageWidth: pageWidth,
                 pageHeight: pageHeight,
@@ -1707,7 +1941,7 @@ context.beginPage()
             img.draw(in: drawRect)
             if design.cornerRadius > 0 { context.cgContext.restoreGState() }
         } else {
-            drawImagePlaceholder(context: context, rect: heroRect, description: image.content, design: design)
+            drawImagePlaceholder(context: context, rect: heroRect, design: design)
         }
         var currentY = yPosition + heroHeight + design.sectionSpacing
         if !text.isEmpty {
@@ -1822,7 +2056,7 @@ context.beginPage()
             img.draw(in: drawRect)
             if design.cornerRadius > 0 { context.cgContext.restoreGState() }
         } else {
-            drawImagePlaceholder(context: context, rect: rect, description: image.content, design: design)
+            drawImagePlaceholder(context: context, rect: rect, design: design)
         }
     }
     
@@ -1908,7 +2142,7 @@ context.beginPage()
             let imageId = img.id
             let isValidId = imageId.count == 24 && !imageId.hasPrefix("fallback-") && !imageId.hasPrefix("missing-") && !imageId.hasPrefix("failed-")
             guard isValidId else {
-                drawImagePlaceholder(context: context, rect: imageRect, description: img.description.isEmpty ? "Image unavailable" : img.description, design: design)
+                drawImagePlaceholder(context: context, rect: imageRect, design: design)
                 currentY += 200 + design.imageSpacing
                 return currentY
             }
@@ -1969,11 +2203,11 @@ context.beginPage()
             
                 currentY += imageHeight + design.imageSpacing
             } else {
-                drawImagePlaceholder(context: context, rect: imageRect, description: image.content.isEmpty ? img.description : image.content, design: design)
+                drawImagePlaceholder(context: context, rect: imageRect, design: design)
                 currentY += 200 + design.imageSpacing
             }
         } else {
-            drawImagePlaceholder(context: context, rect: imageRect, description: image.content, design: design)
+            drawImagePlaceholder(context: context, rect: imageRect, design: design)
             currentY += 200 + design.imageSpacing
         }
         
@@ -2100,7 +2334,6 @@ context.beginPage()
     private func drawImagePlaceholder(
         context: UIGraphicsPDFRendererContext,
         rect: CGRect,
-        description: String,
         design: PDFDesignScheme
     ) {
         // Draw background with section background color
@@ -2131,21 +2364,7 @@ context.beginPage()
         let iconX = rect.midX - iconBoundingRect.width / 2
         let iconY = rect.midY - iconBoundingRect.height / 2 - 10
         iconText.draw(at: CGPoint(x: iconX, y: iconY), withAttributes: iconAttributes)
-        
-        // Draw description
-        let descAttributes: [NSAttributedString.Key: Any] = [
-            .font: UIFont.italicSystemFont(ofSize: design.bodyFont.pointSize - 1),
-            .foregroundColor: design.secondaryText
-        ]
-        let descBoundingRect = NSString(string: description).boundingRect(
-            with: CGSize(width: rect.width - 40, height: CGFloat.greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: descAttributes,
-            context: nil
-        )
-        let descHeight = ceil(descBoundingRect.height)
-        let descRect = CGRect(x: rect.minX + 20, y: rect.maxY - descHeight - 10, width: rect.width - 40, height: descHeight)
-        description.draw(in: descRect, withAttributes: descAttributes)
+        // Do not draw `description` (often matches DALL-E prompts or alt-like text); keep placeholder visual-only.
     }
 }
 

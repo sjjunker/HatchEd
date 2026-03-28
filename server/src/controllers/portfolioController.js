@@ -18,6 +18,16 @@ import { UPLOADS_DIR } from '../lib/uploadsPath.js'
 // Max size for student work file uploads (stored in MongoDB as base64)
 const MAX_STUDENT_WORK_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
+/**
+ * The model sometimes outputs `<img src="[IMAGE]" class="photo" alt="">`. After placeholders become `[IMAGE]`,
+ * the iOS client splits on `[IMAGE]` and tears the tag, leaving visible `class="photo" alt=""` text. Replace the
+ * whole tag with a lone `[IMAGE]` token (same count as one placeholder).
+ */
+function collapseImgTagsWithImagePlaceholderInSrc (html) {
+  if (!html || typeof html !== 'string') return html
+  return html.replace(/<img\b[\s\S]*?\bsrc\s*=\s*(["'])\[IMAGE\]\1[\s\S]*?>/gi, '[IMAGE]')
+}
+
 // Configure multer for file uploads (temp dir; we read into DB then delete)
 const upload = multer({
   dest: UPLOADS_DIR,
@@ -102,11 +112,14 @@ export async function createPortfolioHandler (req, res) {
     return res.status(400).json({ error: { message: 'Student must belong to the same family' } })
   }
 
-  // Fetch student work files
+  // Fetch student work files — include any file used as a section photo even if the parent
+  // did not check it under "work samples" (picker-only selection must still resolve).
+  const workFileIdSet = new Set([...(studentWorkFileIds || [])])
+  for (const fileId of Object.values(sectionPhotoFileIds || {})) {
+    if (fileId) workFileIdSet.add(fileId)
+  }
   const studentWorkFiles = await Promise.all(
-    (studentWorkFileIds || []).map(async (fileId) => {
-      return await findStudentWorkFileById(fileId)
-    })
+    [...workFileIdSet].map(async (fileId) => findStudentWorkFileById(fileId))
   )
   const validWorkFiles = studentWorkFiles.filter(Boolean)
   // sectionPhotoFileIds: { aboutMe: "fileId", achievementsAndAwards: "fileId", ... }
@@ -331,10 +344,11 @@ export async function createPortfolioHandler (req, res) {
     }
     // Replace placeholder markers with [IMAGE] only - no URLs. Client uses generatedImages[i].id to load from GET /images/:id
     let replIdx = 0
-    const finalContent = tempContent.replace(/\u0000[PG]\d+\u0000/g, () => {
+    let finalContent = tempContent.replace(/\u0000[PG]\d+\u0000/g, () => {
       replIdx++
       return '[IMAGE]'
     })
+    finalContent = collapseImgTagsWithImagePlaceholderInSrc(finalContent)
     if (replIdx !== mergedImages.length) {
       console.warn('[Portfolio Controller] Placeholder count mismatch: replaced', replIdx, 'markers but mergedImages has', mergedImages.length)
     }

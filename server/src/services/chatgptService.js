@@ -12,6 +12,98 @@ function getOpenAI () {
 }
 
 /**
+ * Heading text immediately before `index` in portfolio HTML (last h2/h1/section/md ##).
+ * @param {string} content
+ * @param {number} index
+ * @returns {string|null}
+ */
+function getSectionHeadingBeforeIndex (content, index) {
+  const beforeMatch = content.substring(0, index)
+  const htmlH2 = beforeMatch.match(/<h2[^>]*>([^<]+)<\/h2>/gi)
+  const htmlH1 = beforeMatch.match(/<h1[^>]*>([^<]+)<\/h1>/gi)
+  const htmlSection = beforeMatch.match(/<section[^>]*data-section=["']([^"']+)["'][^>]*>/gi)
+  if (htmlH2 && htmlH2.length > 0) {
+    return htmlH2[htmlH2.length - 1].replace(/<h2[^>]*>|<\/h2>/gi, '').trim()
+  }
+  if (htmlSection && htmlSection.length > 0) {
+    const last = htmlSection[htmlSection.length - 1]
+    const m = last.match(/data-section=["']([^"']+)["']/)
+    if (m) return m[1]
+  }
+  if (htmlH1 && htmlH1.length > 0) {
+    return htmlH1[htmlH1.length - 1].replace(/<h1[^>]*>|<\/h1>/gi, '').trim()
+  }
+  const mdSection = beforeMatch.match(/##\s+([^\n]+)/g)
+  if (mdSection && mdSection.length > 0) {
+    return mdSection[mdSection.length - 1].replace(/^##\s+/, '').trim()
+  }
+  return null
+}
+
+/**
+ * Map portfolio section heading to internal sectionKey (matches sectionPhotoFileIds keys).
+ * @param {string|null} heading
+ * @returns {string|null}
+ */
+function mapHeadingToSectionPhotoKey (heading) {
+  if (!heading || typeof heading !== 'string') return null
+  const knownKeys = new Set(['aboutMe', 'achievementsAndAwards', 'attendanceNotes', 'extracurricularActivities', 'serviceLog'])
+  const trimmed = heading.trim()
+  if (knownKeys.has(trimmed)) return trimmed
+  const h = heading.toLowerCase().trim()
+  if (/^about\s+me\b|personal\s+statement/.test(h) || h === 'about me') return 'aboutMe'
+  if (/achievement|award|honors/.test(h)) return 'achievementsAndAwards'
+  if (/attendance/.test(h)) return 'attendanceNotes'
+  if (/extracurricular/.test(h)) return 'extracurricularActivities'
+  if (/service\s*log|community\s*service/.test(h) || (/^service\b/.test(h) && /log|volunteer|hour/.test(h))) {
+    return 'serviceLog'
+  }
+  return null
+}
+
+/**
+ * Models sometimes wrap HTML in markdown fences (```html ... ```). That renders as visible junk,
+ * breaks parsing, and can make img attributes show as body text. Strip fences until stable.
+ * @param {string} text
+ * @returns {string}
+ */
+function stripMarkdownCodeFencesFromAiHtml (text) {
+  if (!text || typeof text !== 'string') return text
+  let s = text.trim()
+  for (let i = 0; i < 4; i++) {
+    const next = s
+      .replace(/^```(?:html|HTML|xml|XML)?\s*\r?\n?/i, '')
+      .replace(/\r?\n?```\s*$/i, '')
+      .trim()
+    if (next === s) break
+    s = next
+  }
+  return s
+}
+
+/**
+ * Remove [IMAGE: ...] placeholders in sections that already have a user-provided photo
+ * so we never call DALL-E for those sections (model sometimes ignores instructions).
+ * @param {string} content
+ * @param {Record<string, unknown>} providedPhotoBySection
+ * @returns {string}
+ */
+function stripImagePlaceholdersForSectionsWithProvidedPhotos (content, providedPhotoBySection) {
+  const keys = Object.keys(providedPhotoBySection || {})
+  if (keys.length === 0) return content
+  const keySet = new Set(keys)
+  return content.replace(/\[IMAGE:\s*[^\]]+\]/g, (match, offset) => {
+    const heading = getSectionHeadingBeforeIndex(content, offset)
+    const key = mapHeadingToSectionPhotoKey(heading)
+    if (key && keySet.has(key)) {
+      console.log('[ChatGPT Service] Stripping [IMAGE] in section with user photo:', key, heading)
+      return ''
+    }
+    return match
+  })
+}
+
+/**
  * Extract image descriptions and their section context from portfolio content (HTML or markdown)
  * @param {string} content - Portfolio content with [IMAGE: description] placeholders
  * @returns {Array<{description: string, sectionContext?: string}>}
@@ -23,26 +115,7 @@ function extractImageDescriptionsWithContext (content) {
 
   while ((match = imageRegex.exec(content)) !== null) {
     const description = match[1].trim()
-    const beforeMatch = content.substring(0, match.index)
-    let sectionContext = null
-    // HTML: <h2>, <section> with data-section, or <h1>
-    const htmlH2 = beforeMatch.match(/<h2[^>]*>([^<]+)<\/h2>/gi)
-    const htmlH1 = beforeMatch.match(/<h1[^>]*>([^<]+)<\/h1>/gi)
-    const htmlSection = beforeMatch.match(/<section[^>]*data-section=["']([^"']+)["'][^>]*>/gi)
-    if (htmlH2 && htmlH2.length > 0) {
-      sectionContext = htmlH2[htmlH2.length - 1].replace(/<h2[^>]*>|<\/h2>/gi, '').trim()
-    } else if (htmlSection && htmlSection.length > 0) {
-      const last = htmlSection[htmlSection.length - 1]
-      const m = last.match(/data-section=["']([^"']+)["']/)
-      if (m) sectionContext = m[1]
-    } else if (htmlH1 && htmlH1.length > 0) {
-      sectionContext = htmlH1[htmlH1.length - 1].replace(/<h1[^>]*>|<\/h1>/gi, '').trim()
-    } else {
-      const mdSection = beforeMatch.match(/##\s+([^\n]+)/g)
-      if (mdSection && mdSection.length > 0) {
-        sectionContext = mdSection[mdSection.length - 1].replace(/^##\s+/, '').trim()
-      }
-    }
+    const sectionContext = getSectionHeadingBeforeIndex(content, match.index)
     results.push({ description, sectionContext })
   }
 
@@ -162,7 +235,7 @@ TYPOGRAPHY: Bold, confident hierarchy. h1: 2.2rem, font-weight: 700, letter-spac
 
 LAYOUT: Hero treatment for the title—centered or left-aligned with strong presence. Section cards: white background, box-shadow: 0 4px 24px rgba(15,23,42,0.08), border-radius: 8px, padding: 2em, margin-bottom: 2em. Consider image-left/text-right or image-right/text-left alternation for visual interest. Generous whitespace—avoid cramped layouts.
 
-IMAGES: Use [IMAGE: description] liberally. Style images with border-radius: 6px, box-shadow: 0 4px 20px rgba(0,0,0,0.12), object-fit: cover. Place images prominently—think magazine spread or ad campaign, not clip-art.
+IMAGES: Use [IMAGE: description] only in sections that do NOT have a user-provided photo (see PROVIDED PHOTOS in the prompt). Where you do use [IMAGE: description], style images with border-radius: 6px, box-shadow: 0 4px 20px rgba(0,0,0,0.12), object-fit: cover. Place images prominently—think magazine spread or ad campaign, not clip-art.
 
 AVOID: Plain borders, generic "website" look, weak typography, low contrast, float (causes overlap). Use flexbox or block layout—never float for image/text placement. Aim for the polish of a university brochure or luxury brand advertisement—aspirational, confident, memorable.`
   }
@@ -189,6 +262,7 @@ function buildStateCompliancePrompt ({ studentName, instructorRemarks, reportCar
   promptParts.push(`Create a State Compliance / Official Documentation portfolio for ${studentName}.`)
   promptParts.push(`\n${getAudienceInstructions('state')}`)
   promptParts.push(`\n\nOUTPUT FORMAT: Valid HTML only—no markdown. Start with <!DOCTYPE html><html><head><meta charset="utf-8"><style>...</style></head><body> and end with </body></html>. Use <h1>, <h2>, <h3>, <section>, <p>, <ul>, <li>.`)
+  promptParts.push(`\n\nPLACEHOLDER PLACEMENT: Put each [PROVIDED_PHOTO: sectionKey] as standalone text in the body—never inside an <img> tag or attribute (do NOT use <img src="[PROVIDED_PHOTO: ...]">).`)
   promptParts.push(`\n\nSTYLING (minimalist but readable): Include a <style> block that provides: (1) SECTION BARRIERS—wrap each section in <section style="..."> with border-bottom, or border-left accent, or subtle background (#f8f9fa) and padding so sections are clearly separated; (2) LAYOUT VARIETY—use display:block for some sections, consider a simple two-column layout for grades/courses using CSS grid or flexbox; (3) FONT VARIETY—use different font-weights (bold for h2, semibold for h3, regular for body), consider Georgia or a serif for body text, sans-serif for headers; (4) TEXT ALIGNMENT—center h1 and section headers, left-align body text; (5) SPACING—generous margin and padding between sections (1.5em–2em), line-height 1.5–1.6 for readability. Keep it professional and data-focused—no decorative images. Do NOT use [IMAGE: description] (no AI-generated images).`)
   const stateSectionKeys = Object.keys(providedPhotoBySection || {})
   if (stateSectionKeys.length > 0) {
@@ -268,6 +342,7 @@ function buildPortfolioPrompt ({ studentName, audience, studentRemarks, instruct
   promptParts.push(`Create a comprehensive, visually rich academic portfolio for ${studentName}.`)
   promptParts.push(`\n${getAudienceInstructions(audience)}`)
   promptParts.push(`\n\nOUTPUT FORMAT: You MUST output valid HTML only—no markdown. Start with <!DOCTYPE html><html><head><meta charset="utf-8"><style>...</style></head><body> and end with </body></html>. Use semantic HTML: <h1>, <h2>, <section>, <p>, <ul>, <li>.`)
+  promptParts.push(`\n\nPLACEHOLDER PLACEMENT: Put each [IMAGE: description] and [PROVIDED_PHOTO: sectionKey] as standalone text between block elements (e.g. after </p> or in its own <p>). NEVER put placeholders inside <img> tags or any attribute—do NOT use <img src="[IMAGE: ...]">, <img src="[PROVIDED_PHOTO: ...]">, or similar. The system injects images by replacing those tokens; embedding them in tags breaks the page and shows stray markup.`)
   promptParts.push(`\n\n${getAudienceStylingInstructions(audience)}`)
   promptParts.push(`\n\nCRITICAL: Use ONLY facts and content provided below. Never invent, fabricate, or embellish information.`)
   promptParts.push(`\n\nIMPORTANT: The portfolio must include ALL of the following sections. Use the provided information where available, and enhance it appropriately for the audience—but never add made-up facts.`)
@@ -485,7 +560,7 @@ export async function compilePortfolioWithChatGPT ({ studentName, audience, stud
       messages: [
         {
           role: 'system',
-          content: 'You are an expert portfolio generator. Create academic portfolios from the data provided. Output ONLY valid HTML (no markdown)—start with <!DOCTYPE html><html> and end with </html>. Use semantic HTML: <h1>, <h2>, <section>, <p>, <ul>, <li>. Include a comprehensive <style> block—audience dictates styling: State Compliance = minimalist with section barriers, layout variety, font variety, alignment; Family/Keepsake = unified warm palette only (cream, ivory, terracotta—NO blue/teal/green), consistent section styling, cohesive album-like feel; College = professional advertisement / university viewbook style—deep navy/charcoal, premium typography, card-based layout with shadows, magazine-style image placement, aspirational and memorable. CRITICAL: Never invent, fabricate, or embellish facts. Use ONLY the exact data provided. For "Student Work Samples": use ONLY real quotes from the text provided. For [IMAGE: description]: each description MUST be unique and specific so the generated image matches that exact section—never reuse the same description. For [PROVIDED_PHOTO: sectionKey]: place in the section matching that key (e.g. [PROVIDED_PHOTO: aboutMe] in About Me). Never add [IMAGE: description] to a section that already has [PROVIDED_PHOTO: sectionKey]—those sections have user-provided images. LAYOUT: Never use float—it causes overlapping. Use block layout, flexbox, or grid for image/text placement.'
+          content: 'You are an expert portfolio generator. Create academic portfolios from the data provided. Output ONLY valid HTML (no markdown)—start with <!DOCTYPE html><html> and end with </html>. Never wrap the HTML in markdown code fences (no triple backticks, no ```html blocks). Emit raw HTML only. Use semantic HTML: <h1>, <h2>, <section>, <p>, <ul>, <li>. Include a comprehensive <style> block—audience dictates styling: State Compliance = minimalist with section barriers, layout variety, font variety, alignment; Family/Keepsake = unified warm palette only (cream, ivory, terracotta—NO blue/teal/green), consistent section styling, cohesive album-like feel; College = professional advertisement / university viewbook style—deep navy/charcoal, premium typography, card-based layout with shadows, magazine-style image placement, aspirational and memorable. CRITICAL: Never invent, fabricate, or embellish facts. Use ONLY the exact data provided. For "Student Work Samples": use ONLY real quotes from the text provided. Never put [IMAGE: description] or [PROVIDED_PHOTO: sectionKey] inside <img> tags or attributes—placeholders must be standalone in the body; do not write <img src="[IMAGE: ...]">. For [IMAGE: description]: each description MUST be unique and specific so the generated image matches that exact section—never reuse the same description. For [PROVIDED_PHOTO: sectionKey]: place in the section matching that key (e.g. [PROVIDED_PHOTO: aboutMe] in About Me). Never add [IMAGE: description] to a section that already has [PROVIDED_PHOTO: sectionKey]—those sections have user-provided images. LAYOUT: Never use float—it causes overlapping. Use block layout, flexbox, or grid for image/text placement.'
         },
         {
           role: 'user',
@@ -502,12 +577,17 @@ export async function compilePortfolioWithChatGPT ({ studentName, audience, stud
       throw new Error('No content returned from OpenAI')
     }
 
+    portfolioText = stripMarkdownCodeFencesFromAiHtml(portfolioText)
+
     const a = (audience || 'family').toLowerCase()
     const isState = a === 'state' || a === 'state compliance' || a === 'statecompliance'
 
     // State Compliance: no AI-generated images—strip [IMAGE: ...] only; keep [PROVIDED_PHOTO: n] for work samples
     if (isState) {
       portfolioText = portfolioText.replace(/\[IMAGE:\s*[^\]]*\]/g, '')
+    } else {
+      // Enforce user photos: drop stray [IMAGE] in sections that already have [PROVIDED_PHOTO: sectionKey]
+      portfolioText = stripImagePlaceholdersForSectionsWithProvidedPhotos(portfolioText, providedPhotoBySection || {})
     }
 
     const duration = Date.now() - startTime

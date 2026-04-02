@@ -6,6 +6,7 @@
 //  Updated with assistance from Cursor (ChatGPT) on 11/7/25.
 //
 
+import Combine
 import SwiftUI
 
 private let studentDetailSectionIds = ["invitePending", "attendance", "attendanceHistory", "courses", "recentAssignments", "incompleteAssignments", "portfolios"]
@@ -71,32 +72,30 @@ struct StudentDetail: View {
                 EditButton()
             }
         }
-        .task(id: viewModelState.updateToken) {
-            viewModelState = viewModel.makeSnapshot()
+        .onReceive(viewModel.objectWillChange) { _ in
+            DispatchQueue.main.async {
+                viewModelState = viewModel.makeSnapshot()
+            }
         }
         .onAppear {
             Task {
                 await viewModel.loadAssignments()
-                await MainActor.run { viewModelState = viewModel.makeSnapshot() }
             }
             guard !hasLoadedAttendance else { return }
             hasLoadedAttendance = true
             Task {
                 await viewModel.loadAttendance()
-                await MainActor.run { viewModelState = viewModel.makeSnapshot() }
             }
             guard !hasLoadedPortfolios else { return }
             hasLoadedPortfolios = true
             Task {
                 await viewModel.loadPortfolios()
-                await MainActor.run { viewModelState = viewModel.makeSnapshot() }
             }
         }
         .refreshable {
             await viewModel.loadAssignments()
             await viewModel.loadAttendance()
             await viewModel.loadPortfolios()
-            await MainActor.run { viewModelState = viewModel.makeSnapshot() }
         }
         .task(id: viewModel.student.id) {
             guard viewModel.student.invitePending == true else { return }
@@ -122,12 +121,10 @@ struct StudentDetail: View {
                 onTaskUpdated: { _ in },
                 onAssignmentUpdated: { updated in
                     viewModel.updateAssignment(updated)
-                    viewModelState = viewModel.makeSnapshot()
                 },
                 onAssignmentDeleted: { deleted in
                     selectedIncompleteAssignment = nil
                     viewModel.removeAssignment(id: deleted.id)
-                    viewModelState = viewModel.makeSnapshot()
                 },
                 onTaskDeleted: {}
             )
@@ -467,7 +464,6 @@ struct StudentDetail: View {
                     NavigationLink(destination: PortfolioDetailView(portfolio: portfolio, isStudent: false, onDeleted: {
                         Task {
                             await viewModel.loadPortfolios()
-                            await MainActor.run { viewModelState = viewModel.makeSnapshot() }
                         }
                     })) {
                         HStack {

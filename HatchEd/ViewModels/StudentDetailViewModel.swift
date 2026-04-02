@@ -40,7 +40,6 @@ final class StudentDetailViewModel: ObservableObject {
     }
 
     struct StateSnapshot {
-        let updateToken = UUID()
         let studentName: String
         let attendanceAverage: Double
         let attendancePercentageString: String

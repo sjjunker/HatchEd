@@ -367,6 +367,19 @@ function buildPortfolioPrompt ({ studentName, audience, studentRemarks, instruct
   promptParts.push(`\n\nCRITICAL: Use ONLY facts and content provided below. Never invent, fabricate, or embellish information.`)
   promptParts.push(`\n\nIMPORTANT: The portfolio must include ALL of the following sections. Use the provided information where available, and enhance it appropriately for the audience—but never add made-up facts.`)
   const sectionKeysWithPhotos = Object.keys(providedPhotoBySection || {})
+  const providedPhotoCount = sectionKeysWithPhotos.length
+  /** Standard portfolio has 8 sections; Attendance must not contain image placeholders (see below). */
+  const portfolioSectionCount = 8
+  /** At most one "slot" per section that allows images; Attendance is excluded from image placeholders. */
+  const maxImagePlaceholdersDefault = portfolioSectionCount - 1
+  /** Never drop user-provided photos; if there are more than maxImagePlaceholdersDefault, cap must allow all. */
+  const maxTotalImagePlaceholders = Math.max(maxImagePlaceholdersDefault, providedPhotoCount)
+  /** AI-generated [IMAGE: ...] only; user photos count toward totals and caps. */
+  const minAiImagePlaceholders = Math.max(
+    0,
+    Math.min(5 - providedPhotoCount, maxTotalImagePlaceholders - providedPhotoCount)
+  )
+
   if (sectionKeysWithPhotos.length > 0) {
     promptParts.push(`\n\nPROVIDED PHOTOS (place each in its designated section):`)
     for (const sectionKey of sectionKeysWithPhotos) {
@@ -375,6 +388,18 @@ function buildPortfolioPrompt ({ studentName, audience, studentRemarks, instruct
     }
     promptParts.push(`\nIMPORTANT: The sections above (${sectionKeysWithPhotos.join(', ')}) ALREADY have user-provided images. Do NOT add [IMAGE: description] to those sections—they already have images. Only use [IMAGE: description] for sections that do NOT have a provided photo.`)
   }
+
+  promptParts.push(`\n\nIMAGE LIMITS (REQUIRED — NOT State Compliance): The portfolio has ${portfolioSectionCount} content sections. Do NOT use more image placeholders than sections: the total of [PROVIDED_PHOTO: sectionKey] + [IMAGE: description] must be at most ${maxTotalImagePlaceholders}. (Attendance is text/statistics only—see below; that is why the default cap is ${maxImagePlaceholdersDefault}.)`)
+  promptParts.push(`\nATTENDANCE SECTION — NO IMAGES: Do not place [IMAGE: description] in the Attendance section. Do not add decorative images there. If and only if [PROVIDED_PHOTO: attendanceNotes] appears in the PROVIDED PHOTOS list above, include that single token in the Attendance section; otherwise the Attendance section must contain zero image placeholders.`)
+  promptParts.push(`\n\nMINIMUM IMAGES (REQUIRED — NOT State Compliance): The finished HTML must include at least 5 images total (combined user-provided + AI), unless the maximum above is lower than 5—then use as many as allowed up to the maximum.`)
+  promptParts.push(`- User-provided photos: ${providedPhotoCount} ([PROVIDED_PHOTO: sectionKey] — you MUST include every one listed above).`)
+  if (minAiImagePlaceholders > 0) {
+    promptParts.push(`- AI-generated images: You MUST add at least ${minAiImagePlaceholders} distinct standalone [IMAGE: description] placeholder(s) in sections WITHOUT a provided photo, so that PROVIDED_PHOTO tokens + [IMAGE: ...] tokens add up to at least 5 and not more than ${maxTotalImagePlaceholders}.`)
+    promptParts.push(`- Spread these across different sections (e.g. About Me, Achievements, Yearly Accomplishments, Extracurriculars, Service Log, Report Card, Student Work Samples)—never in Attendance for [IMAGE: ...]. Do not skip this requirement.`)
+  } else {
+    promptParts.push(`- You already meet the minimum with user-provided photos alone; do NOT add [IMAGE: description] placeholders unless you are under the maximum and need more to reach at least 5 total.`)
+  }
+
   const isCollege = a === 'college' || a === 'college admissions'
   if (isCollege) {
     const excludeNote = sectionKeysWithPhotos.length > 0 ? ` Do NOT use [IMAGE: description] in ${sectionKeysWithPhotos.join(', ')}—those sections already have provided photos. ` : ' '
@@ -515,7 +540,10 @@ function buildPortfolioPrompt ({ studentName, audience, studentRemarks, instruct
     })
   }
 
-  promptParts.push(`\n\nPlease create a comprehensive, engaging portfolio with all required sections as valid HTML. Use <h2> for section titles, <p> for paragraphs, <ul>/<li> for lists. Include [IMAGE: description] and [PROVIDED_PHOTO: sectionKey] placeholders as specified above. Make the content detailed, positive, and reflective of the student's growth and achievements. Use ONLY the data provided—never invent facts, grades, achievements, or quotes. Output ONLY the HTML document—no markdown, no explanation.`)
+  const minImageSummary = minAiImagePlaceholders > 0
+    ? `Include ALL [PROVIDED_PHOTO: ...] tokens above and at least ${minAiImagePlaceholders} distinct [IMAGE: description] tokens; total image placeholders must be at least 5 and at most ${maxTotalImagePlaceholders}; no [IMAGE: ...] in Attendance.`
+    : `Include ALL [PROVIDED_PHOTO: ...] tokens above; total image placeholders must not exceed ${maxTotalImagePlaceholders}; no [IMAGE: ...] in Attendance.`
+  promptParts.push(`\n\nPlease create a comprehensive, engaging portfolio with all required sections as valid HTML. Use <h2> for section titles, <p> for paragraphs, <ul>/<li> for lists. ${minImageSummary} Make the content detailed, positive, and reflective of the student's growth and achievements. Use ONLY the data provided—never invent facts, grades, achievements, or quotes. Output ONLY the complete HTML document—no markdown, no explanation—do not truncate before adding all required image placeholders.`)
 
   return promptParts.join('\n')
 }
@@ -580,7 +608,7 @@ export async function compilePortfolioWithChatGPT ({ studentName, audience, stud
       messages: [
         {
           role: 'system',
-          content: 'You are an expert portfolio generator. Create academic portfolios from the data provided. Output ONLY valid HTML (no markdown)—start with <!DOCTYPE html><html> and end with </html>. Never wrap the HTML in markdown code fences (no triple backticks, no ```html blocks). Emit raw HTML only. Use semantic HTML: <h1>, <h2>, <section>, <p>, <ul>, <li>. Include a comprehensive <style> block—audience dictates styling: State Compliance = minimalist with section barriers, layout variety, font variety, alignment; Family/Keepsake = unified warm palette only (cream, ivory, terracotta—NO blue/teal/green), consistent section styling, cohesive album-like feel; College = professional advertisement / university viewbook style—deep navy/charcoal, premium typography, card-based layout with shadows, magazine-style image placement, aspirational and memorable. CRITICAL: Never invent, fabricate, or embellish facts. Use ONLY the exact data provided. For "Student Work Samples": use ONLY real quotes from the text provided. Never put [IMAGE: description] or [PROVIDED_PHOTO: sectionKey] inside <img> tags or attributes—placeholders must be standalone in the body; do not write <img src="[IMAGE: ...]">. For [IMAGE: description]: each description MUST be unique and specific so the generated image matches that exact section—never reuse the same description. For [PROVIDED_PHOTO: sectionKey]: place in the section matching that key (e.g. [PROVIDED_PHOTO: aboutMe] in About Me). Never add [IMAGE: description] to a section that already has [PROVIDED_PHOTO: sectionKey]—those sections have user-provided images. LAYOUT: Never use float—it causes overlapping. Use block layout, flexbox, or grid for image/text placement.'
+          content: 'You are an expert portfolio generator. Create academic portfolios from the data provided. Output ONLY valid HTML (no markdown)—start with <!DOCTYPE html><html> and end with </html>. Never wrap the HTML in markdown code fences (no triple backticks, no ```html blocks). Emit raw HTML only. Use semantic HTML: <h1>, <h2>, <section>, <p>, <ul>, <li>. Include a comprehensive <style> block—audience dictates styling: State Compliance = minimalist with section barriers, layout variety, font variety, alignment; Family/Keepsake = unified warm palette only (cream, ivory, terracotta—NO blue/teal/green), consistent section styling, cohesive album-like feel; College = professional advertisement / university viewbook style—deep navy/charcoal, premium typography, card-based layout with shadows, magazine-style image placement, aspirational and memorable. CRITICAL: Never invent, fabricate, or embellish facts. Use ONLY the exact data provided. For "Student Work Samples": use ONLY real quotes from the text provided. When the user message specifies minimum and maximum counts for [IMAGE: description] and [PROVIDED_PHOTO: sectionKey] placeholders, obey both. Never put [IMAGE: description] in the Attendance section (text/statistics only), except [PROVIDED_PHOTO: attendanceNotes] if the user message explicitly requires it. Never put [IMAGE: description] or [PROVIDED_PHOTO: sectionKey] inside <img> tags or attributes—placeholders must be standalone in the body; do not write <img src="[IMAGE: ...]">. For [IMAGE: description]: each description MUST be unique and specific so the generated image matches that exact section—never reuse the same description. For [PROVIDED_PHOTO: sectionKey]: place in the section matching that key (e.g. [PROVIDED_PHOTO: aboutMe] in About Me). Never add [IMAGE: description] to a section that already has [PROVIDED_PHOTO: sectionKey]—those sections have user-provided images. LAYOUT: Never use float—it causes overlapping. Use block layout, flexbox, or grid for image/text placement.'
         },
         {
           role: 'user',
@@ -588,7 +616,8 @@ export async function compilePortfolioWithChatGPT ({ studentName, audience, stud
         }
       ],
       temperature: 0.7,
-      max_tokens: 4000
+      // Room for full HTML + many [IMAGE: ...] lines (minimum 5 images when few/no user photos)
+      max_tokens: Math.min(8192, Number(process.env.OPENAI_MAX_TOKENS) || 8192)
     })
 
     let portfolioText = openaiResponse.choices[0]?.message?.content

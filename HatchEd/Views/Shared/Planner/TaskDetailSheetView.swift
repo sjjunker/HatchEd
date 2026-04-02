@@ -323,48 +323,96 @@ struct TaskDetailSheetView: View {
                     }
                     
                     // Time Information
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Time Information")
-                            .font(.headline)
-                            .foregroundColor(.hatchEdText)
-                        
-                        HStack(spacing: 16) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Image(systemName: "clock")
-                                        .foregroundColor(.hatchEdAccent)
-                                    Text("Start Time")
-                                        .font(.subheadline)
-                                        .foregroundColor(.hatchEdSecondaryText)
-                                }
-                                Text(timeFormatter.string(from: task.startDate))
-                                    .font(.body)
-                                    .fontWeight(.medium)
+                    if let assignment = assignment {
+                        // Only show start time/duration if assignment has work sessions configured.
+                        if let info = assignmentPrimaryWorkTimeInfo(assignment) {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Time Information")
+                                    .font(.headline)
                                     .foregroundColor(.hatchEdText)
+                                
+                                HStack(spacing: 16) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        HStack {
+                                            Image(systemName: "clock")
+                                                .foregroundColor(.hatchEdAccent)
+                                            Text("Start Time")
+                                                .font(.subheadline)
+                                                .foregroundColor(.hatchEdSecondaryText)
+                                        }
+                                        Text(timeFormatter.string(from: info.startDate))
+                                            .font(.body)
+                                            .fontWeight(.medium)
+                                            .foregroundColor(.hatchEdText)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    VStack(alignment: .trailing, spacing: 4) {
+                                        HStack {
+                                            Image(systemName: "hourglass")
+                                                .foregroundColor(.hatchEdAccent)
+                                            Text("Duration")
+                                                .font(.subheadline)
+                                                .foregroundColor(.hatchEdSecondaryText)
+                                        }
+                                        Text(info.durationLabel)
+                                            .font(.body)
+                                            .fontWeight(.medium)
+                                            .foregroundColor(.hatchEdText)
+                                    }
+                                }
                             }
+                            .padding()
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color.hatchEdCardBackground)
+                            )
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Time Information")
+                                .font(.headline)
+                                .foregroundColor(.hatchEdText)
                             
-                            Spacer()
-                            
-                            VStack(alignment: .trailing, spacing: 4) {
-                                HStack {
-                                    Image(systemName: "hourglass")
-                                        .foregroundColor(.hatchEdAccent)
-                                    Text("Duration")
-                                        .font(.subheadline)
-                                        .foregroundColor(.hatchEdSecondaryText)
+                            HStack(spacing: 16) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Image(systemName: "clock")
+                                            .foregroundColor(.hatchEdAccent)
+                                        Text("Start Time")
+                                            .font(.subheadline)
+                                            .foregroundColor(.hatchEdSecondaryText)
+                                    }
+                                    Text(timeFormatter.string(from: task.startDate))
+                                        .font(.body)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.hatchEdText)
                                 }
-                                Text(durationString)
-                                    .font(.body)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.hatchEdText)
+                                
+                                Spacer()
+                                
+                                VStack(alignment: .trailing, spacing: 4) {
+                                    HStack {
+                                        Image(systemName: "hourglass")
+                                            .foregroundColor(.hatchEdAccent)
+                                        Text("Duration")
+                                            .font(.subheadline)
+                                            .foregroundColor(.hatchEdSecondaryText)
+                                    }
+                                    Text(durationString)
+                                        .font(.body)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.hatchEdText)
+                                }
                             }
                         }
+                        .padding()
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color.hatchEdCardBackground)
+                        )
                     }
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color.hatchEdCardBackground)
-                    )
                     
                     // Assignment-specific information
                     if let assignment = assignment {
@@ -795,6 +843,21 @@ struct TaskDetailSheetView: View {
     private func durationLabel(_ durations: [Int], index: Int) -> String {
         let duration = index < durations.count ? max(15, durations[index]) : 60
         return formattedDurationValue(duration)
+    }
+
+    private struct AssignmentWorkTimeInfo {
+        let startDate: Date
+        let durationLabel: String
+    }
+
+    private func assignmentPrimaryWorkTimeInfo(_ assignment: Assignment) -> AssignmentWorkTimeInfo? {
+        let dates = assignment.workDates
+        guard let earliest = dates.min() else { return nil }
+        let idx = dates.firstIndex(of: earliest) ?? 0
+        return AssignmentWorkTimeInfo(
+            startDate: earliest,
+            durationLabel: durationLabel(assignment.workDurationsMinutes, index: idx)
+        )
     }
 
     private var normalizedEditedWorkDurations: [Int] {

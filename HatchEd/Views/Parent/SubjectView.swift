@@ -603,6 +603,13 @@ private struct AddItemView: View {
     @State private var selectedStudentForAssignment: User?
     @State private var hasDueDate = false
     @State private var assignmentStrictWorkSessionProgress = false
+
+    private var coursesForSelectedStudent: [Course] {
+        guard let studentId = selectedStudentForAssignment?.id else { return [] }
+        return courses.filter { course in
+            course.students.contains(where: { $0.id == studentId })
+        }
+    }
     
     var body: some View {
         Form {
@@ -640,6 +647,10 @@ private struct AddItemView: View {
                             ForEach(students) { student in
                                 Text(student.name ?? "Student").tag(student.id as String?)
                             }
+                        }
+                        .onChange(of: selectedStudentForAssignment?.id) { _, _ in
+                            // Clear course selection when student changes
+                            selectedCourseForAssignment = nil
                         }
                     }
                     
@@ -691,18 +702,22 @@ private struct AddItemView: View {
                         DatePicker("Due Date & Time", selection: $assignmentDueDate, displayedComponents: [.date, .hourAndMinute])
                     }
                     
-                    if !courses.isEmpty {
+                    if selectedStudentForAssignment != nil {
                         Picker("Course", selection: Binding(
                             get: { selectedCourseForAssignment?.id },
                             set: { id in
-                                selectedCourseForAssignment = courses.first { $0.id == id }
+                                selectedCourseForAssignment = coursesForSelectedStudent.first { $0.id == id }
                             }
                         )) {
                             Text("None").tag(nil as String?)
-                            ForEach(courses) { course in
+                            ForEach(coursesForSelectedStudent) { course in
                                 Text(course.name).tag(course.id as String?)
                             }
                         }
+                    } else if !courses.isEmpty {
+                        Text("Select a student first to choose a course")
+                            .foregroundColor(.secondary)
+                            .font(.subheadline)
                     }
                 }
             }

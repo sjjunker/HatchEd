@@ -7,7 +7,11 @@
 import SwiftUI
 
 struct RoleSelectionView: View {
-    let userID: String
+    /// When `true`, used from the Sign Up sheet (callbacks instead of saving role for current session).
+    var isSignupFlow: Bool = false
+    var onSignupParent: (() -> Void)? = nil
+    var onSignupStudent: (() -> Void)? = nil
+
     @EnvironmentObject var authViewModel: AuthViewModel
 
     var body: some View {
@@ -16,12 +20,12 @@ struct RoleSelectionView: View {
                 Image(systemName: "person.badge.plus")
                     .font(.system(size: 64))
                     .foregroundColor(.hatchEdAccent)
-                
-                Text("Welcome!")
+
+                Text(isSignupFlow ? "Create your account" : "Welcome!")
                     .font(.largeTitle.bold())
                     .foregroundColor(.hatchEdText)
 
-                Text("Who is signing in?")
+                Text(isSignupFlow ? "Who are you?" : "Who is signing in?")
                     .font(.headline)
                     .foregroundColor(.hatchEdSecondaryText)
             }
@@ -29,14 +33,22 @@ struct RoleSelectionView: View {
 
             VStack(spacing: 16) {
                 Button("I'm a Parent") {
-                    authViewModel.saveRole("parent")
+                    if let onSignupParent {
+                        onSignupParent()
+                    } else {
+                        authViewModel.saveRole("parent")
+                    }
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.hatchEdAccent)
                 .controlSize(.large)
 
                 Button("I'm a Student") {
-                    authViewModel.saveRole("student")
+                    if let onSignupStudent {
+                        onSignupStudent()
+                    } else {
+                        authViewModel.saveRole("student")
+                    }
                 }
                 .buttonStyle(.bordered)
                 .tint(.hatchEdAccent)

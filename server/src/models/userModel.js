@@ -372,11 +372,14 @@ export async function updateUserTwoFactor (userId, twoFactorData) {
   return await findUserById(userId)
 }
 
-export async function updateUserProfile (userId, { role, name }) {
+export async function updateUserProfile (userId, { role, name, email }) {
   const update = { updatedAt: new Date() }
   if (role !== undefined) update.role = role
   if (name !== undefined && name !== '') {
     update.name = encrypt(name)
+  }
+  if (email !== undefined && email !== '') {
+    update.email = encrypt(email)
   }
   const result = await usersCollection().findOneAndUpdate(
     { _id: new ObjectId(userId) },

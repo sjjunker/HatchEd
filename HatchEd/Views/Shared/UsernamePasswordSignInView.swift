@@ -9,6 +9,8 @@ import SwiftUI
 
 struct UsernamePasswordSignInView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
+    /// When `false`, hides the inline path to sign up (sign up is only from the main Sign Up button).
+    var allowInlineSignUp: Bool = true
     @State private var username = ""
     @State private var password = ""
     @State private var isLoading = false
@@ -117,12 +119,14 @@ struct UsernamePasswordSignInView: View {
                     }
                 }
                 
-                Button(action: {
-                    showSignUp = true
-                }) {
-                    Text("Don't have an account? Sign Up")
-                        .font(.subheadline)
-                        .foregroundColor(.hatchEdAccent)
+                if allowInlineSignUp {
+                    Button(action: {
+                        showSignUp = true
+                    }) {
+                        Text("Don't have an account? Sign Up")
+                            .font(.subheadline)
+                            .foregroundColor(.hatchEdAccent)
+                    }
                 }
             }
         }
@@ -161,6 +165,9 @@ struct UsernamePasswordSignInView: View {
 struct UsernamePasswordSignUpView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     @Binding var showSignUp: Bool
+    var inviteToken: String?
+    var role: String?
+    var showSwitchToSignIn: Bool
     @State private var username = ""
     @State private var password = ""
     @State private var confirmPassword = ""
@@ -168,7 +175,21 @@ struct UsernamePasswordSignUpView: View {
     @State private var name = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
-    
+
+    init(showSignUp: Binding<Bool>) {
+        _showSignUp = showSignUp
+        inviteToken = nil
+        role = nil
+        showSwitchToSignIn = true
+    }
+
+    init(inviteToken: String?, role: String?) {
+        _showSignUp = .constant(false)
+        self.inviteToken = inviteToken
+        self.role = role
+        showSwitchToSignIn = false
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -176,8 +197,8 @@ struct UsernamePasswordSignUpView: View {
                     Text("Sign Up")
                         .font(.largeTitle.bold())
                         .foregroundColor(.hatchEdText)
-                    
-                    Text("Create a new account")
+
+                    Text(signUpSubtitle)
                         .font(.subheadline)
                         .foregroundColor(.hatchEdSecondaryText)
                 }
@@ -233,19 +254,31 @@ struct UsernamePasswordSignUpView: View {
                     .cornerRadius(12)
                     .disabled(isLoading || !isFormValid)
                     
-                    Button(action: {
-                        showSignUp = false
-                    }) {
-                        Text("Already have an account? Sign In")
-                            .font(.subheadline)
-                            .foregroundColor(.hatchEdAccent)
+                    if showSwitchToSignIn {
+                        Button(action: {
+                            showSignUp = false
+                        }) {
+                            Text("Already have an account? Sign In")
+                                .font(.subheadline)
+                                .foregroundColor(.hatchEdAccent)
+                        }
                     }
                 }
             }
             .padding()
         }
     }
-    
+
+    private var signUpSubtitle: String {
+        if inviteToken != nil {
+            return "Create sign-in for your student account"
+        }
+        if role == "parent" {
+            return "Create a parent account"
+        }
+        return "Create a new account"
+    }
+
     private var isFormValid: Bool {
         !username.isEmpty &&
         !password.isEmpty &&
@@ -281,7 +314,9 @@ struct UsernamePasswordSignUpView: View {
                 username: username,
                 password: password,
                 email: email.isEmpty ? nil : email,
-                name: name.isEmpty ? nil : name
+                name: name.isEmpty ? nil : name,
+                inviteToken: inviteToken,
+                role: role
             )
         } catch {
             errorMessage = error.localizedDescription

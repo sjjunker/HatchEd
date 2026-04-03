@@ -3,152 +3,143 @@
 import bcrypt from 'bcryptjs'
 import { verifyAppleIdentityToken } from '../services/appleAuth.js'
 import { verifyGoogleIdToken } from '../services/googleAuth.js'
-import { upsertUserByAppleId, findUserByAppleId, upsertUserByGoogleId, findUserByGoogleId, findUserByUsername, createUserWithPassword } from '../models/userModel.js'
+import {
+  upsertUserByAppleId,
+  findUserByAppleId,
+  upsertUserByGoogleId,
+  findUserByGoogleId,
+  findUserByUsername,
+  createUserWithPassword,
+  findUserByInviteToken,
+  linkAppleIdToUser,
+  linkGoogleIdToUser,
+  clearInviteToken,
+  findUserById,
+  updateUserProfile,
+  setUsernamePasswordForUser
+} from '../models/userModel.js'
 import { verifyTwoFactorCode } from './twoFactorController.js'
 import { signToken } from '../utils/jwt.js'
 import { serializeUser } from '../utils/serializers.js'
 import { ObjectId } from 'mongodb'
-import { ValidationError, AppError } from '../utils/errors.js'
+import { ValidationError, AppError, ConflictError } from '../utils/errors.js'
 
 export async function appleSignIn (req, res, next) {
   const startTime = Date.now()
   try {
-    console.log('[Sign In] Apple sign-in request received', {
+    const { identityToken, fullName, email, intent: intentRaw, inviteToken: inviteTokenRaw, role: roleRaw } = req.body
+    const intent = intentRaw === 'signUp' ? 'signUp' : 'signIn'
+    const inviteToken = typeof inviteTokenRaw === 'string' ? inviteTokenRaw.trim() : ''
+    const signupRole = roleRaw === 'parent' ? 'parent' : undefined
+
+    console.log('[Sign In] Apple request', {
       timestamp: new Date().toISOString(),
       ip: req.ip,
-      hasIdentityToken: !!req.body.identityToken,
-      hasFullName: !!req.body.fullName,
-      hasEmail: !!req.body.email
+      hasIdentityToken: !!identityToken,
+      intent,
+      hasInviteToken: !!inviteToken
     })
 
-  const { identityToken, fullName, email } = req.body
-  if (!identityToken) {
-      console.log('[Sign In] Validation failed: identityToken is missing')
+    if (!identityToken) {
       throw new ValidationError('identityToken is required')
-  }
+    }
 
-  const audience = process.env.APPLE_CLIENT_ID
+    const audience = process.env.APPLE_CLIENT_ID
     if (!audience) {
-      console.error('[Sign In] Configuration error: APPLE_CLIENT_ID not set')
       throw new AppError('Apple Client ID not configured', 500, 'CONFIGURATION_ERROR')
     }
 
-    console.log('[Sign In] Verifying Apple identity token...', {
-      audience,
-      tokenLength: identityToken.length
-    })
+    const payload = await verifyAppleIdentityToken(identityToken, audience)
+    const appleId = payload.sub
 
-  const payload = await verifyAppleIdentityToken(identityToken, audience)
-
-    console.log('[Sign In] Apple token verified successfully', {
-      appleId: payload.sub,
-      hasEmail: !!payload.email,
-      hasName: !!payload.name,
-      hasRole: !!payload.role
-    })
-
-  const appleId = payload.sub
-  
-  // Check if user already exists to preserve their role
-  const existingUser = await findUserByAppleId(appleId)
-  console.log('[Sign In] Existing user check', {
-    appleId,
-    exists: !!existingUser,
-    existingRole: existingUser?.role || 'none',
-    existingName: existingUser?.name || 'none'
-  })
-  
-  const updateData = {}
-  const resolvedEmail = email ?? payload.email
-  if (resolvedEmail) updateData.email = resolvedEmail
-  const resolvedName = fullName ?? payload.name
-  if (resolvedName) updateData.name = resolvedName
-  
-  // Only set role from payload if it exists (it won't from Apple, but preserve existing role)
-  if (payload.role) {
-    updateData.role = payload.role
-    console.log('[Sign In] Role provided in payload:', payload.role)
-  } else if (existingUser?.role) {
-    // Preserve existing role - explicitly include it so it's not lost
-    updateData.role = existingUser.role
-    console.log('[Sign In] Preserving existing role:', existingUser.role)
-  } else {
-    console.log('[Sign In] No role found - user will need to select one')
-  }
-
-    console.log('[Sign In] Upserting user in database...', {
-      appleId,
-      updateData: {
-        hasEmail: !!updateData.email,
-        hasName: !!updateData.name,
-        hasRole: !!updateData.role,
-        role: updateData.role || 'null'
+    // Student signup: link Apple ID to the invited child account
+    if (inviteToken) {
+      const inviteUser = await findUserByInviteToken(inviteToken)
+      if (!inviteUser) {
+        throw new AppError('Invite link is invalid or expired', 404, 'NOT_FOUND')
       }
-    })
+      if (inviteUser.role !== 'student') throw new ValidationError('Invalid invite')
 
-  const user = await upsertUserByAppleId(appleId, updateData)
-  
-  // Double-check: if user still doesn't have role but existing user did, fetch again
-  if (!user.role && existingUser?.role) {
-    console.log('[Sign In] Role missing after upsert, fetching user again...')
-    const refetchedUser = await findUserByAppleId(appleId)
-    if (refetchedUser?.role) {
-      user.role = refetchedUser.role
-      console.log('[Sign In] Role restored from refetch:', refetchedUser.role)
+      const existingApple = await findUserByAppleId(appleId)
+      if (existingApple && existingApple._id.toString() !== inviteUser._id.toString()) {
+        throw new ConflictError('This Apple ID is already used by another account')
+      }
+
+      try {
+        await linkAppleIdToUser(inviteUser._id.toString(), appleId)
+      } catch (err) {
+        if (err.message?.includes('already')) throw new ConflictError(err.message)
+        throw err
+      }
+
+      const resolvedEmail = email ?? payload.email
+      const resolvedName = fullName ?? payload.name
+      await updateUserProfile(inviteUser._id.toString(), {
+        name: resolvedName || undefined,
+        email: resolvedEmail || undefined
+      })
+
+      await clearInviteToken(inviteUser._id.toString())
+      let user = await findUserById(inviteUser._id.toString())
+      const userId = user._id instanceof ObjectId ? user._id.toString() : user._id
+      const token = signToken({ userId, appleId: user.appleId, role: user.role })
+      const duration = Date.now() - startTime
+      console.log('[Sign In] Apple invite signup completed', { userId, duration })
+      return res.json({ token, user: serializeUser({ ...user, _id: userId }) })
     }
-  }
 
-  const userId = user._id instanceof ObjectId ? user._id.toString() : user._id
+    const existingUser = await findUserByAppleId(appleId)
 
-    console.log('[Sign In] User found/created', {
-      userId,
-      appleId: user.appleId,
-      role: user.role,
-      name: user.name,
-      isNewUser: !user.createdAt || (Date.now() - new Date(user.createdAt).getTime()) < 5000
-    })
+    // Sign-in only: existing account required
+    if (intent === 'signIn') {
+      if (!existingUser) {
+        throw new AppError('No account found for this Apple ID. Use Sign Up to create one.', 404, 'ACCOUNT_NOT_FOUND')
+      }
+      const updateData = {}
+      const resolvedEmail = email ?? payload.email
+      if (resolvedEmail) updateData.email = resolvedEmail
+      const resolvedName = fullName ?? payload.name
+      if (resolvedName) updateData.name = resolvedName
+      if (payload.role) updateData.role = payload.role
+      else if (existingUser.role) updateData.role = existingUser.role
 
-    console.log('[Sign In] Generating JWT token...')
-  const token = signToken({
-    userId,
-    appleId: user.appleId,
-    role: user.role
-  })
+      const user = await upsertUserByAppleId(appleId, updateData)
+      let finalUser = user
+      if (!finalUser.role && existingUser?.role) {
+        const refetched = await findUserByAppleId(appleId)
+        if (refetched?.role) finalUser = refetched
+      }
+      const userId = finalUser._id instanceof ObjectId ? finalUser._id.toString() : finalUser._id
+      const token = signToken({ userId, appleId: finalUser.appleId, role: finalUser.role })
+      const duration = Date.now() - startTime
+      console.log('[Sign In] Apple sign-in completed', { userId, duration })
+      return res.json({ token, user: serializeUser({ ...finalUser, _id: userId }) })
+    }
 
+    // Sign-up (new parent account)
+    const updateData = {}
+    const resolvedEmail = email ?? payload.email
+    if (resolvedEmail) updateData.email = resolvedEmail
+    const resolvedName = fullName ?? payload.name
+    if (resolvedName) updateData.name = resolvedName
+    if (payload.role) updateData.role = payload.role
+    else if (existingUser?.role) updateData.role = existingUser.role
+    else if (signupRole === 'parent') updateData.role = 'parent'
+
+    const user = await upsertUserByAppleId(appleId, updateData)
+    let finalUser = user
+    if (!finalUser.role && existingUser?.role) {
+      const refetched = await findUserByAppleId(appleId)
+      if (refetched?.role) finalUser = refetched
+    }
+    const userId = finalUser._id instanceof ObjectId ? finalUser._id.toString() : finalUser._id
+    const token = signToken({ userId, appleId: finalUser.appleId, role: finalUser.role })
     const duration = Date.now() - startTime
-    const serializedUser = serializeUser({ ...user, _id: userId })
-    console.log('[Sign In] Sign-in completed successfully', {
-      userId,
-      role: user.role,
-      duration: `${duration}ms`,
-      timestamp: new Date().toISOString(),
-      userData: {
-        id: serializedUser?.id,
-        role: serializedUser?.role,
-        name: serializedUser?.name,
-        hasFamilyId: !!serializedUser?.familyId
-      }
-    })
-
-    const response = {
-    token,
-      user: serializedUser
-    }
-    console.log('[Sign In] Sending response to client', {
-      hasToken: !!response.token,
-      hasUser: !!response.user,
-      userRole: response.user?.role
-    })
-    res.json(response)
+    console.log('[Sign In] Apple sign-up completed', { userId, duration })
+    res.json({ token, user: serializeUser({ ...finalUser, _id: userId }) })
   } catch (error) {
     const duration = Date.now() - startTime
-    console.error('[Sign In] Sign-in failed', {
-      error: error.message,
-      code: error.code,
-      status: error.status || error.statusCode,
-      duration: `${duration}ms`,
-      timestamp: new Date().toISOString()
-  })
+    console.error('[Sign In] Apple failed', { error: error.message, duration })
     next(error)
   }
 }
@@ -156,137 +147,115 @@ export async function appleSignIn (req, res, next) {
 export async function googleSignIn (req, res, next) {
   const startTime = Date.now()
   try {
-    console.log('[Sign In] Google sign-in request received', {
+    const { idToken, fullName, email, intent: intentRaw, inviteToken: inviteTokenRaw, role: roleRaw } = req.body
+    const intent = intentRaw === 'signUp' ? 'signUp' : 'signIn'
+    const inviteToken = typeof inviteTokenRaw === 'string' ? inviteTokenRaw.trim() : ''
+    const signupRole = roleRaw === 'parent' ? 'parent' : undefined
+
+    console.log('[Sign In] Google request', {
       timestamp: new Date().toISOString(),
       ip: req.ip,
-      hasIdToken: !!req.body.idToken,
-      hasFullName: !!req.body.fullName,
-      hasEmail: !!req.body.email
+      hasIdToken: !!idToken,
+      intent,
+      hasInviteToken: !!inviteToken
     })
 
-    const { idToken, fullName, email } = req.body
     if (!idToken) {
-      console.log('[Sign In] Validation failed: idToken is missing')
       throw new ValidationError('idToken is required')
     }
 
-    const clientId = process.env.GOOGLE_CLIENT_ID
-    if (!clientId) {
-      console.error('[Sign In] Configuration error: GOOGLE_CLIENT_ID not set')
+    if (!process.env.GOOGLE_CLIENT_ID) {
       throw new AppError('Google Client ID not configured', 500, 'CONFIGURATION_ERROR')
     }
 
-    console.log('[Sign In] Verifying Google ID token...', {
-      clientId,
-      tokenLength: idToken.length
-    })
-
     const payload = await verifyGoogleIdToken(idToken)
-
-    console.log('[Sign In] Google token verified successfully', {
-      googleId: payload.sub,
-      hasEmail: !!payload.email,
-      hasName: !!payload.name
-    })
-
     const googleId = payload.sub
 
-    // Check if user already exists to preserve their role
+    if (inviteToken) {
+      const inviteUser = await findUserByInviteToken(inviteToken)
+      if (!inviteUser) {
+        throw new AppError('Invite link is invalid or expired', 404, 'NOT_FOUND')
+      }
+      if (inviteUser.role !== 'student') throw new ValidationError('Invalid invite')
+
+      const existingGoogle = await findUserByGoogleId(googleId)
+      if (existingGoogle && existingGoogle._id.toString() !== inviteUser._id.toString()) {
+        throw new ConflictError('This Google account is already used by another account')
+      }
+
+      try {
+        await linkGoogleIdToUser(inviteUser._id.toString(), googleId)
+      } catch (err) {
+        if (err.message?.includes('already')) throw new ConflictError(err.message)
+        throw err
+      }
+
+      const resolvedEmail = email ?? payload.email
+      const resolvedName = fullName ?? payload.name
+      await updateUserProfile(inviteUser._id.toString(), {
+        name: resolvedName || undefined,
+        email: resolvedEmail || undefined
+      })
+
+      await clearInviteToken(inviteUser._id.toString())
+      let user = await findUserById(inviteUser._id.toString())
+      const userId = user._id instanceof ObjectId ? user._id.toString() : user._id
+      const token = signToken({ userId, googleId: user.googleId, role: user.role })
+      const duration = Date.now() - startTime
+      console.log('[Sign In] Google invite signup completed', { userId, duration })
+      return res.json({ token, user: serializeUser({ ...user, _id: userId }) })
+    }
+
     const existingUser = await findUserByGoogleId(googleId)
-    console.log('[Sign In] Existing user check', {
-      googleId,
-      exists: !!existingUser,
-      existingRole: existingUser?.role || 'none',
-      existingName: existingUser?.name || 'none'
-    })
+
+    if (intent === 'signIn') {
+      if (!existingUser) {
+        throw new AppError('No account found for this Google account. Use Sign Up to create one.', 404, 'ACCOUNT_NOT_FOUND')
+      }
+      const updateData = {}
+      const resolvedEmail = email ?? payload.email
+      if (resolvedEmail) updateData.email = resolvedEmail
+      const resolvedName = fullName ?? payload.name
+      if (resolvedName) updateData.name = resolvedName
+      if (payload.role) updateData.role = payload.role
+      else if (existingUser.role) updateData.role = existingUser.role
+
+      const user = await upsertUserByGoogleId(googleId, updateData)
+      let finalUser = user
+      if (!finalUser.role && existingUser?.role) {
+        const refetched = await findUserByGoogleId(googleId)
+        if (refetched?.role) finalUser = refetched
+      }
+      const userId = finalUser._id instanceof ObjectId ? finalUser._id.toString() : finalUser._id
+      const token = signToken({ userId, googleId: finalUser.googleId, role: finalUser.role })
+      const duration = Date.now() - startTime
+      console.log('[Sign In] Google sign-in completed', { userId, duration })
+      return res.json({ token, user: serializeUser({ ...finalUser, _id: userId }) })
+    }
 
     const updateData = {}
     const resolvedEmail = email ?? payload.email
     if (resolvedEmail) updateData.email = resolvedEmail
     const resolvedName = fullName ?? payload.name
     if (resolvedName) updateData.name = resolvedName
-
-    // Preserve existing role
-    if (existingUser?.role) {
-      updateData.role = existingUser.role
-      console.log('[Sign In] Preserving existing role:', existingUser.role)
-    } else {
-      console.log('[Sign In] No role found - user will need to select one')
-    }
-
-    console.log('[Sign In] Upserting user in database...', {
-      googleId,
-      updateData: {
-        hasEmail: !!updateData.email,
-        hasName: !!updateData.name,
-        hasRole: !!updateData.role,
-        role: updateData.role || 'null'
-      }
-    })
+    if (payload.role) updateData.role = payload.role
+    else if (existingUser?.role) updateData.role = existingUser.role
+    else if (signupRole === 'parent') updateData.role = 'parent'
 
     const user = await upsertUserByGoogleId(googleId, updateData)
-
-    // Double-check: if user still doesn't have role but existing user did, fetch again
-    if (!user.role && existingUser?.role) {
-      console.log('[Sign In] Role missing after upsert, fetching user again...')
-      const refetchedUser = await findUserByGoogleId(googleId)
-      if (refetchedUser?.role) {
-        user.role = refetchedUser.role
-        console.log('[Sign In] Role restored from refetch:', refetchedUser.role)
-      }
+    let finalUser = user
+    if (!finalUser.role && existingUser?.role) {
+      const refetched = await findUserByGoogleId(googleId)
+      if (refetched?.role) finalUser = refetched
     }
-
-    const userId = user._id instanceof ObjectId ? user._id.toString() : user._id
-
-    console.log('[Sign In] User found/created', {
-      userId,
-      googleId: user.googleId,
-      role: user.role,
-      name: user.name,
-      isNewUser: !user.createdAt || (Date.now() - new Date(user.createdAt).getTime()) < 5000
-    })
-
-    console.log('[Sign In] Generating JWT token...')
-    const token = signToken({
-      userId,
-      googleId: user.googleId,
-      role: user.role
-    })
-
+    const userId = finalUser._id instanceof ObjectId ? finalUser._id.toString() : finalUser._id
+    const token = signToken({ userId, googleId: finalUser.googleId, role: finalUser.role })
     const duration = Date.now() - startTime
-    const serializedUser = serializeUser({ ...user, _id: userId })
-    console.log('[Sign In] Sign-in completed successfully', {
-      userId,
-      role: user.role,
-      duration: `${duration}ms`,
-      timestamp: new Date().toISOString(),
-      userData: {
-        id: serializedUser?.id,
-        role: serializedUser?.role,
-        name: serializedUser?.name,
-        hasFamilyId: !!serializedUser?.familyId
-      }
-    })
-
-    const response = {
-      token,
-      user: serializedUser
-    }
-    console.log('[Sign In] Sending response to client', {
-      hasToken: !!response.token,
-      hasUser: !!response.user,
-      userRole: response.user?.role
-    })
-    res.json(response)
+    console.log('[Sign In] Google sign-up completed', { userId, duration })
+    res.json({ token, user: serializeUser({ ...finalUser, _id: userId }) })
   } catch (error) {
     const duration = Date.now() - startTime
-    console.error('[Sign In] Sign-in failed', {
-      error: error.message,
-      code: error.code,
-      status: error.status || error.statusCode,
-      duration: `${duration}ms`,
-      timestamp: new Date().toISOString()
-    })
+    console.error('[Sign In] Google failed', { error: error.message, duration })
     next(error)
   }
 }
@@ -298,10 +267,13 @@ export async function signUp (req, res, next) {
       timestamp: new Date().toISOString(),
       ip: req.ip,
       hasUsername: !!req.body.username,
-      hasPassword: !!req.body.password
+      hasPassword: !!req.body.password,
+      hasInviteToken: !!req.body.inviteToken
     })
 
-    const { username, password, email, name } = req.body
+    const { username, password, email, name, inviteToken: inviteTokenRaw, role: roleRaw } = req.body
+    const inviteToken = typeof inviteTokenRaw === 'string' ? inviteTokenRaw.trim() : ''
+    const signupRole = roleRaw === 'parent' ? 'parent' : undefined
 
     if (!username || !password) {
       console.log('[Sign Up] Validation failed: username or password missing')
@@ -316,15 +288,47 @@ export async function signUp (req, res, next) {
       throw new ValidationError('Password must be at least 6 characters')
     }
 
-    // Check if username already exists
+    const saltRounds = 10
+    const hashedPassword = await bcrypt.hash(password, saltRounds)
+
+    // Student: attach username/password to invited child account
+    if (inviteToken) {
+      const inviteUser = await findUserByInviteToken(inviteToken)
+      if (!inviteUser) {
+        throw new AppError('Invite link is invalid or expired', 404, 'NOT_FOUND')
+      }
+      if (inviteUser.role !== 'student') throw new ValidationError('Invalid invite')
+      const existingWithUsername = await findUserByUsername(username)
+      if (existingWithUsername) {
+        throw new ValidationError('Username already exists')
+      }
+      try {
+        await setUsernamePasswordForUser(inviteUser._id.toString(), {
+          username: username.trim(),
+          passwordHash: hashedPassword
+        })
+      } catch (err) {
+        if (err.message?.includes('taken')) throw new ValidationError(err.message)
+        throw err
+      }
+      await clearInviteToken(inviteUser._id.toString())
+      const user = await findUserById(inviteUser._id.toString())
+      const userId = user._id instanceof ObjectId ? user._id.toString() : user._id
+      const token = signToken({
+        userId,
+        username: user.username,
+        role: user.role
+      })
+      const serializedUser = serializeUser({ ...user, _id: userId })
+      delete serializedUser.password
+      console.log('[Sign Up] Invite username signup completed', { userId })
+      return res.json({ token, user: serializedUser })
+    }
+
     const existingUser = await findUserByUsername(username)
     if (existingUser) {
       throw new ValidationError('Username already exists')
     }
-
-    // Hash the password
-    const saltRounds = 10
-    const hashedPassword = await bcrypt.hash(password, saltRounds)
 
     console.log('[Sign Up] Creating user...')
     const userData = {
@@ -332,6 +336,9 @@ export async function signUp (req, res, next) {
       password: hashedPassword,
       email: email || undefined,
       name: name || undefined
+    }
+    if (signupRole === 'parent') {
+      userData.role = 'parent'
     }
 
     const user = await createUserWithPassword(userData)

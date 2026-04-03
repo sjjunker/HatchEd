@@ -2,10 +2,11 @@
 
 import { Router } from 'express'
 import { asyncHandler } from '../middleware/asyncHandler.js'
-import { acceptInvite } from '../controllers/userController.js'
+import { acceptInvite, validateInvite } from '../controllers/userController.js'
 
 const router = Router()
 
+router.post('/validate', asyncHandler(validateInvite))
 router.post('/accept', asyncHandler(acceptInvite))
 router.get('/accept', asyncHandler(acceptInvite))
 

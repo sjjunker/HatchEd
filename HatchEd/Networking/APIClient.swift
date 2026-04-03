@@ -132,6 +132,23 @@ final class APIClient {
         return response.quote
     }
     
+    struct ValidateInviteRequest: Encodable {
+        let token: String
+    }
+    
+    struct ValidateInviteResponse: Decodable {
+        let valid: Bool
+        let name: String?
+    }
+    
+    func validateInvite(token: String) async throws -> ValidateInviteResponse {
+        let body = ValidateInviteRequest(token: token)
+        return try await request(
+            Endpoint(path: "api/invite/validate", method: .post, body: body),
+            responseType: ValidateInviteResponse.self
+        )
+    }
+    
     // Subjects API methods (courses & assignments)
     struct CoursesResponse: Decodable {
         let courses: [Course]
@@ -844,6 +861,11 @@ enum APIError: Error, LocalizedError {
     case invalidResponse
     case server(message: String, code: String?, status: Int)
     case decodingFailed
+    
+    var serverErrorCode: String? {
+        if case .server(_, let code, _) = self { return code }
+        return nil
+    }
     
     init(from data: Data, statusCode: Int) throws {
         let decoder = JSONDecoder.api

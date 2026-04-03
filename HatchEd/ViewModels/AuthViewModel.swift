@@ -14,6 +14,11 @@ enum SignInState {
     case signedIn
 }
 
+enum OAuthIntent: String {
+    case signIn = "signIn"
+    case signUp = "signUp"
+}
+
 @MainActor
 class AuthViewModel: NSObject, ObservableObject {
     @Published var currentUser: User?
@@ -24,6 +29,8 @@ class AuthViewModel: NSObject, ObservableObject {
     @Published var isOffline: Bool = false
     /// Set when app is opened via invite link (hatched://invite?token=...). Cleared after accept or dismiss.
     @Published var pendingInviteToken: String?
+    /// Transient message for sign-in failures (e.g. no existing account).
+    @Published var authNotice: String?
 
     private let appleIDProvider = ASAuthorizationAppleIDProvider()
     private let api = APIClient.shared
@@ -194,6 +201,10 @@ class AuthViewModel: NSObject, ObservableObject {
     func clearPendingInviteToken() {
         pendingInviteToken = nil
     }
+    
+    func clearAuthNotice() {
+        authNotice = nil
+    }
 
     /// Update the current user (e.g. after linking Apple/Google or setting username-password).
     func updateCurrentUser(_ user: User) {
@@ -202,18 +213,30 @@ class AuthViewModel: NSObject, ObservableObject {
         updateSignInState()
     }
 
-    func handleSignIn(result: Result<ASAuthorization, Error>) {
+    func handleSignIn(
+        result: Result<ASAuthorization, Error>,
+        intent: OAuthIntent = .signIn,
+        inviteToken: String? = nil,
+        role: String? = nil
+    ) {
         switch result {
         case .success(let authResults):
-            Task { await processSignIn(authResults: authResults) }
+            Task { await processSignIn(authResults: authResults, intent: intent, inviteToken: inviteToken, role: role) }
         case .failure(let error):
             print("Apple Sign-In failed: \(error.localizedDescription)")
             signInState = .notSignedIn
         }
     }
 
-    func handleGoogleSignIn(idToken: String, fullName: String?, email: String?) {
-        Task { await processGoogleSignIn(idToken: idToken, fullName: fullName, email: email) }
+    func handleGoogleSignIn(
+        idToken: String,
+        fullName: String?,
+        email: String?,
+        intent: OAuthIntent = .signIn,
+        inviteToken: String? = nil,
+        role: String? = nil
+    ) {
+        Task { await processGoogleSignIn(idToken: idToken, fullName: fullName, email: email, intent: intent, inviteToken: inviteToken, role: role) }
     }
 
     func handleUsernamePasswordSignIn(username: String, password: String, twoFactorCode: String? = nil) async throws {
@@ -237,8 +260,22 @@ class AuthViewModel: NSObject, ObservableObject {
         }
     }
 
-    func handleUsernamePasswordSignUp(username: String, password: String, email: String?, name: String?) async throws {
-        let body = UsernamePasswordSignUpRequest(username: username, password: password, email: email, name: name)
+    func handleUsernamePasswordSignUp(
+        username: String,
+        password: String,
+        email: String?,
+        name: String?,
+        inviteToken: String? = nil,
+        role: String? = nil
+    ) async throws {
+        let body = UsernamePasswordSignUpRequest(
+            username: username,
+            password: password,
+            email: email,
+            name: name,
+            inviteToken: inviteToken,
+            role: role
+        )
         let response: AuthResponse = try await api.request(
             Endpoint(path: "api/auth/signup", method: .post, body: body)
         )
@@ -255,9 +292,24 @@ class AuthViewModel: NSObject, ObservableObject {
         }
     }
 
-    private func processGoogleSignIn(idToken: String, fullName: String?, email: String?) async {
+    private func processGoogleSignIn(
+        idToken: String,
+        fullName: String?,
+        email: String?,
+        intent: OAuthIntent,
+        inviteToken: String?,
+        role: String?
+    ) async {
         do {
-            let body = GoogleAuthRequest(idToken: idToken, fullName: fullName, email: email)
+            authNotice = nil
+            let body = GoogleAuthRequest(
+                idToken: idToken,
+                fullName: fullName,
+                email: email,
+                intent: intent.rawValue,
+                inviteToken: inviteToken,
+                role: role
+            )
             let response: AuthResponse = try await api.request(
                 Endpoint(path: "api/auth/google", method: .post, body: body)
             )
@@ -265,20 +317,28 @@ class AuthViewModel: NSObject, ObservableObject {
                 throw NSError(domain: "AuthError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response from server"])
             }
             api.setAuthToken(token)
-            if let userId = user.id as String? { storeUserID(userId) }
+            if let uid = user.id as String? { storeUserID(uid) }
             applyUser(user)
             cache.save(token, as: "token.json")
             await withTaskGroup(of: Void.self) { group in
                 group.addTask { await self.fetchFamilyIfNeeded() }
                 group.addTask { await self.fetchNotifications() }
             }
+        } catch let error as APIError {
+            handleOAuthAPIError(error, provider: "Google")
         } catch {
             print("Google sign-in failed: \(error.localizedDescription)")
+            authNotice = error.localizedDescription
             signInState = .notSignedIn
         }
     }
 
-    private func processSignIn(authResults: ASAuthorization) async {
+    private func processSignIn(
+        authResults: ASAuthorization,
+        intent: OAuthIntent,
+        inviteToken: String?,
+        role: String?
+    ) async {
         guard let credential = authResults.credential as? ASAuthorizationAppleIDCredential else {
             signInState = .notSignedIn
             return
@@ -292,7 +352,15 @@ class AuthViewModel: NSObject, ObservableObject {
             return
         }
         do {
-            let body = AuthRequest(identityToken: identityToken, fullName: name, email: email)
+            authNotice = nil
+            let body = AuthRequest(
+                identityToken: identityToken,
+                fullName: name,
+                email: email,
+                intent: intent.rawValue,
+                inviteToken: inviteToken,
+                role: role
+            )
             let response: AuthResponse = try await api.request(
                 Endpoint(path: "api/auth/apple", method: .post, body: body)
             )
@@ -307,10 +375,22 @@ class AuthViewModel: NSObject, ObservableObject {
                 group.addTask { await self.fetchFamilyIfNeeded() }
                 group.addTask { await self.fetchNotifications() }
             }
+        } catch let error as APIError {
+            handleOAuthAPIError(error, provider: "Apple")
         } catch {
             print("Apple sign-in failed: \(error.localizedDescription)")
+            authNotice = error.localizedDescription
             signInState = .notSignedIn
         }
+    }
+    
+    private func handleOAuthAPIError(_ error: APIError, provider: String) {
+        if error.serverErrorCode == "ACCOUNT_NOT_FOUND" {
+            authNotice = "No account found for this \(provider) ID. Tap Sign Up to create an account."
+        } else {
+            authNotice = error.localizedDescription
+        }
+        signInState = .notSignedIn
     }
 
     func saveRole(_ role: String) {
@@ -430,11 +510,17 @@ struct AuthRequest: Encodable {
     let identityToken: String
     let fullName: String?
     let email: String?
+    var intent: String?
+    var inviteToken: String?
+    var role: String?
 }
 struct GoogleAuthRequest: Encodable {
     let idToken: String
     let fullName: String?
     let email: String?
+    var intent: String?
+    var inviteToken: String?
+    var role: String?
 }
 struct UsernamePasswordSignInRequest: Encodable {
     let username: String
@@ -451,6 +537,8 @@ struct UsernamePasswordSignUpRequest: Encodable {
     let password: String
     let email: String?
     let name: String?
+    var inviteToken: String?
+    var role: String?
 }
 struct AuthResponse: Decodable {
     let token: String?

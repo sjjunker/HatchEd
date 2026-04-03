@@ -16,7 +16,7 @@ import { serializeFamily, serializeUser, serializeUserWithInvite } from '../util
 import { signToken } from '../utils/jwt.js'
 import { verifyAppleIdentityToken } from '../services/appleAuth.js'
 import { verifyGoogleIdToken } from '../services/googleAuth.js'
-import { ValidationError, NotFoundError, ForbiddenError } from '../utils/errors.js'
+import { ValidationError, NotFoundError, ForbiddenError, AppError } from '../utils/errors.js'
 
 export async function getCurrentUser (req, res, next) {
   try {
@@ -268,6 +268,21 @@ export async function createChild (req, res, next) {
       inviteLink,
       inviteToken
     })
+  } catch (error) {
+    next(error)
+  }
+}
+
+/** Validate invite token without consuming it (student signup flow). */
+export async function validateInvite (req, res, next) {
+  try {
+    const token = req.body?.token?.trim()
+    if (!token) throw new ValidationError('Invite token is required')
+    const user = await findUserByInviteToken(token)
+    if (!user) {
+      throw new AppError('Invite link is invalid or expired', 404, 'NOT_FOUND')
+    }
+    res.json({ valid: true, name: user.name ?? null })
   } catch (error) {
     next(error)
   }

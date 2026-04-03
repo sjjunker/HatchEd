@@ -47,8 +47,8 @@ struct ContentView: View {
             case .notSignedIn:
                 SignInView()
             case .needsRoleSelection:
-                if let userID = authViewModel.currentUser?.id {
-                    RoleSelectionView(userID: userID)
+                if authViewModel.currentUser?.id != nil {
+                    RoleSelectionView()
                 } else {
                     SignInView()
                 }
@@ -67,14 +67,14 @@ struct ContentView: View {
             case "student":
                 StudentDashboard()
             default:
-                if let userID = authViewModel.currentUser?.id {
-                    RoleSelectionView(userID: userID)
+                if authViewModel.currentUser?.id != nil {
+                    RoleSelectionView()
                 } else {
                     SignInView()
                 }
             }
-        } else if let userID = authViewModel.currentUser?.id {
-            RoleSelectionView(userID: userID)
+        } else if authViewModel.currentUser?.id != nil {
+            RoleSelectionView()
         } else {
             SignInView()
         }

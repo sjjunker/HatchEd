@@ -10,6 +10,7 @@ import { findAttendanceForStudent } from '../models/attendanceModel.js'
 import { calculateCourseGrade } from '../utils/gradeCalculator.js'
 import { serializePortfolio, serializeStudentWorkFile, serializeCourse, serializeAssignment } from '../utils/serializers.js'
 import { compilePortfolioWithChatGPT } from '../services/chatgptService.js'
+import { extractPlaceholdersInDocumentOrder } from '../utils/portfolioPlaceholderOrder.js'
 import multer from 'multer'
 import path from 'path'
 import fs from 'fs/promises'
@@ -262,19 +263,8 @@ export async function createPortfolioHandler (req, res) {
     
     console.log('[Portfolio Controller] Portfolio created successfully:', portfolio._id)
 
-    // Extract placeholder order: [PROVIDED_PHOTO: sectionKey] and [IMAGE: description]
-    const providedPhotoRegex = /\[PROVIDED_PHOTO:\s*(\w+)\]/g
-    const imageRegex = /\[IMAGE:\s*([^\]]+)\]/g
-    const placeholders = []
-    const contentWithPlaceholderMarkers = compiledContent
-      .replace(providedPhotoRegex, (_, sectionKey) => {
-        placeholders.push({ type: 'provided', sectionKey })
-        return `\u0000P${placeholders.length - 1}\u0000`
-      })
-    const tempContent = contentWithPlaceholderMarkers.replace(imageRegex, (_, desc) => {
-      placeholders.push({ type: 'generated', description: desc.trim() })
-      return `\u0000G${placeholders.length - 1}\u0000`
-    })
+    // Placeholders in true document order (interleaved provided + generated as in compiled HTML)
+    const { placeholders, tempContent } = extractPlaceholdersInDocumentOrder(compiledContent)
     const providedCount = placeholders.filter(p => p.type === 'provided').length
     const generatedCount = placeholders.filter(p => p.type === 'generated').length
     console.log('[Portfolio Controller] Placeholders:', placeholders.length, '(provided:', providedCount, ', generated:', generatedCount, ')')
@@ -296,23 +286,9 @@ export async function createPortfolioHandler (req, res) {
       }
     }
 
-    // Build merged image list in placeholder order - match generated images by description when possible
-    const usedGeneratedIndices = new Set()
-    const norm = (s) => (s || '').toLowerCase().trim().replace(/\s+/g, ' ')
-    const findBestMatchingGenerated = (placeholderDesc) => {
-      const pNorm = norm(placeholderDesc)
-      if (!pNorm) return null
-      for (let j = 0; j < storedGeneratedImages.length; j++) {
-        if (usedGeneratedIndices.has(j)) continue
-        const sNorm = norm(storedGeneratedImages[j].description)
-        if (sNorm === pNorm || sNorm.includes(pNorm) || pNorm.includes(sNorm)) {
-          usedGeneratedIndices.add(j)
-          return storedGeneratedImages[j]
-        }
-      }
-      return null
-    }
-    let genIdx = 0
+    // mergedImages[i] aligns with the i-th [IMAGE] token in final HTML (same order as placeholders).
+    // storedGeneratedImages is produced in document order of [IMAGE: ...] only (matches compilePortfolioWithChatGPT).
+    let nextStoredGeneratedIndex = 0
     const mergedImages = []
     for (let i = 0; i < placeholders.length; i++) {
       const p = placeholders[i]
@@ -324,19 +300,11 @@ export async function createPortfolioHandler (req, res) {
           mergedImages.push({ id: `missing-${i}`, description: '' })
         }
       } else if (p.type === 'generated') {
-        const byDesc = findBestMatchingGenerated(p.description)
-        if (byDesc) {
-          mergedImages.push(byDesc)
+        if (nextStoredGeneratedIndex < storedGeneratedImages.length) {
+          mergedImages.push(storedGeneratedImages[nextStoredGeneratedIndex])
+          nextStoredGeneratedIndex++
         } else {
-          while (genIdx < storedGeneratedImages.length && usedGeneratedIndices.has(genIdx)) genIdx++
-          if (genIdx < storedGeneratedImages.length) {
-            const byOrder = storedGeneratedImages[genIdx]
-            usedGeneratedIndices.add(genIdx)
-            genIdx++
-            mergedImages.push(byOrder)
-          } else {
-            mergedImages.push({ id: `missing-${i}`, description: p.description || '' })
-          }
+          mergedImages.push({ id: `missing-${i}`, description: p.description || '' })
         }
       } else {
         mergedImages.push({ id: `missing-${i}`, description: '' })
@@ -344,7 +312,7 @@ export async function createPortfolioHandler (req, res) {
     }
     // Replace placeholder markers with [IMAGE] only - no URLs. Client uses generatedImages[i].id to load from GET /images/:id
     let replIdx = 0
-    let finalContent = tempContent.replace(/\u0000[PG]\d+\u0000/g, () => {
+    let finalContent = tempContent.replace(/\u0000M\d+\u0000/g, () => {
       replIdx++
       return '[IMAGE]'
     })
